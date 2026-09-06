@@ -1,0 +1,13 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  drill: one
+  scheduled_at: 2026-09-06 16:37:37
+  location: MyString
+  notes: MyText
+
+two:
+  drill: two
+  scheduled_at: 2026-09-06 16:37:37
+  location: MyString
+  notes: MyText
