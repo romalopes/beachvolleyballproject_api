@@ -11,16 +11,22 @@
 # It's strongly recommended that you check this file into your version control system.
 
 ActiveRecord::Schema[8.1].define(version: 2026_09_06_063737) do
-  # These are extensions that must be enabled in order to support this database
-  enable_extension "pg_catalog.plpgsql"
+  create_schema "extensions"
 
-  create_table "categories", force: :cascade do |t|
+  # These are extensions that must be enabled in order to support this database
+  enable_extension "extensions.pg_stat_statements"
+  enable_extension "extensions.pgcrypto"
+  enable_extension "extensions.uuid-ossp"
+  enable_extension "pg_catalog.plpgsql"
+  enable_extension "vault.supabase_vault"
+
+  create_table "public.categories", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name"
     t.datetime "updated_at", null: false
   end
 
-  create_table "drill_skills", force: :cascade do |t|
+  create_table "public.drill_skills", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "drill_id", null: false
     t.bigint "skill_id", null: false
@@ -29,7 +35,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_063737) do
     t.index ["skill_id"], name: "index_drill_skills_on_skill_id"
   end
 
-  create_table "drills", force: :cascade do |t|
+  create_table "public.drills", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "difficulty_level"
     t.integer "player_count"
@@ -38,7 +44,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_063737) do
     t.datetime "updated_at", null: false
   end
 
-  create_table "media_assets", force: :cascade do |t|
+  create_table "public.media_assets", force: :cascade do |t|
     t.string "asset_type"
     t.datetime "created_at", null: false
     t.text "description"
@@ -52,7 +58,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_063737) do
     t.index ["skill_id"], name: "index_media_assets_on_skill_id"
   end
 
-  create_table "skills", force: :cascade do |t|
+  create_table "public.skills", force: :cascade do |t|
     t.bigint "category_id", null: false
     t.datetime "created_at", null: false
     t.text "description"
@@ -61,7 +67,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_063737) do
     t.index ["category_id"], name: "index_skills_on_category_id"
   end
 
-  create_table "training_sessions", force: :cascade do |t|
+  create_table "public.training_sessions", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "drill_id", null: false
     t.string "location"
@@ -71,10 +77,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_063737) do
     t.index ["drill_id"], name: "index_training_sessions_on_drill_id"
   end
 
-  add_foreign_key "drill_skills", "drills"
-  add_foreign_key "drill_skills", "skills"
-  add_foreign_key "media_assets", "drills"
-  add_foreign_key "media_assets", "skills"
-  add_foreign_key "skills", "categories"
-  add_foreign_key "training_sessions", "drills"
+  add_foreign_key "public.drill_skills", "public.drills"
+  add_foreign_key "public.drill_skills", "public.skills"
+  add_foreign_key "public.media_assets", "public.drills"
+  add_foreign_key "public.media_assets", "public.skills"
+  add_foreign_key "public.skills", "public.categories"
+  add_foreign_key "public.training_sessions", "public.drills"
+
 end

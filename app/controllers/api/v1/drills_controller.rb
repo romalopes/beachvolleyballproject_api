@@ -4,12 +4,18 @@ module Api
       before_action :set_drill, only: [:show, :update, :destroy]
 
       def index
-        @drills = Drill.includes(:skills, :media_assets, :training_sessions).all
-        render json: @drills, include: [:skills, :media_assets, :training_sessions]
+        @drills = Drill.includes(skills: :category).all
+        render json: @drills, include: {
+          skills: { only: [:id, :title], include: { category: { only: [:id, :name] } } }
+        }
       end
 
       def show
-        render json: @drill, include: [:skills, :media_assets, :training_sessions]
+        render json: @drill, include: {
+          skills: { only: [:id, :title, :description], include: { category: { only: [:id, :name] } } },
+          media_assets: { only: [:id, :title, :asset_type, :video_url, :thumbnail_url] },
+          training_sessions: { only: [:id, :scheduled_at, :location, :notes] }
+        }
       end
 
       def create
@@ -38,7 +44,7 @@ module Api
       private
 
       def set_drill
-        @drill = Drill.find(params[:id])
+        @drill = Drill.includes(:media_assets, :training_sessions, skills: :category).find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Drill not found" }, status: :not_found
       end
