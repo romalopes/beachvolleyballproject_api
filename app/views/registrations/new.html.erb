@@ -1,0 +1,51 @@
+<div class="page auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="sidebar-logo-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 2a10 10 0 0 1 0 20 10 10 0 0 1 0-20" />
+          <path d="M2 12h20" />
+        </svg>
+      </span>
+      BVB Project
+    </div>
+    <h2>Create your account</h2>
+    <p class="auth-subtitle">Sign up to organise skills, drills and training sessions.</p>
+
+    <%= tag.div(flash[:alert], class: "auth-flash auth-flash-error") if flash[:alert] %>
+
+    <%= form_with model: @user, url: registration_path, class: "auth-form" do |form| %>
+      <% if @user.errors.any? %>
+        <div class="auth-flash auth-flash-error">
+          <ul>
+            <% @user.errors.full_messages.each do |message| %>
+              <li><%= message %></li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+      <div class="auth-field">
+        <%= form.label :name, "Name" %>
+        <%= form.text_field :name, required: true, autofocus: true, autocomplete: "name", placeholder: "Your name", maxlength: 100 %>
+      </div>
+      <div class="auth-field">
+        <%= form.label :email_address, "Email" %>
+        <%= form.email_field :email_address, required: true, autocomplete: "username", placeholder: "you@example.com" %>
+      </div>
+      <div class="auth-field">
+        <%= form.label :password, "Password" %>
+        <%= form.password_field :password, required: true, autocomplete: "new-password", placeholder: "At least 8 characters", maxlength: 72 %>
+      </div>
+      <div class="auth-field">
+        <%= form.label :password_confirmation, "Confirm password" %>
+        <%= form.password_field :password_confirmation, required: true, autocomplete: "new-password", placeholder: "Repeat your password", maxlength: 72 %>
+      </div>
+      <%= form.submit "Sign up", class: "auth-submit" %>
+    <% end %>
+
+    <div class="auth-links">
+      <%= link_to "Already have an account? Sign in", new_session_path %>
+    </div>
+  </div>
+</div>

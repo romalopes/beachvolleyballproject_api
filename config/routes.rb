@@ -1,4 +1,7 @@
 Rails.application.routes.draw do
+  resource :session
+  resource :registration, only: %i[new create]
+  resources :passwords, param: :token
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
@@ -17,8 +20,16 @@ Rails.application.routes.draw do
   get "schedule", to: "pages#schedule"
 
   # API routes
-  namespace :api do
+  namespace :api, defaults: { format: :json } do
     namespace :v1 do
+      # Auth endpoints (JSON for the React SPA)
+      post "registrations", to: "registrations#create"
+      post "sessions", to: "sessions#create"
+      delete "sessions", to: "sessions#destroy"
+      get "me", to: "me#show"
+      post "passwords", to: "passwords#create"
+      put "passwords/:token", to: "passwords#update"
+
       resources :categories
       resources :skills
       resources :drills

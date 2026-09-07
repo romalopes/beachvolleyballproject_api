@@ -1,0 +1,37 @@
+<div class="page auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="sidebar-logo-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 2a10 10 0 0 1 0 20 10 10 0 0 1 0-20" />
+          <path d="M2 12h20" />
+        </svg>
+      </span>
+      BVB Project
+    </div>
+    <h2>Sign in</h2>
+    <p class="auth-subtitle">Welcome back. Sign in to access your training database.</p>
+
+    <%= tag.div(flash[:alert], class: "auth-flash auth-flash-error") if flash[:alert] %>
+    <%= tag.div(flash[:notice], class: "auth-flash auth-flash-notice") if flash[:notice] %>
+
+    <%= form_with url: session_path, class: "auth-form" do |form| %>
+      <div class="auth-field">
+        <%= form.label :email_address, "Email" %>
+        <%= form.email_field :email_address, required: true, autofocus: true, autocomplete: "username", placeholder: "you@example.com", value: params[:email_address] %>
+      </div>
+      <div class="auth-field">
+        <%= form.label :password, "Password" %>
+        <%= form.password_field :password, required: true, autocomplete: "current-password", placeholder: "Your password", maxlength: 72 %>
+      </div>
+      <%= form.submit "Sign in", class: "auth-submit" %>
+    <% end %>
+
+    <div class="auth-links">
+      <%= link_to "Forgot your password?", new_password_path %>
+      <%= link_to "Create an account", new_registration_path %>
+    </div>
+  </div>
+</div>
+

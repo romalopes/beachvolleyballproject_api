@@ -33,3 +33,16 @@
   <br />
   Organise. Understand. Train.
 </div>
+
+<div class="sidebar-user">
+  <% if authenticated? && Current.user %>
+    <span class="sidebar-user-email" title="<%= Current.user.email_address %>"><%= Current.user.name.presence || Current.user.email_address %></span>
+    <%= link_to session_path, data: { turbo_method: :delete } do %>
+      <%= icon("arrow-left", size: 14) %> Sign out
+    <% end %>
+  <% else %>
+    <%= link_to new_session_path do %>
+      <%= icon("arrow-right", size: 14) %> Sign in
+    <% end %>
+  <% end %>
+</div>

@@ -27,7 +27,12 @@
         <%= render "shared/sidebar" %>
       </aside>
       <div class="sidebar-overlay" data-sidebar-target="overlay" data-action="sidebar#close"></div>
-      <main class="main"><%= yield %></main>
+      <main class="main">
+        <% if flash[:notice] || flash[:alert] %>
+          <div class="flash-banner <%= flash[:alert] ? 'alert' : 'notice' %>"><%= flash[:alert] || flash[:notice] %></div>
+        <% end %>
+        <%= yield %>
+      </main>
     </div>
   </body>
 </html>
