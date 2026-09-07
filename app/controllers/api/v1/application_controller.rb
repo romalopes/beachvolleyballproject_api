@@ -9,7 +9,7 @@ module Api
       skip_forgery_protection
 
       # Public API — no authentication required to browse data.
-      skip_before_action :require_authentication
+      skip_before_action :require_authentication, raise: false
     end
   end
 end
