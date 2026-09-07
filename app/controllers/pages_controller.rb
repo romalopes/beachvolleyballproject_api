@@ -1,4 +1,5 @@
 class PagesController < ApplicationController
+  allow_unauthenticated_access
   def home
     @categories = Category.all
     @skills = Skill.all

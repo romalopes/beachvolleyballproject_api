@@ -7,6 +7,9 @@ module Api
       # do not carry CSRF tokens; null_session would drop cookies on unverified
       # POSTs. JSON POSTs are protected cross-origin by CORS anyway.
       skip_forgery_protection
+
+      # Public API — no authentication required to browse data.
+      skip_before_action :require_authentication
     end
   end
 end

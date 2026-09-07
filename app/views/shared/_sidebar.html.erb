@@ -33,7 +33,6 @@
   <br />
   Organise. Understand. Train.
 </div>
-
 <div class="sidebar-user">
   <% if authenticated? && Current.user %>
     <span class="sidebar-user-email" title="<%= Current.user.email_address %>"><%= Current.user.name.presence || Current.user.email_address %></span>
