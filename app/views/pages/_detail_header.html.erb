@@ -1,0 +1,14 @@
+<div class="page">
+  <div class="detail-header">
+    <a href="javascript:history.back()" class="back-link">
+      <%= icon("arrow-left", size: 16) %>
+      Back
+    </a>
+    <span class="section-label"><%= label %></span>
+    <h1><%= title %></h1>
+    <% if local_assigns[:tags] %>
+      <div class="tags" style="margin-top: 1rem">
+        <%= tags %>
+      </div>
+    <% end %>
+  </div>

@@ -1,0 +1,24 @@
+<%= link_to drill_path(drill), class: "card drill-card", data: { filter_target: "item", search: drill.title.to_s.downcase, filter: drill.difficulty_level } do %>
+  <h3 class="card-title"><%= drill.title %></h3>
+  <% if drill.setup_instructions.present? %>
+    <p class="card-description"><%= drill.setup_instructions %></p>
+  <% end %>
+  <div class="drill-stats">
+    <% if drill.player_count %>
+      <span class="drill-stat">
+        <%= icon("users", size: 14) %>
+        <%= drill.player_count %> players
+      </span>
+    <% end %>
+    <% if drill.difficulty_level %>
+      <span class="difficulty <%= drill.difficulty_level %>">
+        <%= drill.difficulty_level %>
+      </span>
+    <% end %>
+  </div>
+  <div class="card-meta">
+    <span class="home-section-link">
+      View drill <%= icon("arrow-right", size: 14) %>
+    </span>
+  </div>
+<% end %>

@@ -1,0 +1,30 @@
+<div class="page" data-controller="filter">
+  <%= render "pages/page_header", title: "Skills", description: "Browse all beach volleyball skills organised by category. Click a skill to see details and related drills." %>
+
+  <div class="search-bar">
+    <span class="search-bar-icon"><%= icon("search", size: 18) %></span>
+    <input type="text" placeholder="Search skills..." data-filter-target="input" data-action="input->filter#apply">
+  </div>
+
+  <div class="filter-bar">
+    <button class="filter-btn active" data-filter-target="button" data-filter-value="all" data-action="filter#select">All</button>
+    <% @categories.each do |category| %>
+      <button class="filter-btn" data-filter-target="button" data-filter-value="<%= category.name %>" data-action="filter#select">
+        <%= category.name %>
+      </button>
+    <% end %>
+  </div>
+
+  <% if @skills.empty? %>
+    <%= render "pages/empty_state", title: "No skills found", description: "Try adjusting your search or filter." %>
+  <% else %>
+    <div class="grid">
+      <% @skills.each do |skill| %>
+        <%= render "pages/skill_card", skill: skill %>
+      <% end %>
+    </div>
+    <div style="display: none" data-filter-target="empty">
+      <%= render "pages/empty_state", title: "No skills found", description: "Try adjusting your search or filter." %>
+    </div>
+  <% end %>
+</div>

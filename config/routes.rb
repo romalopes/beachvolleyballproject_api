@@ -5,6 +5,17 @@ Rails.application.routes.draw do
   # Can be used by load balancers and uptime monitors to verify that the app is live.
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # UI routes (server-rendered, Hotwire)
+  root "pages#home"
+  get "skills", to: "pages#skills"
+  get "skills/:id", to: "pages#skill", as: :skill
+  get "drills", to: "pages#drills"
+  get "drills/:id", to: "pages#drill", as: :drill
+  get "videos", to: "pages#videos"
+  get "training", to: "pages#training"
+  get "training/:id", to: "pages#training_session", as: :training_session
+  get "schedule", to: "pages#schedule"
+
   # API routes
   namespace :api do
     namespace :v1 do

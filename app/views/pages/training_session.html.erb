@@ -1,0 +1,65 @@
+<div class="page">
+  <div class="detail-header">
+    <%= link_to training_path, class: "back-link" do %>
+      <%= icon("arrow-left", size: 16) %>
+      Back to Training
+    <% end %>
+    <span class="section-label">Training Session</span>
+    <h1><%= @session.drill&.title || "Training Session" %></h1>
+    <div class="tags" style="margin-top: 1rem">
+      <%= tag_pill(variant: :primary) { "Session" } %>
+      <% if @session.drill&.difficulty_level %><%= tag_pill(variant: :teal) { @session.drill.difficulty_level } %><% end %>
+    </div>
+  </div>
+
+  <section class="detail-section">
+    <h2>When &amp; Where</h2>
+    <p>
+      <%= icon("calendar-days", size: 16, style: "margin-right: 0.5rem;") %>
+      <strong>Date:</strong> <%= long_date(@session.scheduled_at) %>
+    </p>
+    <% if @session.location %>
+      <p>
+        <%= icon("map-pin", size: 16, style: "margin-right: 0.5rem;") %>
+        <strong>Location:</strong> <%= @session.location %>
+      </p>
+    <% end %>
+  </section>
+
+  <% if @session.notes %>
+    <section class="detail-section">
+      <h2>Notes</h2>
+      <p><%= @session.notes %></p>
+    </section>
+  <% end %>
+
+  <% if @session.drill %>
+    <section class="detail-section">
+      <h2>Related Drill</h2>
+      <%= link_to drill_path(@session.drill), class: "related-item" do %>
+        <span class="related-item-title">
+          <%= icon("dumbbell", size: 16, style: "margin-right: 0.5rem;") %>
+          <%= @session.drill.title %>
+        </span>
+        <span class="related-item-meta"><%= @session.drill.difficulty_level %></span>
+      <% end %>
+    </section>
+  <% end %>
+
+  <% if @session.drill&.skills.present? %>
+    <section class="detail-section">
+      <h2>Skills in this Session</h2>
+      <div class="related-list">
+        <% @session.drill.skills.each do |skill| %>
+          <%= link_to skill_path(skill), class: "related-item" do %>
+            <span class="related-item-title">
+              <%= icon("target", size: 16, style: "margin-right: 0.5rem;") %>
+              <%= skill.title %>
+            </span>
+            <span class="related-item-meta"><%= skill.category&.name %></span>
+          <% end %>
+        <% end %>
+      </div>
+    </section>
+  <% end %>
+</div>

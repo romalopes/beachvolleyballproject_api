@@ -1,0 +1,26 @@
+<div class="page">
+  <%= render "pages/page_header", title: "Training", description: "View training sessions that combine multiple drills and skills into structured practice plans." %>
+
+  <% if @sessions.empty? %>
+    <%= render "pages/empty_state", title: "No training sessions", description: "Training sessions will appear here when scheduled." %>
+  <% else %>
+    <div class="training-list">
+      <% @sessions.each do |session| %>
+        <%= link_to training_session_path(session), class: "training-item" do %>
+          <div class="training-item-info">
+            <h4><%= session.drill&.title || "Training Session" %></h4>
+            <p>
+              <%= icon("calendar-days", size: 14, style: "margin-right: 0.375rem;") %>
+              <%= session.location || "No location" %>
+              <% if session.notes %> &middot; <%= session.notes %><% end %>
+            </p>
+          </div>
+          <span class="training-item-date">
+            <%= icon("clock", size: 14, style: "margin-right: 0.375rem;") %>
+            <%= short_date(session.scheduled_at) %>
+          </span>
+        <% end %>
+      <% end %>
+    </div>
+  <% end %>
+</div>

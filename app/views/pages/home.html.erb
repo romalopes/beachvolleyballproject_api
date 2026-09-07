@@ -1,0 +1,49 @@
+<div class="page">
+  <section class="home-hero">
+    <div class="home-hero-badge">
+      <%= icon("target", size: 14) %>
+      Beach Volleyball Knowledge System
+    </div>
+    <h1>BEACH VOLLEYBALL PROJECT</h1>
+    <p class="home-hero-tagline">
+      Organise the skills. Understand the game. Train with purpose.
+    </p>
+  </section>
+
+  <section class="home-stats">
+    <div class="home-stat">
+      <span class="home-stat-value"><%= @categories.count %></span>
+      <span class="home-stat-label">Categories</span>
+    </div>
+    <div class="home-stat">
+      <span class="home-stat-value"><%= @skills.count %></span>
+      <span class="home-stat-label">Skills</span>
+    </div>
+    <div class="home-stat">
+      <span class="home-stat-value"><%= @drills.count %></span>
+      <span class="home-stat-label">Drills</span>
+    </div>
+  </section>
+
+  <% sections = [
+    { title: "Skills", path: skills_path, icon: "target", description: "Browse all beach volleyball skills organised by category. Each skill includes descriptions and related drills." },
+    { title: "Drills", path: drills_path, icon: "dumbbell", description: "Search and filter drills by difficulty and player count. Each drill links to the skills it develops." },
+    { title: "Videos", path: videos_path, icon: "play-circle", description: "Watch skill demonstrations, drill walkthroughs, and training footage from the video library." },
+    { title: "Training", path: training_path, icon: "clipboard-list", description: "View training sessions that combine multiple drills and skills into structured practice plans." },
+    { title: "Schedule", path: schedule_path, icon: "calendar-days", description: "See upcoming training sessions and plan your practice calendar." },
+  ] %>
+  <section class="home-sections">
+    <% sections.each do |section| %>
+      <%= link_to section[:path], class: "home-section-card" do %>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem">
+          <%= icon(section[:icon], size: 20, color: "var(--amber-600)") %>
+          <h3><%= section[:title] %></h3>
+        </div>
+        <p><%= section[:description] %></p>
+        <span class="home-section-link">
+          Explore <%= section[:title] %> <%= icon("arrow-right", size: 14) %>
+        </span>
+      <% end %>
+    <% end %>
+  </section>
+</div>

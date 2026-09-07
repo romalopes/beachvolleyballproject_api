@@ -1,0 +1,40 @@
+<div class="page">
+  <div class="detail-header">
+    <%= link_to skills_path, class: "back-link" do %>
+      <%= icon("arrow-left", size: 16) %>
+      Back to Skills
+    <% end %>
+    <span class="section-label"><%= @skill.category&.name %></span>
+    <h1><%= @skill.title %></h1>
+    <div class="tags" style="margin-top: 1rem">
+      <%= tag_pill(variant: :primary) { "Skill" } %>
+      <% if @skill.category %><%= tag_pill { @skill.category.name } %><% end %>
+    </div>
+  </div>
+
+  <section class="detail-section">
+    <h2>Description</h2>
+    <p><%= @skill.description.presence || "No description available." %></p>
+  </section>
+
+  <section class="detail-section">
+    <h2>Related Drills</h2>
+    <% if @related_drills.empty? %>
+      <%= render "pages/empty_state", title: "No drills linked", description: "Drills will appear here when associated with this skill." %>
+    <% else %>
+      <div class="related-list">
+        <% @related_drills.each do |drill| %>
+          <%= link_to drill_path(drill), class: "related-item" do %>
+            <span class="related-item-title">
+              <%= icon("dumbbell", size: 16, style: "margin-right: 0.5rem;") %>
+              <%= drill.title %>
+            </span>
+            <span class="related-item-meta">
+              <%= drill.difficulty_level %> &middot; <%= drill.player_count %> players
+            </span>
+          <% end %>
+        <% end %>
+      </div>
+    <% end %>
+  </section>
+</div>

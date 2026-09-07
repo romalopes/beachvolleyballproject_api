@@ -1,0 +1,14 @@
+<%= link_to skill_path(skill), class: "card skill-card", data: { filter_target: "item", search: skill.title.to_s.downcase, filter: skill.category&.name } do %>
+  <% if skill.category %>
+    <div class="card-category"><%= skill.category.name %></div>
+  <% end %>
+  <h3 class="card-title"><%= skill.title %></h3>
+  <% if skill.description %>
+    <p class="card-description"><%= skill.description %></p>
+  <% end %>
+  <div class="card-meta">
+    <span class="home-section-link">
+      View skill <%= icon("arrow-right", size: 14) %>
+    </span>
+  </div>
+<% end %>
