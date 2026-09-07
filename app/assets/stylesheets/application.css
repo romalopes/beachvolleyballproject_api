@@ -181,8 +181,7 @@ ul { list-style: none; }
 .sidebar-logo-icon {
   width: 32px;
   height: 32px;
-  background: var(--amber-500);
-  border-radius: var(--radius-md);
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
