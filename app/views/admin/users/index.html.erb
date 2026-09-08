@@ -2,6 +2,16 @@
   <div class="page-header">
     <h1>Admin &middot; Users</h1>
     <p>Manage user roles. Elevated roles must be assigned explicitly.</p>
+    <% if Current.user %>
+      <div class="page-header-user">
+        <span><%= Current.user.name.presence || Current.user.email_address %></span>
+        <span class="sidebar-user-roles">
+          <% Current.user.roles.each do |role| %>
+            <span class="role-badge"><%= role.name %></span>
+          <% end %>
+        </span>
+      </div>
+    <% end %>
   </div>
 
   <div class="admin-users">
