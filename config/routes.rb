@@ -19,6 +19,13 @@ Rails.application.routes.draw do
   get "training/:id", to: "pages#training_session", as: :training_session
   get "schedule", to: "pages#schedule"
 
+  # Admin
+  namespace :admin do
+    get "users", to: "users#index"
+    post "users/:id/roles", to: "users#add_role", as: :user_add_role
+    delete "users/:id/roles/:role", to: "users#remove_role", as: :user_remove_role
+  end
+
   # API routes
   namespace :api, defaults: { format: :json } do
     namespace :v1 do
@@ -36,6 +43,14 @@ Rails.application.routes.draw do
       resources :drill_skills
       resources :media_assets
       resources :training_sessions
+
+      # Admin role management
+      namespace :admin do
+        resources :users, only: [:index, :show] do
+          post "roles", to: "users#add_role", as: :add_role
+          delete "roles/:role", to: "users#remove_role", as: :remove_role
+        end
+      end
     end
   end
 end

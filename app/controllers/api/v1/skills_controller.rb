@@ -1,7 +1,9 @@
 module Api
   module V1
     class SkillsController < ApplicationController
+      include ContentAuthorization
       before_action :set_skill, only: [:show, :update, :destroy]
+      before_action :require_content_creator!, only: :create
 
       def index
         @skills = Skill.includes(:category).all
@@ -13,7 +15,7 @@ module Api
       end
 
       def create
-        @skill = Skill.new(skill_params)
+        @skill = Skill.new(skill_params.merge(created_by: Current.user))
 
         if @skill.save
           render json: @skill, status: :created
@@ -39,6 +41,7 @@ module Api
 
       def set_skill
         @skill = Skill.find(params[:id])
+        authorize_content_owner!(@skill.created_by) unless action_name == "show"
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Skill not found" }, status: :not_found
       end

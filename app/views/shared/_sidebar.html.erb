@@ -23,6 +23,11 @@
   <%= link_to schedule_path, class: "sidebar-link#{' active' if current_page?(schedule_path)}" do %>
     <%= icon("calendar-days") %> Schedule
   <% end %>
+  <% if Current.user&.admin? %>
+    <%= link_to admin_users_path, class: "sidebar-link#{' active' if request.path.start_with?('/admin')}" do %>
+      <%= icon("target") %> Admin
+    <% end %>
+  <% end %>
 </nav>
 <div class="sidebar-footer">
   Beach Volleyball Skills Database
@@ -32,6 +37,11 @@
 <div class="sidebar-user">
   <% if authenticated? && Current.user %>
     <span class="sidebar-user-email" title="<%= Current.user.email_address %>"><%= Current.user.name.presence || Current.user.email_address %></span>
+    <span class="sidebar-user-roles">
+      <% Current.user.roles.each do |role| %>
+        <span class="role-badge"><%= role.name %></span>
+      <% end %>
+    </span>
     <%= link_to session_path, data: { turbo_method: :delete } do %>
       <%= icon("arrow-left", size: 14) %> Sign out
     <% end %>

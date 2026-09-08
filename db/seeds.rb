@@ -2,6 +2,22 @@
 # development, test). The code here should be idempotent so that it can be executed at any point in every environment.
 # The data can then be loaded with the bin/rails db:seed command (or created alongside the database with db:setup).
 
+
+# Seed Roles (idempotent)
+roles = {
+  "guest" => "Unauthenticated/public visitor",
+  "player" => "Registered beach volleyball player",
+  "coach" => "Registered coach who can manage content",
+  "admin" => "System administrator"
+}
+
+roles.each do |name, description|
+  Role.find_or_create_by!(name: name) do |role|
+    role.description = description
+  end
+end
+
+puts "Seeded #{Role.count} roles"
 # Seed Categories
 categories = ["Attack", "Block", "Defence", "Serve", "Reception", "Strategy", "Tactics", "Set"]
 

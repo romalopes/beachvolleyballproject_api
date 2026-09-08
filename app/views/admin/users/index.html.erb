@@ -1,0 +1,35 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Admin &middot; Users</h1>
+    <p>Manage user roles. Elevated roles must be assigned explicitly.</p>
+  </div>
+
+  <div class="admin-users">
+    <% @users.each do |user| %>
+      <div class="admin-user-card">
+        <div class="admin-user-info">
+          <h3><%= user.name %></h3>
+          <p class="admin-user-email"><%= user.email_address %></p>
+          <div class="tags">
+            <% user.roles.each do |role| %>
+              <%= tag_pill { role.name } %>
+            <% end %>
+          </div>
+        </div>
+
+        <div class="admin-user-actions">
+          <% Role.order(:name).each do |role| %>
+            <% if user.has_role?(role.name) %>
+              <%= button_to "Remove #{role.name}", admin_user_remove_role_path(user, role.name),
+                    method: :delete, class: "admin-btn admin-btn-remove",
+                    data: { turbo_method: :delete } %>
+            <% else %>
+              <%= button_to "Add #{role.name}", admin_user_add_role_path(user, role: role.name),
+                    method: :post, class: "admin-btn admin-btn-add" %>
+            <% end %>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>

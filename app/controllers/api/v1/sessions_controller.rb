@@ -6,7 +6,7 @@ module Api
       def create
         if (user = User.authenticate_by(params.permit(:email_address, :password)))
           start_new_session_for user
-          render json: { id: user.id, name: user.name, email_address: user.email_address }
+          render json: { id: user.id, name: user.name, email_address: user.email_address, roles: user.roles.pluck(:name) }
         else
           render json: { error: "Invalid email address or password." }, status: :unauthorized
         end

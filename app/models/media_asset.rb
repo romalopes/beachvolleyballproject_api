@@ -1,4 +1,5 @@
 class MediaAsset < ApplicationRecord
+  belongs_to :uploaded_by, class_name: "User", optional: true
   belongs_to :drill
   belongs_to :skill, optional: true
 

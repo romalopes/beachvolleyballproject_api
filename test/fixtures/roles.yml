@@ -1,0 +1,11 @@
+guest:
+  name: guest
+
+player:
+  name: player
+
+coach:
+  name: coach
+
+admin:
+  name: admin

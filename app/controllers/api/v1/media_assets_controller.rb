@@ -1,7 +1,9 @@
 module Api
   module V1
     class MediaAssetsController < ApplicationController
+      include ContentAuthorization
       before_action :set_media_asset, only: [:show, :update, :destroy]
+      before_action :require_content_creator!, only: :create
 
       def index
         @media_assets = MediaAsset.includes(:drill, :skill).all
@@ -13,7 +15,7 @@ module Api
       end
 
       def create
-        @media_asset = MediaAsset.new(media_asset_params)
+        @media_asset = MediaAsset.new(media_asset_params.merge(uploaded_by: Current.user))
 
         if @media_asset.save
           render json: @media_asset, status: :created
@@ -39,6 +41,7 @@ module Api
 
       def set_media_asset
         @media_asset = MediaAsset.find(params[:id])
+        authorize_content_owner!(@media_asset.uploaded_by) unless action_name == "show"
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Media Asset not found" }, status: :not_found
       end

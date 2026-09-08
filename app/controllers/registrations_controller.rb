@@ -9,6 +9,7 @@ class RegistrationsController < ApplicationController
     @user = User.new(registration_params)
 
     if @user.save
+      @user.add_role(:player)
       start_new_session_for @user
       redirect_to root_path, notice: "Welcome to BVB Project!"
     else

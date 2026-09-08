@@ -1,7 +1,9 @@
 module Api
   module V1
     class TrainingSessionsController < ApplicationController
+      include ContentAuthorization
       before_action :set_training_session, only: [:show, :update, :destroy]
+      before_action :require_content_creator!, only: :create
 
       def index
         @training_sessions = TrainingSession.includes(:drill).all
@@ -13,7 +15,7 @@ module Api
       end
 
       def create
-        @training_session = TrainingSession.new(training_session_params)
+        @training_session = TrainingSession.new(training_session_params.merge(created_by: Current.user))
 
         if @training_session.save
           render json: @training_session, status: :created
@@ -39,6 +41,7 @@ module Api
 
       def set_training_session
         @training_session = TrainingSession.find(params[:id])
+        authorize_content_owner!(@training_session.created_by) unless action_name == "show"
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Training Session not found" }, status: :not_found
       end

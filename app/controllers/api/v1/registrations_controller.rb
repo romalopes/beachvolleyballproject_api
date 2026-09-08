@@ -7,8 +7,9 @@ module Api
         user = User.new(registration_params)
 
         if user.save
+          user.add_role(:player)
           start_new_session_for user
-          render json: { id: user.id, name: user.name, email_address: user.email_address }, status: :created
+          render json: { id: user.id, name: user.name, email_address: user.email_address, roles: user.roles.pluck(:name) }, status: :created
         else
           render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
         end

@@ -10,6 +10,10 @@ module Api
 
       # Public API — no authentication required to browse data.
       skip_before_action :require_authentication, raise: false
+
+      # Always populate Current.session from the cookie so authorization helpers
+      # (admin?/coach?/owner checks) work even when authentication is optional.
+      before_action :resume_session
     end
   end
 end

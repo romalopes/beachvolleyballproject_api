@@ -1,4 +1,5 @@
 class Skill < ApplicationRecord
+  belongs_to :created_by, class_name: "User", optional: true
   belongs_to :category
   has_many :drill_skills, dependent: :destroy
   has_many :drills, through: :drill_skills

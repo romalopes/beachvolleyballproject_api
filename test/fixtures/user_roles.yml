@@ -1,0 +1,15 @@
+one_player:
+  user: one
+  role: player
+
+two_coach:
+  user: two
+  role: coach
+
+two_admin:
+  user: two
+  role: admin
+
+three_coach:
+  user: three
+  role: coach

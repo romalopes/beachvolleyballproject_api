@@ -14,6 +14,29 @@ class ApplicationController < ActionController::Base
 
   private
 
+  # Authorization helpers
+  def authorize_admin!
+    return if Current.user&.admin?
+
+    if Current.user.nil?
+      if request.format.json?
+        head :unauthorized
+      else
+        redirect_to new_session_path, alert: "Please sign in."
+      end
+    elsif request.format.json?
+      render json: { error: "Forbidden" }, status: :forbidden
+    else
+      redirect_to root_path, alert: "You are not authorized to perform this action."
+    end
+  end
+
+  def authorize_owner_or_admin!(owner)
+    return if Current.user&.admin? || Current.user == owner
+
+    render_unauthorized_or_forbidden
+  end
+
   # JSON clients (the React SPA) get a 401 instead of an HTML login redirect.
   def request_authentication
     if request.format.json?
@@ -23,11 +46,25 @@ class ApplicationController < ActionController::Base
     end
   end
 
+  private
+
+  def render_unauthorized_or_forbidden
+    if Current.user.nil?
+      if request.format.json?
+        head :unauthorized
+      else
+        redirect_to new_session_path, alert: "Please sign in."
+      end
+    elsif request.format.json?
+      render json: { error: "Forbidden" }, status: :forbidden
+    else
+      redirect_to root_path, alert: "You are not authorized to perform this action."
+    end
+  end
+
   def set_cors_headers
-    response.set_header('Access-Control-Allow-Origin', '*')
-    response.set_header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
-    response.set_header('Access-Control-Allow-Headers', 'Content-Type, Accept')
+    response.set_header("Access-Control-Allow-Origin", "*")
+    response.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+    response.set_header("Access-Control-Allow-Headers", "Content-Type, Accept")
   end
 end
-
-

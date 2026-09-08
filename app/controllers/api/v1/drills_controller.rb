@@ -1,7 +1,9 @@
 module Api
   module V1
     class DrillsController < ApplicationController
+      include ContentAuthorization
       before_action :set_drill, only: [:show, :update, :destroy]
+      before_action :require_content_creator!, only: :create
 
       def index
         @drills = Drill.includes(skills: :category).all
@@ -19,7 +21,7 @@ module Api
       end
 
       def create
-        @drill = Drill.new(drill_params)
+        @drill = Drill.new(drill_params.merge(created_by: Current.user))
 
         if @drill.save
           render json: @drill, status: :created
@@ -45,6 +47,7 @@ module Api
 
       def set_drill
         @drill = Drill.includes(:media_assets, :training_sessions, skills: :category).find(params[:id])
+        authorize_content_owner!(@drill.created_by) unless action_name == "show"
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Drill not found" }, status: :not_found
       end
