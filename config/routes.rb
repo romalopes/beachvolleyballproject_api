@@ -27,6 +27,12 @@ Rails.application.routes.draw do
     get "users", to: "users#index"
     post "users/:id/roles", to: "users#add_role", as: :user_add_role
     delete "users/:id/roles/:role", to: "users#remove_role", as: :user_remove_role
+
+    # Admin Settings CRUD (server-rendered views)
+    get "settings", to: "dashboard#index", as: :settings
+    resources :skills
+    resources :categories
+    resources :drills
   end
 
   # API routes
@@ -53,6 +59,11 @@ Rails.application.routes.draw do
           post "roles", to: "users#add_role", as: :add_role
           delete "roles/:role", to: "users#remove_role", as: :remove_role
         end
+
+        # Admin Settings CRUD (JSON for the React SPA)
+        resources :skills, only: [:index, :show, :create, :update, :destroy]
+        resources :categories, only: [:index, :show, :create, :update, :destroy]
+        resources :drills, only: [:index, :show, :create, :update, :destroy]
       end
 
       resource :account, only: %i[show update], controller: "accounts"

@@ -1,0 +1,15 @@
+<div class="page">
+  <div class="page-header">
+    <h1>New Drill</h1>
+    <p>Add a new drill to the library.</p>
+    <div class="page-header-actions">
+      <%= link_to admin_drills_path, class: "admin-btn" do %>
+        <%= icon("arrow-left", size: 16) %> Back to Drills
+      <% end %>
+    </div>
+  </div>
+
+  <div style="max-width: 700px;">
+    <%= render "admin/drills/form", drill: @drill %>
+  </div>
+</div>

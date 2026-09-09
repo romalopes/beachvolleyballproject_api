@@ -2,10 +2,12 @@
 
 one:
   title: MyString
+  slug: mystring-one
   category: one
   description: MyText
 
 two:
   title: MyString
+  slug: mystring-two
   category: two
   description: MyText

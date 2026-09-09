@@ -1,0 +1,63 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Skills</h1>
+    <p>Manage skills. Add, edit, or remove skills used across drills.</p>
+    <div class="page-header-actions">
+      <%= link_to new_admin_skill_path, class: "admin-btn admin-btn-add" do %>
+        <%= icon("plus", size: 16) %> Add New Skill
+      <% end %>
+    </div>
+  </div>
+
+  <% if flash[:notice] %>
+    <div class="auth-flash auth-flash-notice"><%= flash[:notice] %></div>
+  <% end %>
+  <% if flash[:alert] %>
+    <div class="auth-flash auth-flash-error"><%= flash[:alert] %></div>
+  <% end %>
+
+  <% if @skills.any? %>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Category</th>
+          <th>Description</th>
+          <th>Created</th>
+          <th style="width: 150px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @skills.each do |skill| %>
+          <tr>
+            <td class="admin-name">
+              <%= link_to admin_skill_path(skill), class: "admin-link" do %>
+                <%= skill.title %>
+                <%= icon("arrow-right", size: 14) %>
+              <% end %>
+            </td>
+            <td><%= skill.category&.name || "—" %></td>
+            <td class="admin-desc"><%= skill.description.presence || "—" %></td>
+            <td><%= short_date(skill.created_at) if skill.created_at %></td>
+            <td class="admin-actions">
+              <%= link_to edit_admin_skill_path(skill), class: "admin-btn admin-btn-edit" do %>
+                <%= icon("edit", size: 14) %> Edit
+              <% end %>
+              <%= button_to "Delete", admin_skill_path(skill),
+                  method: :delete, class: "admin-btn admin-btn-delete",
+                  data: { turbo_method: :delete, turbo_confirm: "Are you sure you want to delete \"#{skill.title}\"? This action cannot be undone." } %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <div class="empty-state">
+      <h3>No skills yet</h3>
+      <p>Add your first skill to get started.</p>
+      <%= link_to new_admin_skill_path, class: "admin-btn admin-btn-add" do %>
+        <%= icon("plus", size: 16) %> Add New Skill
+      <% end %>
+    </div>
+  <% end %>
+</div>

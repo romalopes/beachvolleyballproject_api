@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_070712) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_184500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -35,6 +35,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_070712) do
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.index ["user_id"], name: "index_accounts_on_user_id", unique: true
+  end
+
+  create_table "admin_activities", force: :cascade do |t|
+    t.string "action", null: false
+    t.datetime "created_at", null: false
+    t.bigint "entity_id", null: false
+    t.string "entity_label"
+    t.string "entity_type", null: false
+    t.string "ip_address"
+    t.datetime "updated_at", null: false
+    t.string "user_agent"
+    t.bigint "user_id", null: false
+    t.index ["action", "created_at"], name: "index_admin_activities_on_action_and_created_at"
+    t.index ["entity_type", "entity_id"], name: "index_admin_activities_on_entity_type_and_entity_id"
+    t.index ["user_id"], name: "index_admin_activities_on_user_id"
   end
 
   create_table "categories", force: :cascade do |t|
@@ -159,6 +174,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_070712) do
 
   add_foreign_key "account_addresses", "accounts"
   add_foreign_key "accounts", "users"
+  add_foreign_key "admin_activities", "users"
   add_foreign_key "drill_skills", "drills"
   add_foreign_key "drill_skills", "skills"
   add_foreign_key "drills", "users", column: "created_by_id"

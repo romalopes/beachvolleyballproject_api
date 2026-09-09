@@ -1,0 +1,40 @@
+<%= form_with model: @skill, url: @skill.new_record? ? admin_skills_path : admin_skill_path(@skill),
+    class: "admin-form", local: true do |form| %>
+  <% if @skill.errors.any? %>
+    <div class="auth-flash auth-flash-error">
+      <h4 style="margin-bottom: 0.5rem;"><%= pluralize(@skill.errors.count, "error") %> prevented this skill from being saved:</h4>
+      <ul style="margin: 0; padding-left: 1.5rem;">
+        <% @skill.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="admin-form-section">
+    <h3>Basic Information</h3>
+
+    <div class="admin-field">
+      <%= form.label :title, "Title", required: true %>
+      <%= form.text_field :title, class: "admin-input", placeholder: "e.g. Forearm Pass", maxlength: 255 %>
+    </div>
+
+    <div class="admin-field">
+      <%= form.label :category_id, "Category", required: true %>
+      <%= form.select :category_id, @categories.map { |c| [c.name, c.id] }, { include_blank: "Select a category" },
+          { class: "admin-select" } %>
+    </div>
+
+    <div class="admin-field">
+      <%= form.label :description, "Description" %>
+      <%= form.text_area :description, class: "admin-textarea", rows: 4, placeholder: "Describe this skill..." %>
+    </div>
+  </div>
+
+  <div class="admin-form-actions">
+    <%= link_to @skill.new_record? ? admin_skills_path : admin_skill_path(@skill), class: "admin-btn" do %>
+      <%= icon("arrow-left", size: 16) %> Back
+    <% end %>
+    <%= form.submit @skill.new_record? ? "Create Skill" : "Update Skill", class: "admin-btn admin-btn-add" %>
+  </div>
+<% end %>

@@ -1,0 +1,66 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Skill</h1>
+    <div class="page-header-actions">
+      <%= link_to admin_skills_path, class: "admin-btn" do %>
+        <%= icon("arrow-left", size: 16) %> Back to Skills
+      <% end %>
+      <%= link_to edit_admin_skill_path(@skill), class: "admin-btn admin-btn-edit" do %>
+        <%= icon("edit", size: 16) %> Edit
+      <% end %>
+      <%= button_to "Delete", admin_skill_path(@skill), method: :delete,
+            class: "admin-btn admin-btn-delete",
+            data: { turbo_method: :delete, turbo_confirm: "Are you sure you want to delete \"#{@skill.title}\"? This action cannot be undone." } %>
+    </div>
+  </div>
+
+  <% if flash[:notice] %>
+    <div class="auth-flash auth-flash-notice"><%= flash[:notice] %></div>
+  <% end %>
+  <% if flash[:alert] %>
+    <div class="auth-flash auth-flash-error"><%= flash[:alert] %></div>
+  <% end %>
+
+  <div class="admin-show">
+    <div class="admin-show-section">
+      <h2><%= @skill.title %></h2>
+      <% if @skill.category %>
+        <p class="admin-show-meta">Category: <%= @skill.category.name %></p>
+      <% end %>
+    </div>
+
+    <div class="admin-show-section">
+      <h3>Description</h3>
+      <p><%= @skill.description.presence || "No description available." %></p>
+    </div>
+
+    <div class="admin-show-section">
+      <h3>Details</h3>
+      <dl class="admin-details">
+        <dt>ID</dt><dd><%= @skill.id %></dd>
+        <dt>Slug</dt><dd><%= @skill.slug %></dd>
+        <dt>Created by</dt><dd><%= @skill.created_by&.name || "—" %></dd>
+        <dt>Created at</dt><dd><%= long_date(@skill.created_at) if @skill.created_at %></dd>
+        <dt>Updated at</dt><dd><%= long_date(@skill.updated_at) if @skill.updated_at %></dd>
+      </dl>
+    </div>
+
+    <div class="admin-show-section">
+      <h3>Related Drills</h3>
+      <% if @skill.drills.empty? %>
+        <p class="text-muted">No drills use this skill yet.</p>
+      <% else %>
+        <div class="admin-related-list">
+          <% @skill.drills.each do |drill| %>
+            <div class="admin-related-item">
+              <%= link_to admin_drill_path(drill), class: "admin-link" do %>
+                <%= drill.title %>
+                <%= icon("arrow-right", size: 14) %>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>

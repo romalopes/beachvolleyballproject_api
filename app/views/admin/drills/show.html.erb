@@ -1,0 +1,71 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Drill</h1>
+    <div class="page-header-actions">
+      <%= link_to admin_drills_path, class: "admin-btn" do %>
+        <%= icon("arrow-left", size: 16) %> Back to Drills
+      <% end %>
+      <%= link_to edit_admin_drill_path(@drill), class: "admin-btn admin-btn-edit" do %>
+        <%= icon("edit", size: 16) %> Edit
+      <% end %>
+      <%= button_to "Delete", admin_drill_path(@drill), method: :delete,
+            class: "admin-btn admin-btn-delete",
+            data: { turbo_method: :delete, turbo_confirm: "Are you sure you want to delete \"#{@drill.title}\"? This action cannot be undone." } %>
+    </div>
+  </div>
+
+  <% if flash[:notice] %>
+    <div class="auth-flash auth-flash-notice"><%= flash[:notice] %></div>
+  <% end %>
+  <% if flash[:alert] %>
+    <div class="auth-flash auth-flash-error"><%= flash[:alert] %></div>
+  <% end %>
+
+  <div class="admin-show">
+    <div class="admin-show-section">
+      <h2><%= @drill.title %></h2>
+      <div class="tags" style="margin-top: 0.5rem;">
+        <%= tag_pill(variant: :teal) { @drill.difficulty_level } %>
+        <%= tag_pill { @drill.training_stage_label } %>
+        <%= tag_pill { @drill.player_range_label } %>
+      </div>
+    </div>
+
+    <div class="admin-show-section">
+      <h3>Setup Instructions</h3>
+      <p><%= @drill.setup_instructions.presence || "No instructions available." %></p>
+    </div>
+
+    <div class="admin-show-section">
+      <h3>Details</h3>
+      <dl class="admin-details">
+        <dt>ID</dt><dd><%= @drill.id %></dd>
+        <dt>Slug</dt><dd><%= @drill.slug %></dd>
+        <dt>Min players</dt><dd><%= @drill.min_players %></dd>
+        <dt>Max players</dt><dd><%= @drill.max_players %></dd>
+        <dt>Ideal players</dt><dd><%= @drill.ideal_num_players %></dd>
+        <dt>Created by</dt><dd><%= @drill.created_by&.name || "—" %></dd>
+        <dt>Created at</dt><dd><%= long_date(@drill.created_at) if @drill.created_at %></dd>
+        <dt>Updated at</dt><dd><%= long_date(@drill.updated_at) if @drill.updated_at %></dd>
+      </dl>
+    </div>
+
+    <div class="admin-show-section">
+      <h3>Related Skills</h3>
+      <% if @drill.skills.empty? %>
+        <p class="text-muted">No skills linked to this drill.</p>
+      <% else %>
+        <div class="admin-related-list">
+          <% @drill.skills.each do |skill| %>
+            <div class="admin-related-item">
+              <%= link_to admin_skill_path(skill), class: "admin-link" do %>
+                <%= skill.title %>
+                <%= icon("arrow-right", size: 14) %>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>

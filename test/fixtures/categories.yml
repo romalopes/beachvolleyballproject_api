@@ -2,6 +2,8 @@
 
 one:
   name: MyString
+  slug: mystring-one
 
 two:
   name: MyString
+  slug: mystring-two

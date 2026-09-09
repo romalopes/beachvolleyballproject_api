@@ -2,6 +2,7 @@
 
 one:
   title: MyString
+  slug: mystring-one
   setup_instructions: MyText
   training_stage: beginning
   difficulty_level: beginner
@@ -11,6 +12,7 @@ one:
 
 two:
   title: MyString
+  slug: mystring-two
   setup_instructions: MyText
   training_stage: middle
   difficulty_level: intermediate

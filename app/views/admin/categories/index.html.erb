@@ -1,0 +1,61 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Categories</h1>
+    <p>Manage categories used to organise skills.</p>
+    <div class="page-header-actions">
+      <%= link_to new_admin_category_path, class: "admin-btn admin-btn-add" do %>
+        <%= icon("plus", size: 16) %> Add New Category
+      <% end %>
+    </div>
+  </div>
+
+  <% if flash[:notice] %>
+    <div class="auth-flash auth-flash-notice"><%= flash[:notice] %></div>
+  <% end %>
+  <% if flash[:alert] %>
+    <div class="auth-flash auth-flash-error"><%= flash[:alert] %></div>
+  <% end %>
+
+  <% if @categories.any? %>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Skills</th>
+          <th>Created</th>
+          <th style="width: 150px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @categories.each do |category| %>
+          <tr>
+            <td class="admin-name">
+              <%= link_to admin_category_path(category), class: "admin-link" do %>
+                <%= category.name %>
+                <%= icon("arrow-right", size: 14) %>
+              <% end %>
+            </td>
+            <td><%= category.skills.count %></td>
+            <td><%= short_date(category.created_at) if category.created_at %></td>
+            <td class="admin-actions">
+              <%= link_to edit_admin_category_path(category), class: "admin-btn admin-btn-edit" do %>
+                <%= icon("edit", size: 14) %> Edit
+              <% end %>
+              <%= button_to "Delete", admin_category_path(category),
+                  method: :delete, class: "admin-btn admin-btn-delete",
+                  data: { turbo_method: :delete, turbo_confirm: "Are you sure you want to delete \"#{category.name}\"? This action cannot be undone." } %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <div class="empty-state">
+      <h3>No categories yet</h3>
+      <p>Add your first category to get started.</p>
+      <%= link_to new_admin_category_path, class: "admin-btn admin-btn-add" do %>
+        <%= icon("plus", size: 16) %> Add New Category
+      <% end %>
+    </div>
+  <% end %>
+</div>

@@ -26,9 +26,25 @@
     <%= icon("calendar-days") %> Schedule
   <% end %>
   <% if Current.user&.admin? %>
-    <%= link_to admin_users_path, class: "sidebar-link#{' active' if request.path.start_with?('/admin')}" do %>
-      <%= icon("target") %> Admin
+    <%= link_to admin_users_path, class: "sidebar-link#{' active' if request.path.start_with?('/admin/users')}" do %>
+      <%= icon("users") %> Admin
     <% end %>
+    <div class="sidebar-dropdown">
+      <div class="sidebar-dropdown-label">
+        <%= icon("settings") %> Settings
+      </div>
+      <div class="sidebar-dropdown-menu">
+        <%= link_to admin_skills_path, class: "sidebar-link#{' active' if request.path.start_with?('/admin/skills')}" do %>
+          <%= icon("target") %> Skills
+        <% end %>
+        <%= link_to admin_categories_path, class: "sidebar-link#{' active' if request.path.start_with?('/admin/categories')}" do %>
+          <%= icon("folder") %> Categories
+        <% end %>
+        <%= link_to admin_drills_path, class: "sidebar-link#{' active' if request.path.start_with?('/admin/drills')}" do %>
+          <%= icon("dumbbell") %> Drills
+        <% end %>
+      </div>
+    </div>
   <% end %>
   <% if Current.user %>
     <%= link_to account_path, class: "sidebar-link#{' active' if request.path.start_with?('/account')}" do %>

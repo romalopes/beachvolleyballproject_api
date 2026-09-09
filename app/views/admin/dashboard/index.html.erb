@@ -1,0 +1,53 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Settings</h1>
+    <p>Manage application data</p>
+    <% if Current.user %>
+      <div class="page-header-user">
+        <span><%= Current.user.name.presence || Current.user.email_address %></span>
+        <span class="sidebar-user-roles">
+          <% Current.user.roles.each do |role| %>
+            <span class="role-badge"><%= role.name %></span>
+          <% end %>
+        </span>
+      </div>
+    <% end %>
+  </div>
+
+  <% if flash[:notice] %>
+    <div class="auth-flash auth-flash-notice"><%= flash[:notice] %></div>
+  <% end %>
+  <% if flash[:alert] %>
+    <div class="auth-flash auth-flash-error"><%= flash[:alert] %></div>
+  <% end %>
+
+  <h2 style="margin-bottom: 1.5rem; font-size: 1.25rem;">Manage</h2>
+  <div class="admin-settings-grid">
+    <div class="admin-settings-card">
+      <div class="admin-settings-card-icon"><%= icon("target") %></div>
+      <h3>Skills</h3>
+      <p><%= @skills_count %> skills</p>
+      <%= link_to admin_skills_path, class: "admin-settings-link" do %>
+        Manage Skills <%= icon("arrow-right", size: 14) %>
+      <% end %>
+    </div>
+
+    <div class="admin-settings-card">
+      <div class="admin-settings-card-icon"><%= icon("folder") %></div>
+      <h3>Categories</h3>
+      <p><%= @categories_count %> categories</p>
+      <%= link_to admin_categories_path, class: "admin-settings-link" do %>
+        Manage Categories <%= icon("arrow-right", size: 14) %>
+      <% end %>
+    </div>
+
+    <div class="admin-settings-card">
+      <div class="admin-settings-card-icon"><%= icon("dumbbell") %></div>
+      <h3>Drills</h3>
+      <p><%= @drills_count %> drills</p>
+      <%= link_to admin_drills_path, class: "admin-settings-link" do %>
+        Manage Drills <%= icon("arrow-right", size: 14) %>
+      <% end %>
+    </div>
+  </div>
+</div>

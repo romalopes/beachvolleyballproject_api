@@ -1,0 +1,15 @@
+<div class="page">
+  <div class="page-header">
+    <h1>New Skill</h1>
+    <p>Add a new skill to the system.</p>
+    <div class="page-header-actions">
+      <%= link_to admin_skills_path, class: "admin-btn" do %>
+        <%= icon("arrow-left", size: 16) %> Back to Skills
+      <% end %>
+    </div>
+  </div>
+
+  <div style="max-width: 600px;">
+    <%= render "admin/skills/form", skill: @skill %>
+  </div>
+</div>

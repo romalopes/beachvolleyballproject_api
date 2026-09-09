@@ -1,0 +1,15 @@
+<div class="page">
+  <div class="page-header">
+    <h1>New Category</h1>
+    <p>Add a new category to the system.</p>
+    <div class="page-header-actions">
+      <%= link_to admin_categories_path, class: "admin-btn" do %>
+        <%= icon("arrow-left", size: 16) %> Back to Categories
+      <% end %>
+    </div>
+  </div>
+
+  <div style="max-width: 600px;">
+    <%= render "admin/categories/form", category: @category %>
+  </div>
+</div>

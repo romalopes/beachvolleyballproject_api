@@ -1,0 +1,15 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Edit Category</h1>
+    <p>Update this category's information.</p>
+    <div class="page-header-actions">
+      <%= link_to admin_category_path(@category), class: "admin-btn" do %>
+        <%= icon("arrow-left", size: 16) %> Back to Category
+      <% end %>
+    </div>
+  </div>
+
+  <div style="max-width: 600px;">
+    <%= render "admin/categories/form", category: @category %>
+  </div>
+</div>

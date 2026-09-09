@@ -1,0 +1,63 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Drills</h1>
+    <p>Manage drills. Add, edit, or remove drills in the library.</p>
+    <div class="page-header-actions">
+      <%= link_to new_admin_drill_path, class: "admin-btn admin-btn-add" do %>
+        <%= icon("plus", size: 16) %> Add New Drill
+      <% end %>
+    </div>
+  </div>
+
+  <% if flash[:notice] %>
+    <div class="auth-flash auth-flash-notice"><%= flash[:notice] %></div>
+  <% end %>
+  <% if flash[:alert] %>
+    <div class="auth-flash auth-flash-error"><%= flash[:alert] %></div>
+  <% end %>
+
+  <% if @drills.any? %>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Stage</th>
+          <th>Difficulty</th>
+          <th>Players</th>
+          <th style="width: 150px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @drills.each do |drill| %>
+          <tr>
+            <td class="admin-name">
+              <%= link_to admin_drill_path(drill), class: "admin-link" do %>
+                <%= drill.title %>
+                <%= icon("arrow-right", size: 14) %>
+              <% end %>
+            </td>
+            <td><%= drill.training_stage_label %></td>
+            <td><%= drill.difficulty_level %></td>
+            <td><%= drill.player_range_label %></td>
+            <td class="admin-actions">
+              <%= link_to edit_admin_drill_path(drill), class: "admin-btn admin-btn-edit" do %>
+                <%= icon("edit", size: 14) %> Edit
+              <% end %>
+              <%= button_to "Delete", admin_drill_path(drill),
+                  method: :delete, class: "admin-btn admin-btn-delete",
+                  data: { turbo_method: :delete, turbo_confirm: "Are you sure you want to delete \"#{drill.title}\"? This action cannot be undone." } %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <div class="empty-state">
+      <h3>No drills yet</h3>
+      <p>Add your first drill to get started.</p>
+      <%= link_to new_admin_drill_path, class: "admin-btn admin-btn-add" do %>
+        <%= icon("plus", size: 16) %> Add New Drill
+      <% end %>
+    </div>
+  <% end %>
+</div>

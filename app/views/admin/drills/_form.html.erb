@@ -1,0 +1,67 @@
+<%= form_with model: @drill, url: @drill.new_record? ? admin_drills_path : admin_drill_path(@drill),
+    class: "admin-form", local: true do |form| %>
+  <% if @drill.errors.any? %>
+    <div class="auth-flash auth-flash-error">
+      <h4 style="margin-bottom: 0.5rem;"><%= pluralize(@drill.errors.count, "error") %> prevented this drill from being saved:</h4>
+      <ul style="margin: 0; padding-left: 1.5rem;">
+        <% @drill.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="admin-form-section">
+    <h3>Basic Information</h3>
+
+    <div class="admin-field">
+      <%= form.label :title, "Title", required: true %>
+      <%= form.text_field :title, class: "admin-input", placeholder: "e.g. Target Serving", maxlength: 255 %>
+    </div>
+
+    <div class="admin-field">
+      <%= form.label :setup_instructions, "Setup Instructions" %>
+      <%= form.text_area :setup_instructions, class: "admin-textarea", rows: 5, placeholder: "Describe how to set up and run this drill..." %>
+    </div>
+  </div>
+
+  <div class="admin-form-section">
+    <h3>Training Attributes</h3>
+
+    <div class="admin-field">
+      <%= form.label :training_stage, "Training Stage", required: true %>
+      <%= form.select :training_stage,
+          Drill::TRAINING_STAGES.map { |stage| [stage == "warmup" ? "Warm-up" : stage.capitalize, stage] },
+          { include_blank: "Select a stage" }, { class: "admin-select" } %>
+    </div>
+
+    <div class="admin-field">
+      <%= form.label :difficulty_level, "Difficulty Level", required: true %>
+      <%= form.select :difficulty_level,
+          Drill::DIFFICULTY_LEVELS.map { |level| [level.capitalize, level] },
+          { include_blank: "Select a level" }, { class: "admin-select" } %>
+    </div>
+
+    <div class="admin-field-row">
+      <div class="admin-field">
+        <%= form.label :min_players, "Min Players", required: true %>
+        <%= form.number_field :min_players, class: "admin-input", min: 1 %>
+      </div>
+      <div class="admin-field">
+        <%= form.label :max_players, "Max Players", required: true %>
+        <%= form.number_field :max_players, class: "admin-input", min: 1 %>
+      </div>
+      <div class="admin-field">
+        <%= form.label :ideal_num_players, "Ideal Players", required: true %>
+        <%= form.number_field :ideal_num_players, class: "admin-input", min: 1 %>
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-form-actions">
+    <%= link_to @drill.new_record? ? admin_drills_path : admin_drill_path(@drill), class: "admin-btn" do %>
+      <%= icon("arrow-left", size: 16) %> Back
+    <% end %>
+    <%= form.submit @drill.new_record? ? "Create Drill" : "Update Drill", class: "admin-btn admin-btn-add" %>
+  </div>
+<% end %>
