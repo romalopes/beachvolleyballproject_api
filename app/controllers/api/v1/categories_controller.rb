@@ -38,7 +38,7 @@ module Api
       private
 
       def set_category
-        @category = Category.find(params[:id])
+        @category = Category.find_by(slug: params[:id]) || Category.find_by(id: params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Category not found" }, status: :not_found
       end

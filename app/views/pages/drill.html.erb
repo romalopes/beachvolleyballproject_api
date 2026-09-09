@@ -11,17 +11,15 @@
       <%= tag_pill(variant: :teal) { @drill.difficulty_level } %>
       <%= tag_pill { @drill.training_stage_label } %>
       <%= tag_pill do %>
-        <%= icon("users", size: 12, style: "margin-right: 0.25rem;") %><%= @drill.player_range_label %>
+        <%= icon("users", size: 12, style: "margin-right: 0.25rem;") %>Min: <%= @drill.min_players %> &middot; Max: <%= @drill.max_players %>
       <% end %>
       <%= tag_pill { @drill.ideal_label } %>
     </div>
   </div>
-
   <section class="detail-section">
     <h2>Setup Instructions</h2>
     <p><%= @drill.setup_instructions.presence || "No instructions available." %></p>
   </section>
-
   <section class="detail-section">
     <h2>Related Skills</h2>
     <% if @drill.skills.empty? %>

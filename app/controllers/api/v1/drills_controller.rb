@@ -8,14 +8,14 @@ module Api
       def index
         @drills = Drill.includes(skills: :category).all
         render json: @drills, include: {
-          skills: { only: [:id, :title], include: { category: { only: [:id, :name] } } }
+          skills: { only: [:id, :title, :slug], include: { category: { only: [:id, :name, :slug] } } }
         }
       end
 
       def show
         render json: @drill, include: {
-          skills: { only: [:id, :title, :description], include: { category: { only: [:id, :name] } } },
-          media_assets: { only: [:id, :title, :asset_type, :video_url, :thumbnail_url] },
+          skills: { only: [:id, :title, :description, :slug], include: { category: { only: [:id, :name, :slug] } } },
+          media_assets: { only: [:id, :title, :slug, :asset_type, :video_url, :thumbnail_url] },
           training_sessions: { only: [:id, :scheduled_at, :location, :notes] }
         }
       end
@@ -46,7 +46,10 @@ module Api
       private
 
       def set_drill
-        @drill = Drill.includes(:media_assets, :training_sessions, skills: :category).find(params[:id])
+        @drill = Drill.includes(:media_assets, :training_sessions, skills: :category)
+                      .find_by(slug: params[:id]) ||
+                Drill.includes(:media_assets, :training_sessions, skills: :category)
+                     .find_by(id: params[:id])
         authorize_content_owner!(@drill.created_by) unless action_name == "show"
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Drill not found" }, status: :not_found

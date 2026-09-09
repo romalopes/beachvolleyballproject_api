@@ -1,0 +1,93 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Account</h1>
+    <p>Manage your personal information and address.</p>
+  </div>
+
+  <% if flash[:notice] %>
+    <div class="auth-flash auth-flash-notice"><%= flash[:notice] %></div>
+  <% end %>
+  <% if flash[:alert] %>
+    <div class="auth-flash auth-flash-error"><%= flash[:alert] %></div>
+  <% end %>
+
+  <%= form_with model: @account, url: account_path, method: :patch, local: true, class: "auth-form" do |form| %>
+    <% if @account.errors.any? %>
+      <div class="auth-flash auth-flash-error">
+        <ul>
+          <% @account.errors.full_messages.each do |message| %>
+            <li><%= message %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <section class="detail-section">
+      <h2>Personal information</h2>
+      <div class="auth-field">
+        <%= form.label :first_name, "First name" %>
+        <%= form.text_field :first_name, maxlength: 50, autocomplete: "given-name", placeholder: "Your first name" %>
+      </div>
+      <div class="auth-field">
+        <%= form.label :last_name, "Last name" %>
+        <%= form.text_field :last_name, maxlength: 50, autocomplete: "family-name", placeholder: "Your last name" %>
+      </div>
+      <div class="auth-field">
+        <%= form.label :phone, "Phone" %>
+        <%= form.telephone_field :phone, maxlength: 30, autocomplete: "tel", placeholder: "+61 400 000 000" %>
+      </div>
+      <div class="auth-field">
+        <%= form.label :date_of_birth, "Date of birth" %>
+        <%= form.date_field :date_of_birth, autocomplete: "bday" %>
+      </div>
+    </section>
+
+    <%= form.fields_for :account_address do |address_form| %>
+      <section class="detail-section">
+        <h2>Address</h2>
+        <div class="auth-field">
+          <%= address_form.label :street_address, "Street address" %>
+          <%= address_form.text_field :street_address, maxlength: 255, autocomplete: "street-address", placeholder: "12 Beach Rd" %>
+        </div>
+        <div class="auth-field">
+          <%= address_form.label :city, "City" %>
+          <%= address_form.text_field :city, maxlength: 100, autocomplete: "address-level2", placeholder: "Manly" %>
+        </div>
+        <div class="auth-field">
+          <%= address_form.label :state, "State" %>
+          <%= address_form.text_field :state, maxlength: 100, autocomplete: "address-level1", placeholder: "NSW" %>
+        </div>
+        <div class="auth-field">
+          <%= address_form.label :postal_code, "Postal code" %>
+          <%= address_form.text_field :postal_code, maxlength: 100, autocomplete: "postal-code", placeholder: "2095" %>
+        </div>
+        <div class="auth-field">
+          <%= address_form.label :country, "Country" %>
+          <%= address_form.text_field :country, maxlength: 100, autocomplete: "country-name", placeholder: "Australia" %>
+        </div>
+      </section>
+    <% end %>
+
+    <section class="detail-section">
+      <h2>Security</h2>
+      <p style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
+        Choose a strong password you don't use anywhere else.
+      </p>
+      <%= form_with url: account_password_path, method: :patch, local: true, class: "auth-form" do |form| %>
+        <div class="auth-field">
+          <%= form.label :current_password, "Current password" %>
+          <%= form.password_field :current_password, required: true, minlength: 1, maxlength: 72, autocomplete: "current-password" %>
+        </div>
+        <div class="auth-field">
+          <%= form.label :password, "New password" %>
+          <%= form.password_field :password, required: true, minlength: 8, maxlength: 72, autocomplete: "new-password" %>
+        </div>
+        <div class="auth-field">
+          <%= form.label :password_confirmation, "Confirm new password" %>
+          <%= form.password_field :password_confirmation, required: true, minlength: 8, maxlength: 72, autocomplete: "new-password" %>
+        </div>
+        <%= form.submit "Change password", class: "auth-submit" %>
+      <% end %>
+    </section>
+  <% end %>
+</div>

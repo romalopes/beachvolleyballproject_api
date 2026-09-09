@@ -1,4 +1,7 @@
 class Drill < ApplicationRecord
+  include Sluggable
+  source_column :title
+
   belongs_to :created_by, class_name: "User", optional: true
   has_many :drill_skills, dependent: :destroy
   has_many :skills, through: :drill_skills
@@ -29,6 +32,10 @@ class Drill < ApplicationRecord
 
   def ideal_label
     ideal_num_players.nil? ? nil : "Ideal: #{ideal_num_players}"
+  end
+
+  def to_param
+    slug
   end
 
   private

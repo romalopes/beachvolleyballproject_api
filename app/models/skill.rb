@@ -1,4 +1,7 @@
 class Skill < ApplicationRecord
+  include Sluggable
+  source_column :title
+
   belongs_to :created_by, class_name: "User", optional: true
   belongs_to :category
   has_many :drill_skills, dependent: :destroy
@@ -6,4 +9,8 @@ class Skill < ApplicationRecord
   has_many :media_assets, dependent: :nullify
 
   validates :title, presence: true
+
+  def to_param
+    slug
+  end
 end

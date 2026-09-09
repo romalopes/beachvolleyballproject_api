@@ -10,14 +10,39 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_08_235429) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_09_045039) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "account_addresses", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.string "city"
+    t.string "country"
+    t.datetime "created_at", null: false
+    t.string "postal_code"
+    t.string "state"
+    t.string "street_address"
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_account_addresses_on_account_id", unique: true
+  end
+
+  create_table "accounts", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "date_of_birth"
+    t.string "first_name"
+    t.string "last_name"
+    t.string "phone"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["user_id"], name: "index_accounts_on_user_id", unique: true
+  end
 
   create_table "categories", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name"
+    t.string "slug"
     t.datetime "updated_at", null: false
+    t.index ["slug"], name: "index_categories_on_slug", unique: true
   end
 
   create_table "drill_skills", force: :cascade do |t|
@@ -37,10 +62,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_08_235429) do
     t.integer "max_players", default: 8, null: false
     t.integer "min_players", default: 2, null: false
     t.text "setup_instructions"
+    t.string "slug"
     t.string "title"
     t.string "training_stage", default: "beginning", null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_drills_on_created_by_id"
+    t.index ["slug"], name: "index_drills_on_slug", unique: true
     t.index ["training_stage"], name: "index_drills_on_training_stage"
     t.check_constraint "difficulty_level::text = ANY (ARRAY['beginner'::character varying, 'intermediate'::character varying, 'advanced'::character varying]::text[])", name: "drills_difficulty_level_check"
     t.check_constraint "ideal_num_players >= min_players AND ideal_num_players <= max_players", name: "drills_ideal_players_check"
@@ -54,6 +81,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_08_235429) do
     t.text "description"
     t.bigint "drill_id", null: false
     t.bigint "skill_id"
+    t.string "slug"
     t.string "thumbnail_url"
     t.string "title"
     t.datetime "updated_at", null: false
@@ -61,6 +89,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_08_235429) do
     t.string "video_url"
     t.index ["drill_id"], name: "index_media_assets_on_drill_id"
     t.index ["skill_id"], name: "index_media_assets_on_skill_id"
+    t.index ["slug"], name: "index_media_assets_on_slug", unique: true
     t.index ["uploaded_by_id"], name: "index_media_assets_on_uploaded_by_id"
   end
 
@@ -86,10 +115,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_08_235429) do
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
     t.text "description"
+    t.string "slug"
     t.string "title"
     t.datetime "updated_at", null: false
     t.index ["category_id"], name: "index_skills_on_category_id"
     t.index ["created_by_id"], name: "index_skills_on_created_by_id"
+    t.index ["slug"], name: "index_skills_on_slug", unique: true
   end
 
   create_table "training_sessions", force: :cascade do |t|
@@ -123,6 +154,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_08_235429) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  add_foreign_key "account_addresses", "accounts"
+  add_foreign_key "accounts", "users"
   add_foreign_key "drill_skills", "drills"
   add_foreign_key "drill_skills", "skills"
   add_foreign_key "drills", "users", column: "created_by_id"

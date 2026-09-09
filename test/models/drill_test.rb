@@ -82,4 +82,24 @@ class DrillTest < ActiveSupport::TestCase
     assert_equal "2 players", single.player_range_label
     assert_equal "Warm-up", Drill.new(valid_attributes(training_stage: "warmup")).training_stage_label
   end
+
+  test "generates a slug from the title" do
+    drill = Drill.create!(valid_attributes(title: "Overhead Set Drill"))
+    assert_equal "overhead-set-drill", drill.slug
+  end
+  test "generates unique slugs for duplicate titles" do
+    a = Drill.create!(valid_attributes(title: "Same Name Drill"))
+    b = Drill.create!(valid_attributes(title: "Same Name Drill"))
+    assert_equal "same-name-drill", a.slug
+    assert_equal "same-name-drill-2", b.slug
+  end
+  test "regenerates slug when the title changes" do
+    drill = Drill.create!(valid_attributes(title: "Original Title"))
+    drill.update!(title: "New Title")
+    assert_equal "new-title", drill.reload.slug
+  end
+  test "to_param returns the slug" do
+    drill = Drill.create!(valid_attributes(title: "Param Test"))
+    assert_equal "param-test", drill.to_param
+  end
 end

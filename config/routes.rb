@@ -18,6 +18,9 @@ Rails.application.routes.draw do
   get "training", to: "pages#training"
   get "training/:id", to: "pages#training_session", as: :training_session
   get "schedule", to: "pages#schedule"
+  get "account", to: "pages#account", as: :account
+  patch "account", to: "pages#update_account"
+  patch "account/password", to: "pages#update_password", as: :account_password
 
   # Admin
   namespace :admin do
@@ -51,6 +54,9 @@ Rails.application.routes.draw do
           delete "roles/:role", to: "users#remove_role", as: :remove_role
         end
       end
+
+      resource :account, only: %i[show update], controller: "accounts"
+      patch "account/password", to: "accounts#update_password"
     end
   end
 end

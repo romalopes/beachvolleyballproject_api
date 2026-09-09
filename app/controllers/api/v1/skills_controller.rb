@@ -40,7 +40,7 @@ module Api
       private
 
       def set_skill
-        @skill = Skill.find(params[:id])
+        @skill = Skill.find_by(slug: params[:id]) || Skill.find_by(id: params[:id])
         authorize_content_owner!(@skill.created_by) unless action_name == "show"
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Skill not found" }, status: :not_found

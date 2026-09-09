@@ -28,6 +28,11 @@
       <%= icon("target") %> Admin
     <% end %>
   <% end %>
+  <% if Current.user %>
+    <%= link_to account_path, class: "sidebar-link#{' active' if request.path.start_with?('/account')}" do %>
+      <%= icon("users") %> Account
+    <% end %>
+  <% end %>
 </nav>
 <div class="sidebar-footer">
   Beach Volleyball Skills Database
