@@ -2,7 +2,7 @@ class Account < ApplicationRecord
   belongs_to :user
   has_one :account_address, dependent: :destroy
 
-  accepts_nested_attributes_for :account_address, update_only: true
+  accepts_nested_attributes_for :account_address, reject_if: :all_blank
 
   validates :first_name, length: { maximum: 50 }, allow_nil: true
   validates :last_name, length: { maximum: 50 }, allow_nil: true

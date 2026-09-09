@@ -52,6 +52,11 @@ class PagesController < ApplicationController
 
   def update_account
     require_authentication
+
+    if params[:commit_password].present?
+      return update_password
+    end
+
     @account = Current.user.account || Current.user.build_account
     @account.build_account_address unless @account.account_address
 
@@ -63,25 +68,26 @@ class PagesController < ApplicationController
   end
 
   def update_password
-    require_authentication
     user = Current.user
+    password_params = params[:account] || params
 
-    unless user.authenticate(params[:current_password])
+    unless user.authenticate(password_params[:current_password])
       flash[:alert] = "Current password is incorrect."
       return redirect_to account_path
     end
 
-    if params[:password].blank? || params[:password].length < 8
+    new_password = password_params[:password]
+    if new_password.blank? || new_password.length < 8
       flash[:alert] = "Password must be at least 8 characters."
       return redirect_to account_path
     end
 
-    if params[:password] != params[:password_confirmation]
+    if new_password != password_params[:password_confirmation]
       flash[:alert] = "Password confirmation does not match."
       return redirect_to account_path
     end
 
-    if user.update(password: params[:password], password_confirmation: params[:password_confirmation])
+    if user.update(password: new_password, password_confirmation: password_params[:password_confirmation])
       user.sessions.where.not(id: Current.session&.id).destroy_all
       flash[:notice] = "Password changed successfully."
     else

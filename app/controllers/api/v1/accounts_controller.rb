@@ -67,10 +67,15 @@ module Api
       end
 
       def account_params
-        params.permit(
+        permitted = params.permit(
           :first_name, :last_name, :phone, :date_of_birth,
-          address_attributes: %i[street_address city state postal_code country]
+          address: %i[street_address city state postal_code country]
         )
+        permitted = permitted.to_h
+        if (address = permitted.delete("address") || permitted.delete(:address))
+          permitted[:account_address_attributes] = address unless address.values.all?(&:blank?)
+        end
+        permitted
       end
     end
   end

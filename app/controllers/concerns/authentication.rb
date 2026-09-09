@@ -23,11 +23,31 @@ module Authentication
     end
 
     def resume_session
-      Current.session ||= find_session_by_cookie
+      Current.session ||= find_session_by_cookie || find_session_by_bearer_token
     end
 
     def find_session_by_cookie
       Session.find_by(id: cookies.signed[:session_id]) if cookies.signed[:session_id]
+    end
+
+    # Bearer-token sessions let the JSON API (React SPA) authenticate across
+    # origins without relying on cross-site cookies.
+    def find_session_by_bearer_token
+      token = authorization_bearer_token
+      return unless token
+
+      session = Session.find_by(api_token: token)
+      return unless session
+
+      if session.api_token_expires_at && session.api_token_expires_at < Time.current
+        session.destroy
+        return nil
+      end
+      session
+    end
+
+    def authorization_bearer_token
+      request.authorization&.match(/\ABearer (.+)\z/)&.captures&.first
     end
 
     def request_authentication
@@ -44,6 +64,15 @@ module Authentication
         Current.session = session
         cookies.signed.permanent[:session_id] = { value: session.id, httponly: true, same_site: :lax }
       end
+    end
+
+    def start_api_session_for(user)
+      user.sessions.create!(
+        user_agent: request.user_agent,
+        ip_address: request.remote_ip,
+        api_token: SecureRandom.hex(32),
+        api_token_expires_at: 30.days.from_now
+      )
     end
 
     def terminate_session
