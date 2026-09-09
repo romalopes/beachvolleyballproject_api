@@ -20,7 +20,7 @@
   <section class="detail-section">
     <h2>Related Drills</h2>
     <% if @related_drills.empty? %>
-      <%= render "pages/empty_state", title: "No drills linked", description: "Drills will appear here when associated with this skill." %>
+      <%= render "shared/empty_state", title: "No drills linked", description: "Drills will appear here when associated with this skill." %>
     <% else %>
       <div class="related-list">
         <% @related_drills.each do |drill| %>

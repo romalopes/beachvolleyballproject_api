@@ -1,5 +1,5 @@
 <div class="page" data-controller="filter">
-  <%= render "pages/page_header", title: "Drills", description: "Search and filter drills by difficulty, training stage, and player range. Each drill develops specific skills." %>
+  <%= render "shared/page_header", title: "Drills", description: "Search and filter drills by difficulty, training stage, and player range. Each drill develops specific skills." %>
 
   <div class="search-bar">
     <span class="search-bar-icon"><%= icon("search", size: 18) %></span>
@@ -17,15 +17,15 @@
   </div>
 
   <% if @drills.empty? %>
-    <%= render "pages/empty_state", title: "No drills found", description: "Try adjusting your search or filter." %>
+    <%= render "shared/empty_state", title: "No drills found", description: "Try adjusting your search or filter." %>
   <% else %>
     <div class="grid">
       <% @drills.each do |drill| %>
-        <%= render "pages/drill_card", drill: drill %>
+        <%= render "shared/drill_card", drill: drill %>
       <% end %>
     </div>
     <div style="display: none" data-filter-target="empty">
-      <%= render "pages/empty_state", title: "No drills found", description: "Try adjusting your search or filter." %>
+      <%= render "shared/empty_state", title: "No drills found", description: "Try adjusting your search or filter." %>
     </div>
   <% end %>
 </div>

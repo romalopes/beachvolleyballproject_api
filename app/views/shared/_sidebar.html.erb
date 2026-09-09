@@ -1,8 +1,10 @@
 <div class="sidebar-logo">
   <span class="sidebar-logo-icon">
-<img src="/ball.png" width="24" height="24" alt="" />
+    <img src="/ball.png" width="24" height="24" alt="" />
   </span>
-  BVB Project - Rails
+  <%= link_to root_path, class: "logo-text" do %>
+    BVB Project - Rails
+  <% end %>
 </div>
 <nav class="sidebar-nav">
   <%= link_to root_path, class: "sidebar-link#{' active' if current_page?(root_path)}" do %>

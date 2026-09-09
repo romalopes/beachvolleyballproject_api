@@ -1,8 +1,8 @@
 <div class="page">
-  <%= render "pages/page_header", title: "Videos", description: "Watch skill demonstrations, drill walkthroughs, and training footage." %>
+  <%= render "shared/page_header", title: "Videos", description: "Watch skill demonstrations, drill walkthroughs, and training footage." %>
 
   <% if @videos.empty? %>
-    <%= render "pages/empty_state", title: "No videos available", description: "Videos will appear here when added to the library." %>
+    <%= render "shared/empty_state", title: "No videos available", description: "Videos will appear here when added to the library." %>
   <% else %>
     <div class="video-grid">
       <% @videos.each do |video| %>

@@ -9,18 +9,18 @@ Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
 
   # UI routes (server-rendered, Hotwire)
-  root "pages#home"
-  get "skills", to: "pages#skills"
-  get "skills/:id", to: "pages#skill", as: :skill
-  get "drills", to: "pages#drills"
-  get "drills/:id", to: "pages#drill", as: :drill
-  get "videos", to: "pages#videos"
-  get "training", to: "pages#training"
-  get "training/:id", to: "pages#training_session", as: :training_session
-  get "schedule", to: "pages#schedule"
-  get "account", to: "pages#account", as: :account
-  patch "account", to: "pages#update_account"
-  patch "account/password", to: "pages#update_password", as: :account_password
+  root "home#index"
+  get "skills", to: "skills#index"
+  get "skills/:id", to: "skills#show", as: :skill
+  get "drills", to: "drills#index"
+  get "drills/:id", to: "drills#show", as: :drill
+  get "videos", to: "videos#index"
+  get "training", to: "training_sessions#index"
+  get "training/:id", to: "training_sessions#show", as: :training_session
+  get "schedule", to: "schedule#index"
+  get "account", to: "accounts#show", as: :account
+  patch "account", to: "accounts#update"
+  patch "account/password", to: "accounts#update_password", as: :account_password
 
   # Admin
   namespace :admin do

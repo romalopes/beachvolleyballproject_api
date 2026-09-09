@@ -23,7 +23,7 @@
   <section class="detail-section">
     <h2>Related Skills</h2>
     <% if @drill.skills.empty? %>
-      <%= render "pages/empty_state", title: "No skills linked", description: "Skills will appear here when associated with this drill." %>
+      <%= render "shared/empty_state", title: "No skills linked", description: "Skills will appear here when associated with this drill." %>
     <% else %>
       <div class="related-list">
         <% @drill.skills.each do |skill| %>

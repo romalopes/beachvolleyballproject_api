@@ -1,8 +1,8 @@
 <div class="page">
-  <%= render "pages/page_header", title: "Training", description: "View training sessions that combine multiple drills and skills into structured practice plans." %>
+  <%= render "shared/page_header", title: "Training", description: "View training sessions that combine multiple drills and skills into structured practice plans." %>
 
   <% if @sessions.empty? %>
-    <%= render "pages/empty_state", title: "No training sessions", description: "Training sessions will appear here when scheduled." %>
+    <%= render "shared/empty_state", title: "No training sessions", description: "Training sessions will appear here when scheduled." %>
   <% else %>
     <div class="training-list">
       <% @sessions.each do |session| %>

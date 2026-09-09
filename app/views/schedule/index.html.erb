@@ -1,8 +1,8 @@
 <div class="page">
-  <%= render "pages/page_header", title: "Schedule", description: "Upcoming training sessions and practice calendar." %>
+  <%= render "shared/page_header", title: "Schedule", description: "Upcoming training sessions and practice calendar." %>
 
   <% if @sessions.empty? %>
-    <%= render "pages/empty_state", title: "No scheduled sessions", description: "Training sessions will appear here when scheduled." %>
+    <%= render "shared/empty_state", title: "No scheduled sessions", description: "Training sessions will appear here when scheduled." %>
   <% else %>
     <div class="schedule-list">
       <% @sessions.each do |session| %>
