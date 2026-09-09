@@ -8,12 +8,12 @@
     <h1><%= @drill.title %></h1>
     <div class="tags" style="margin-top: 1rem">
       <%= tag_pill(variant: :primary) { "Drill" } %>
-      <% if @drill.difficulty_level %><%= tag_pill(variant: :teal) { @drill.difficulty_level } %><% end %>
-      <% if @drill.player_count %>
-        <%= tag_pill do %>
-          <%= icon("users", size: 12, style: "margin-right: 0.25rem;") %><%= @drill.player_count %> players
-        <% end %>
+      <%= tag_pill(variant: :teal) { @drill.difficulty_level } %>
+      <%= tag_pill { @drill.training_stage_label } %>
+      <%= tag_pill do %>
+        <%= icon("users", size: 12, style: "margin-right: 0.25rem;") %><%= @drill.player_range_label %>
       <% end %>
+      <%= tag_pill { @drill.ideal_label } %>
     </div>
   </div>
 

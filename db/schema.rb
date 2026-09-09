@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_07_201120) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_08_235429) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -32,12 +32,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_07_201120) do
   create_table "drills", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
-    t.string "difficulty_level"
-    t.integer "player_count"
+    t.string "difficulty_level", default: "intermediate", null: false
+    t.integer "ideal_num_players", default: 4, null: false
+    t.integer "max_players", default: 8, null: false
+    t.integer "min_players", default: 2, null: false
     t.text "setup_instructions"
     t.string "title"
+    t.string "training_stage", default: "beginning", null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_drills_on_created_by_id"
+    t.index ["training_stage"], name: "index_drills_on_training_stage"
+    t.check_constraint "difficulty_level::text = ANY (ARRAY['beginner'::character varying, 'intermediate'::character varying, 'advanced'::character varying]::text[])", name: "drills_difficulty_level_check"
+    t.check_constraint "ideal_num_players >= min_players AND ideal_num_players <= max_players", name: "drills_ideal_players_check"
+    t.check_constraint "min_players <= max_players", name: "drills_player_range_check"
+    t.check_constraint "training_stage::text = ANY (ARRAY['warmup'::character varying, 'beginning'::character varying, 'middle'::character varying, 'end'::character varying]::text[])", name: "drills_training_stage_check"
   end
 
   create_table "media_assets", force: :cascade do |t|

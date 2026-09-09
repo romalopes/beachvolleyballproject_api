@@ -8,7 +8,12 @@
     <h1><%= @session.drill&.title || "Training Session" %></h1>
     <div class="tags" style="margin-top: 1rem">
       <%= tag_pill(variant: :primary) { "Session" } %>
-      <% if @session.drill&.difficulty_level %><%= tag_pill(variant: :teal) { @session.drill.difficulty_level } %><% end %>
+      <% if @session.drill %>
+        <%= tag_pill(variant: :teal) { @session.drill.difficulty_level } %>
+        <%= tag_pill { @session.drill.training_stage_label } %>
+        <%= tag_pill { @session.drill.player_range_label } %>
+        <%= tag_pill { @session.drill.ideal_label } %>
+      <% end %>
     </div>
   </div>
 
@@ -41,7 +46,7 @@
           <%= icon("dumbbell", size: 16, style: "margin-right: 0.5rem;") %>
           <%= @session.drill.title %>
         </span>
-        <span class="related-item-meta"><%= @session.drill.difficulty_level %></span>
+        <span class="related-item-meta"><%= @session.drill.difficulty_level %> &middot; <%= @session.drill.player_range_label %> &middot; <%= @session.drill.training_stage_label %></span>
       <% end %>
     </section>
   <% end %>

@@ -3,11 +3,17 @@
 one:
   title: MyString
   setup_instructions: MyText
-  player_count: 1
-  difficulty_level: MyString
+  training_stage: beginning
+  difficulty_level: beginner
+  min_players: 2
+  max_players: 8
+  ideal_num_players: 4
 
 two:
   title: MyString
   setup_instructions: MyText
-  player_count: 1
-  difficulty_level: MyString
+  training_stage: middle
+  difficulty_level: intermediate
+  min_players: 2
+  max_players: 4
+  ideal_num_players: 2

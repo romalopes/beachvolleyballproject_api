@@ -53,7 +53,7 @@ module Api
       end
 
       def drill_params
-        params.require(:drill).permit(:title, :setup_instructions, :player_count, :difficulty_level)
+        params.require(:drill).permit(:title, :setup_instructions, :training_stage, :difficulty_level, :min_players, :max_players, :ideal_num_players)
       end
     end
   end

@@ -4,17 +4,15 @@
     <p class="card-description"><%= drill.setup_instructions %></p>
   <% end %>
   <div class="drill-stats">
-    <% if drill.player_count %>
-      <span class="drill-stat">
-        <%= icon("users", size: 14) %>
-        <%= drill.player_count %> players
-      </span>
-    <% end %>
-    <% if drill.difficulty_level %>
-      <span class="difficulty <%= drill.difficulty_level %>">
-        <%= drill.difficulty_level %>
-      </span>
-    <% end %>
+    <span class="drill-stat">
+      <%= icon("users", size: 14) %>
+      <%= drill.player_range_label %>
+    </span>
+    <span class="drill-stat"><%= drill.ideal_label %></span>
+    <span class="drill-stat"><%= drill.training_stage_label %></span>
+    <span class="difficulty <%= drill.difficulty_level %>">
+      <%= drill.difficulty_level %>
+    </span>
   </div>
   <div class="card-meta">
     <span class="home-section-link">
