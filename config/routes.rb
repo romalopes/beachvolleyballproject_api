@@ -67,6 +67,9 @@ Rails.application.routes.draw do
 
         # Admin audit logs (read-only)
         resources :logs, only: [:index, :show]
+
+        # Tail of the application's Rails log file
+        resources :system_logs, only: [:index], defaults: { format: :json }
       end
 
       resource :account, only: %i[show update], controller: "accounts"

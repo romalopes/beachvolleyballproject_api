@@ -183,4 +183,33 @@ class Api::V1::Admin::LogsControllerTest < ActionDispatch::IntegrationTest
     log = Log.last
     assert_equal "show", log.action
   end
+
+  test "admin can read rails log file tail" do
+    sign_in_as(@admin)
+    get "/api/v1/admin/system_logs", params: { lines: 10 }
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body.key?("lines")
+    assert_instance_of Array, body["lines"]
+  end
+
+  test "system logs rejects lines above the maximum" do
+    sign_in_as(@admin)
+    get "/api/v1/admin/system_logs", params: { lines: 99_999 }
+    assert_response :success
+    # clamped rather than erroring; response remains valid JSON
+    body = JSON.parse(response.body)
+    assert_instance_of Array, body["lines"]
+  end
+
+  test "player cannot access system logs" do
+    sign_in_as(@player)
+    get "/api/v1/admin/system_logs"
+    assert_response :forbidden
+  end
+
+  test "unauthenticated cannot access system logs" do
+    get "/api/v1/admin/system_logs"
+    assert_response :unauthorized
+  end
 end
