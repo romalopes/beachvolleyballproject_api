@@ -64,6 +64,9 @@ Rails.application.routes.draw do
         resources :skills, only: [:index, :show, :create, :update, :destroy]
         resources :categories, only: [:index, :show, :create, :update, :destroy]
         resources :drills, only: [:index, :show, :create, :update, :destroy]
+
+        # Admin audit logs (read-only)
+        resources :logs, only: [:index, :show]
       end
 
       resource :account, only: %i[show update], controller: "accounts"

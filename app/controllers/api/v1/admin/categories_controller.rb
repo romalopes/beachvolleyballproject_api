@@ -2,7 +2,7 @@ module Api
   module V1
     module Admin
       class CategoriesController < ApplicationController
-        include AdminAudit
+        include RequestLogging
         before_action :authorize_admin!
         before_action :set_category, only: [:show, :update, :destroy]
 

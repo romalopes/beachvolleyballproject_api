@@ -2,7 +2,7 @@ module Api
   module V1
     module Admin
       class DrillsController < ApplicationController
-        include AdminAudit
+        include RequestLogging
         before_action :authorize_admin!
         before_action :set_drill, only: [:show, :update, :destroy]
 

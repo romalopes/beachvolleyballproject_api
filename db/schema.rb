@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_184500) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -88,6 +88,36 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_184500) do
     t.check_constraint "ideal_num_players >= min_players AND ideal_num_players <= max_players", name: "drills_ideal_players_check"
     t.check_constraint "min_players <= max_players", name: "drills_player_range_check"
     t.check_constraint "training_stage::text = ANY (ARRAY['warmup'::character varying, 'beginning'::character varying, 'middle'::character varying, 'end'::character varying]::text[])", name: "drills_training_stage_check"
+  end
+
+  create_table "log_objects", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "log_id", null: false
+    t.bigint "object_id", null: false
+    t.string "object_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["log_id"], name: "index_log_objects_on_log_id"
+    t.index ["object_type", "object_id"], name: "index_log_objects_on_object"
+    t.index ["object_type", "object_id"], name: "index_log_objects_on_object_type_and_object_id"
+  end
+
+  create_table "logs", force: :cascade do |t|
+    t.string "action", null: false
+    t.datetime "created_at", null: false
+    t.string "description", null: false
+    t.string "ip_address"
+    t.string "method", null: false
+    t.string "path"
+    t.string "request_id"
+    t.integer "status"
+    t.datetime "updated_at", null: false
+    t.text "user_agent"
+    t.bigint "user_id"
+    t.index ["action", "created_at"], name: "index_logs_on_action_and_created_at"
+    t.index ["created_at"], name: "index_logs_on_created_at"
+    t.index ["request_id"], name: "index_logs_on_request_id"
+    t.index ["user_id", "created_at"], name: "index_logs_on_user_id_and_created_at"
+    t.index ["user_id"], name: "index_logs_on_user_id"
   end
 
   create_table "media_assets", force: :cascade do |t|
@@ -178,6 +208,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_184500) do
   add_foreign_key "drill_skills", "drills"
   add_foreign_key "drill_skills", "skills"
   add_foreign_key "drills", "users", column: "created_by_id"
+  add_foreign_key "log_objects", "logs"
   add_foreign_key "media_assets", "drills"
   add_foreign_key "media_assets", "skills"
   add_foreign_key "media_assets", "users", column: "uploaded_by_id"
