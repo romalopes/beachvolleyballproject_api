@@ -51,4 +51,120 @@ class Admin::DrillsControllerTest < ActionDispatch::IntegrationTest
     get "/admin/drills"
     assert_redirected_to root_path
   end
+
+  test "admin can search drills by name" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { q: drills(:one).title[0, 4] }
+    assert_response :success
+    assert_includes response.body, drills(:one).title
+  end
+
+  test "admin search with no match shows filter empty state" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { q: "zzz-no-such-drill-zzz" }
+    assert_response :success
+    assert_includes response.body, "No drills match these filters"
+  end
+
+  test "admin can filter drills by stage" do
+    sign_in_as(@admin)
+    stage = drills(:one).training_stage
+    get "/admin/drills", params: { stage: stage }
+    assert_response :success
+    assert_includes response.body, drills(:one).title
+  end
+
+  test "admin can filter drills by difficulty" do
+    sign_in_as(@admin)
+    level = drills(:one).difficulty_level
+    get "/admin/drills", params: { difficulty: level }
+    assert_response :success
+    assert_includes response.body, drills(:one).title
+  end
+
+  test "admin can filter drills by min players overlap" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { min_players: drills(:one).max_players }
+    assert_response :success
+    assert_includes response.body, drills(:one).title
+  end
+
+  test "admin can filter drills by max players overlap" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { max_players: drills(:one).min_players }
+    assert_response :success
+    assert_includes response.body, drills(:one).title
+  end
+
+  test "admin min greater than max shows range error" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { min_players: 8, max_players: 2 }
+    assert_response :success
+    assert_includes response.body, "Min players cannot exceed max players"
+  end
+
+  test "admin can sort drills by name descending" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { sort: "name-desc" }
+    assert_response :success
+    titles = Drill.order(title: :desc).pluck(:title)
+    assert_includes response.body, titles.first if titles.any?
+  end
+
+  test "admin can sort drills by stage" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { sort: "stage" }
+    assert_response :success
+  end
+
+  test "admin can sort drills by difficulty" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { sort: "difficulty" }
+    assert_response :success
+  end
+
+  test "admin unknown filter values are ignored" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { stage: "nope", difficulty: "nope", sort: "nope" }
+    assert_response :success
+    assert_includes response.body, drills(:one).title
+  end
+
+  test "admin can filter drills by skill id" do
+    DrillSkill.create!(drill: drills(:one), skill: skills(:one))
+    sign_in_as(@admin)
+    get "/admin/drills", params: { skill_id: skills(:one).id }
+    assert_response :success
+    assert_includes response.body, drills(:one).title
+  end
+
+  test "admin drill filter by skill shows context with back link" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { skill_id: skills(:one).id }
+    assert_response :success
+    assert_includes response.body, "Showing drills linked to"
+    assert_includes response.body, skills(:one).title
+    assert_select "a[href=?]", admin_skills_path, text: "Back to Skills"
+  end
+
+  test "admin drill filter with unknown skill is ignored" do
+    sign_in_as(@admin)
+    get "/admin/drills", params: { skill_id: 999_999 }
+    assert_response :success
+    assert_includes response.body, drills(:one).title
+  end
+
+  test "admin drills index shows total count" do
+    sign_in_as(@admin)
+    get "/admin/drills"
+    assert_response :success
+    assert_includes response.body, "#{Drill.count} drill"
+  end
+
+  test "admin drills index has general back link" do
+    sign_in_as(@admin)
+    get "/admin/drills"
+    assert_response :success
+    assert_includes response.body, "Back</a>"
+  end
 end

@@ -46,4 +46,18 @@ class Admin::CategoriesControllerTest < ActionDispatch::IntegrationTest
     get "/admin/categories"
     assert_redirected_to root_path
   end
+
+  test "admin categories index shows total count" do
+    sign_in_as(@admin)
+    get "/admin/categories"
+    assert_response :success
+    assert_includes response.body, "#{Category.count} categor"
+  end
+
+  test "admin categories index links skill counts to filtered skills" do
+    sign_in_as(@admin)
+    get "/admin/categories"
+    assert_response :success
+    assert_select "a[href=?]", admin_skills_path(category_id: categories(:one).id)
+  end
 end

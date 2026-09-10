@@ -40,6 +40,31 @@ module ApplicationHelper
     time.strftime("%a, %b %-d") + " at " + time.strftime("%H:%M")
   end
 
+  # General back link: returns to the previous page when the referer is a
+  # same-host URL, otherwise falls back to the given path. Future pages can
+  # use this instead of hardcoding a back destination.
+  def back_link(label:, fallback:)
+    target = safe_referer || fallback
+    link_to target, class: "admin-btn" do
+      icon("arrow-left", size: 16) + " " + label
+    end
+  end
+
+  private
+
+  def safe_referer
+    referer = request.referer
+    return if referer.blank?
+
+    uri = URI.parse(referer)
+    return unless uri.host == request.host
+    return if uri.path == request.path
+
+    "#{uri.path}#{'?' + uri.query if uri.query.present?}"
+  rescue URI::InvalidURIError
+    nil
+  end
+
   # Full date, e.g. "Monday, January 5, 2026 at 14:30".
   def long_date(time)
     time.strftime("%A, %B %-d, %Y") + " at " + time.strftime("%H:%M")

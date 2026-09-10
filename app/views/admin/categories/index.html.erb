@@ -17,6 +17,7 @@
   <% end %>
 
   <% if @categories.any? %>
+    <p class="admin-result-count"><%= pluralize(@categories.size, "category") %></p>
     <table class="admin-table">
       <thead>
         <tr>
@@ -35,7 +36,7 @@
                 <%= icon("arrow-right", size: 14) %>
               <% end %>
             </td>
-            <td><%= category.skills.count %></td>
+            <td><%= link_to category.skills.size, admin_skills_path(category_id: category.id), class: "admin-link" %></td>
             <td><%= short_date(category.created_at) if category.created_at %></td>
             <td class="admin-actions">
               <%= link_to edit_admin_category_path(category), class: "admin-btn admin-btn-edit" do %>

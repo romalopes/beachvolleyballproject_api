@@ -3,6 +3,7 @@
     <h1>Drills</h1>
     <p>Manage drills. Add, edit, or remove drills in the library.</p>
     <div class="page-header-actions">
+      <%= back_link(label: "Back", fallback: admin_settings_path) %>
       <%= link_to new_admin_drill_path, class: "admin-btn admin-btn-add" do %>
         <%= icon("plus", size: 16) %> Add New Drill
       <% end %>
@@ -14,6 +15,57 @@
   <% end %>
   <% if flash[:alert] %>
     <div class="auth-flash auth-flash-error"><%= flash[:alert] %></div>
+  <% end %>
+
+<% filters_active = @filters.values.any?(&:present?) %>
+<% sort_value = %w[name-asc name-desc stage difficulty].include?(@filters[:sort].to_s) ? @filters[:sort].to_s : "name-asc" %>
+  <%= form_with url: admin_drills_path, method: :get, class: "admin-toolbar", data: { turbo_frame: "_top" } do %>
+    <div class="search-bar admin-toolbar-search">
+      <span class="search-bar-icon"><%= icon("search", size: 18) %></span>
+      <%= text_field_tag :q, @filters[:q], placeholder: "Search drills by name..." %>
+    </div>
+
+    <div class="admin-toolbar-row">
+      <%= select_tag :stage,
+            options_for_select([["All stages", ""]] + Drill::TRAINING_STAGES.map { |s|
+              [s == "warmup" ? "Warm-up" : s.capitalize, s]
+            }, @filters[:stage].presence || ""),
+            onchange: "this.form.requestSubmit()" %>
+      <%= select_tag :difficulty,
+            options_for_select([["All levels", ""]] + Drill::DIFFICULTY_LEVELS.map { |l|
+              [l.capitalize, l]
+            }, @filters[:difficulty].presence || ""),
+            onchange: "this.form.requestSubmit()" %>
+      <%= number_field_tag :min_players, @filters[:min_players], min: 1, placeholder: "Min players", "aria-label": "Filter by min players" %>
+      <%= number_field_tag :max_players, @filters[:max_players], min: 1, placeholder: "Max players", "aria-label": "Filter by max players" %>
+      <%= select_tag :sort,
+            options_for_select([["Name A–Z", "name-asc"], ["Name Z–A", "name-desc"],
+                                ["Stage", "stage"], ["Difficulty", "difficulty"]], sort_value),
+            onchange: "this.form.requestSubmit()", "aria-label": "Sort drills" %>
+      <%= submit_tag "Filter", class: "admin-btn admin-btn-add" %>
+      <% if filters_active %>
+        <%= link_to "Clear", admin_drills_path, class: "admin-btn" %>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% total_count = Drill.count %>
+  <p class="admin-result-count"><%= pluralize(total_count, "drill") %></p>
+  <% skill_context = Skill.find_by(id: @filters[:skill_id]) if @filters[:skill_id].present? %>
+  <% if skill_context %>
+    <p class="admin-result-count">
+      Showing drills linked to &ldquo;<%= skill_context.title %>&rdquo;.
+      <%= link_to "Back to Skills", admin_skills_path, class: "admin-link" %>
+    </p>
+  <% end %>
+  <% if filters_active %>
+    <p class="admin-result-count">
+      Showing <%= @drills.size %> of <%= total_count %> drill<%= "s" unless total_count == 1 %>
+    </p>
+  <% end %>
+
+  <% if @range_error %>
+    <div class="auth-flash auth-flash-error">Min players cannot exceed max players.</div>
   <% end %>
 
   <% if @drills.any? %>
@@ -51,6 +103,14 @@
         <% end %>
       </tbody>
     </table>
+  <% elsif filters_active %>
+    <div class="empty-state">
+      <h3>No drills match these filters</h3>
+      <p>Try adjusting your search or filter.</p>
+      <%= link_to admin_drills_path, class: "admin-btn" do %>
+        Clear filters
+      <% end %>
+    </div>
   <% else %>
     <div class="empty-state">
       <h3>No drills yet</h3>

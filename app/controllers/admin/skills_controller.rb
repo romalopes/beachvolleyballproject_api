@@ -4,7 +4,9 @@ module Admin
     before_action :set_skill, only: [:show, :edit, :update, :destroy]
 
     def index
-      @skills = Skill.includes(:category).order(:title)
+      @filters = filter_params
+      @skills = filtered_skills(@filters)
+      @categories = Category.order(:name)
     end
 
     def show
@@ -57,6 +59,35 @@ module Admin
 
     def skill_params
       params.require(:skill).permit(:title, :category_id, :description)
+    end
+
+    SORT_OPTIONS = %w[name-asc name-desc category].freeze
+
+    def filter_params
+      params.permit(:q, :category_id, :sort).to_h
+    end
+
+    def filtered_skills(filters)
+      scope = Skill.includes(:category, :drills)
+
+      q = filters[:q].to_s.strip
+      if q.present?
+        scope = scope.where("skills.title ILIKE ?", "%#{Skill.sanitize_sql_like(q)}%")
+      end
+
+      category_id = Integer(filters[:category_id].to_s, exception: false)
+      if category_id && Category.exists?(category_id)
+        scope = scope.where(category_id: category_id)
+      end
+
+      case filters[:sort].to_s
+      when "name-desc"
+        scope.order(title: :desc)
+      when "category"
+        scope.left_joins(:category).order(Arel.sql("categories.name ASC NULLS LAST, skills.title ASC"))
+      else
+        scope.order(title: :asc)
+      end
     end
   end
 end

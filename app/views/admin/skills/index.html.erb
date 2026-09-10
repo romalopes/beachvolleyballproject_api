@@ -3,6 +3,7 @@
     <h1>Skills</h1>
     <p>Manage skills. Add, edit, or remove skills used across drills.</p>
     <div class="page-header-actions">
+      <%= back_link(label: "Back", fallback: admin_settings_path) %>
       <%= link_to new_admin_skill_path, class: "admin-btn admin-btn-add" do %>
         <%= icon("plus", size: 16) %> Add New Skill
       <% end %>
@@ -16,12 +17,52 @@
     <div class="auth-flash auth-flash-error"><%= flash[:alert] %></div>
   <% end %>
 
+  <% filters_active = @filters.values.any?(&:present?) %>
+  <% sort_value = %w[name-asc name-desc category].include?(@filters[:sort].to_s) ? @filters[:sort].to_s : "name-asc" %>
+  <%= form_with url: admin_skills_path, method: :get, class: "admin-toolbar", data: { turbo_frame: "_top" } do %>
+    <div class="search-bar admin-toolbar-search">
+      <span class="search-bar-icon"><%= icon("search", size: 18) %></span>
+      <%= text_field_tag :q, @filters[:q], placeholder: "Search skills by name..." %>
+    </div>
+
+    <div class="admin-toolbar-row">
+      <%= select_tag :category_id,
+            options_for_select([["All categories", ""]] + @categories.map { |c| [c.name, c.id] },
+                               @filters[:category_id].presence || ""),
+            onchange: "this.form.requestSubmit()", "aria-label": "Filter by category" %>
+      <%= select_tag :sort,
+            options_for_select([["Name A–Z", "name-asc"], ["Name Z–A", "name-desc"],
+                                ["Category", "category"]], sort_value),
+            onchange: "this.form.requestSubmit()", "aria-label": "Sort skills" %>
+      <%= submit_tag "Filter", class: "admin-btn admin-btn-add" %>
+      <% if filters_active %>
+        <%= link_to "Clear", admin_skills_path, class: "admin-btn" %>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% total_count = Skill.count %>
+  <p class="admin-result-count"><%= pluralize(total_count, "skill") %></p>
+  <% category_context = Category.find_by(id: @filters[:category_id]) if @filters[:category_id].present? %>
+  <% if category_context %>
+    <p class="admin-result-count">
+      Showing skills in &ldquo;<%= category_context.name %>&rdquo;.
+      <%= link_to "Back to Categories", admin_categories_path, class: "admin-link" %>
+    </p>
+  <% end %>
+  <% if filters_active %>
+    <p class="admin-result-count">
+      Showing <%= @skills.size %> of <%= total_count %> skill<%= "s" unless total_count == 1 %>
+    </p>
+  <% end %>
+
   <% if @skills.any? %>
     <table class="admin-table">
       <thead>
         <tr>
           <th>Name</th>
           <th>Category</th>
+          <th>Drills</th>
           <th>Description</th>
           <th>Created</th>
           <th style="width: 150px;">Actions</th>
@@ -37,6 +78,7 @@
               <% end %>
             </td>
             <td><%= skill.category&.name || "—" %></td>
+            <td><%= link_to skill.drills.size, admin_drills_path(skill_id: skill.id), class: "admin-link" %></td>
             <td class="admin-desc"><%= skill.description.presence || "—" %></td>
             <td><%= short_date(skill.created_at) if skill.created_at %></td>
             <td class="admin-actions">
@@ -51,6 +93,14 @@
         <% end %>
       </tbody>
     </table>
+  <% elsif filters_active %>
+    <div class="empty-state">
+      <h3>No skills match these filters</h3>
+      <p>Try adjusting your search or filter.</p>
+      <%= link_to admin_skills_path, class: "admin-btn" do %>
+        Clear filters
+      <% end %>
+    </div>
   <% else %>
     <div class="empty-state">
       <h3>No skills yet</h3>

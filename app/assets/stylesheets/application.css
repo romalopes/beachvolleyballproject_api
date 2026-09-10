@@ -1546,3 +1546,45 @@ ul {
   gap: 0.5rem;
   justify-content: flex-end;
 }
+
+/* ===== Admin toolbar (search / filter / sort) ===== */
+.admin-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
+
+.admin-toolbar-search {
+  margin-bottom: 0;
+}
+
+.admin-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  align-items: center;
+}
+
+.admin-toolbar-row select,
+.admin-toolbar-row input[type="number"] {
+  width: auto;
+  min-width: 140px;
+  flex: 0 1 auto;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+}
+
+.admin-toolbar-row input[type="number"] {
+  max-width: 140px;
+}
+
+.admin-toolbar-row .admin-btn {
+  text-decoration: none;
+}
+
+.admin-result-count {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
