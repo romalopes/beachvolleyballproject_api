@@ -5,17 +5,28 @@ module Api
         before_action :authorize_admin!
 
         def index
-          logs = Log.includes(:user, :log_objects).order(created_at: :desc)
+          logs = Log.includes(:user, :log_objects).order(created_at: :desc, id: :desc)
 
-          logs = logs.for_action(params[:action_filter]) if params[:action_filter].present?
+          # NOTE: `params[:action]` is reserved by Rails routing (it is "index"/"show"),
+          # so the audit-action filter must be read from the query string instead.
+          action_value = request.query_parameters[:action].presence || params[:action_filter].presence
+          logs = logs.for_action(action_value) if action_value.present?
           logs = logs.for_user(params[:user_id]) if params[:user_id].present?
           logs = logs.for_request(params[:request_id]) if params[:request_id].present?
-          logs = logs.for_object(params[:object_type], params[:object_id]) if params[:object_type].present? && params[:object_id].present?
-          logs = logs.in_date_range(params[:start_date], params[:end_date]) if params[:start_date].present? && params[:end_date].present?
+
+          if params[:object_type].present? || params[:object_id].present?
+            conditions = {}
+            conditions[:object_type] = params[:object_type] if params[:object_type].present?
+            conditions[:object_id] = params[:object_id] if params[:object_id].present?
+            logs = logs.joins(:log_objects).where(log_objects: conditions).distinct
+          end
+
+          logs = apply_date_filter(logs)
+          logs = apply_search_filter(logs)
 
           page = (params[:page] || 1).to_i
           per_page = (params[:per_page] || 25).to_i.clamp(1, 100)
-          total = logs.count
+          total = logs.distinct.count(:id)
           logs = logs.offset((page - 1) * per_page).limit(per_page)
 
           render json: {
@@ -37,6 +48,34 @@ module Api
         end
 
         private
+
+        def apply_date_filter(scope)
+          start_value = params[:date_from].presence || params[:start_date].presence
+          end_value = params[:date_to].presence || params[:end_date].presence
+          from = parse_date(start_value)
+          to = parse_date(end_value)
+          scope = scope.where("logs.created_at >= ?", from.beginning_of_day) if from
+          scope = scope.where("logs.created_at <= ?", to.end_of_day) if to
+          scope
+        end
+
+        def apply_search_filter(scope)
+          return scope if params[:search].blank?
+
+          pattern = "%#{ActiveRecord::Base.sanitize_sql_like(params[:search].to_s.strip)}%"
+          scope.where(
+            "logs.description ILIKE ? OR logs.action ILIKE ? OR logs.path ILIKE ?",
+            pattern, pattern, pattern
+          )
+        end
+
+        def parse_date(value)
+          return nil if value.blank?
+
+          Date.parse(value.to_s)
+        rescue ArgumentError
+          nil
+        end
 
         def serialize_log(log, detail: false)
           result = {
