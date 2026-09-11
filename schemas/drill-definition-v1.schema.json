@@ -7,7 +7,6 @@
   "additionalProperties": false,
   "required": [
     "version",
-    "view",
     "court",
     "participants",
     "balls",
@@ -68,9 +67,7 @@
     "view": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "orientation"
-      ],
+      "description": "Optional. Orientation is chosen in the viewer; defaults to lateral.",
       "properties": {
         "orientation": {
           "$ref": "#/$defs/orientation"
