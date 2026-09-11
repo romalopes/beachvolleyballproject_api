@@ -1,0 +1,466 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drill-definition-v1",
+  "title": "Drill Definition v1",
+  "description": "Structured beach-volleyball drill definition. Logical positions only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "view",
+    "court",
+    "participants",
+    "balls",
+    "objects",
+    "steps"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "view": {
+      "$ref": "#/$defs/view"
+    },
+    "court": {
+      "$ref": "#/$defs/court"
+    },
+    "participants": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/participant"
+      }
+    },
+    "balls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ball"
+      }
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/drillObject"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    }
+  },
+  "$defs": {
+    "orientation": {
+      "type": "string",
+      "enum": [
+        "top_down",
+        "lateral"
+      ]
+    },
+    "courtId": {
+      "type": "string",
+      "enum": [
+        "court_1",
+        "court_2"
+      ]
+    },
+    "view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orientation"
+      ],
+      "properties": {
+        "orientation": {
+          "$ref": "#/$defs/orientation"
+        }
+      }
+    },
+    "grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "columns",
+        "rows"
+      ],
+      "properties": {
+        "columns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "extendedArea": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "left": {
+          "type": "boolean"
+        },
+        "right": {
+          "type": "boolean"
+        },
+        "court_1": {
+          "type": "boolean"
+        },
+        "court_2": {
+          "type": "boolean"
+        }
+      }
+    },
+    "court": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grid"
+      ],
+      "properties": {
+        "grid": {
+          "$ref": "#/$defs/grid"
+        },
+        "extended_area": {
+          "$ref": "#/$defs/extendedArea"
+        }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "court",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "court": {
+          "$ref": "#/$defs/courtId"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      }
+    },
+    "participantType": {
+      "type": "string",
+      "enum": [
+        "player",
+        "coach",
+        "assistant_coach",
+        "demonstrator"
+      ]
+    },
+    "participant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "$ref": "#/$defs/participantType"
+        },
+        "role": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "ballType": {
+      "type": "string",
+      "enum": [
+        "volleyball",
+        "frescoball",
+        "other"
+      ]
+    },
+    "ball": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "$ref": "#/$defs/ballType"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "objectType": {
+      "type": "string",
+      "enum": [
+        "cone",
+        "bench",
+        "obstacle",
+        "frescoball",
+        "target",
+        "basket",
+        "bucket",
+        "pole",
+        "hoop",
+        "marker",
+        "ladder",
+        "bag",
+        "net",
+        "chair",
+        "custom"
+      ]
+    },
+    "drillObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "$ref": "#/$defs/objectType"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "entityState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "active"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        }
+      }
+    },
+    "actionType": {
+      "type": "string",
+      "enum": [
+        "serve",
+        "receive",
+        "pass",
+        "set",
+        "attack",
+        "hit",
+        "block",
+        "peel",
+        "defend",
+        "save",
+        "approach",
+        "retreat",
+        "run",
+        "toss",
+        "feed",
+        "throw",
+        "catch"
+      ]
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/actionType"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "actionEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "participant_id",
+        "action"
+      ],
+      "properties": {
+        "participant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/action"
+        }
+      }
+    },
+    "participantMovement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "participant_id",
+        "to"
+      ],
+      "properties": {
+        "participant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "$ref": "#/$defs/location"
+        },
+        "to": {
+          "$ref": "#/$defs/location"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "ballMovement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ball_id",
+        "to"
+      ],
+      "properties": {
+        "ball_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "$ref": "#/$defs/location"
+        },
+        "to": {
+          "$ref": "#/$defs/location"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "objectMovement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object_id",
+        "to"
+      ],
+      "properties": {
+        "object_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "$ref": "#/$defs/location"
+        },
+        "to": {
+          "$ref": "#/$defs/location"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "participants",
+        "balls",
+        "objects",
+        "actions",
+        "participant_movements",
+        "ball_movements",
+        "object_movements"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "participants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entityState"
+          }
+        },
+        "balls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entityState"
+          }
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entityState"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/actionEvent"
+          }
+        },
+        "participant_movements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/participantMovement"
+          }
+        },
+        "ball_movements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ballMovement"
+          }
+        },
+        "object_movements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/objectMovement"
+          }
+        }
+      }
+    }
+  }
+}

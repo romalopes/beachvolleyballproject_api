@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -72,6 +72,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000002) do
   create_table "drills", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
+    t.jsonb "definition", default: {}, null: false
     t.string "difficulty_level", default: "intermediate", null: false
     t.integer "ideal_num_players", default: 4, null: false
     t.integer "max_players", default: 8, null: false

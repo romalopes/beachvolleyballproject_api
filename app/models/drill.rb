@@ -10,6 +10,8 @@ class Drill < ApplicationRecord
 
   validates :title, presence: true
 
+  validate :definition_must_be_valid
+
   TRAINING_STAGES = %w[warmup beginning middle end].freeze
   DIFFICULTY_LEVELS = %w[beginner intermediate advanced].freeze
 
@@ -39,6 +41,10 @@ class Drill < ApplicationRecord
   end
 
   private
+
+  def definition_must_be_valid
+    DrillDefinitionValidator.new(self).validate
+  end
 
   def min_players_not_greater_than_max_players
     return if min_players.nil? || max_players.nil?

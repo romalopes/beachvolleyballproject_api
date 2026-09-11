@@ -7,7 +7,7 @@ module Api
 
       def index
         @drills = Drill.includes(skills: :category).all
-        render json: @drills, include: {
+        render json: @drills, except: [:definition], include: {
           skills: { only: [:id, :title, :slug], include: { category: { only: [:id, :name, :slug] } } }
         }
       end
@@ -56,7 +56,17 @@ module Api
       end
 
       def drill_params
-        params.require(:drill).permit(:title, :setup_instructions, :training_stage, :difficulty_level, :min_players, :max_players, :ideal_num_players)
+        params.require(:drill).permit(
+          :title, :setup_instructions, :training_stage, :difficulty_level,
+          :min_players, :max_players, :ideal_num_players
+        ).to_h.tap do |whitelisted|
+          # definition is a JSONB column validated against the v1 schema by the model;
+          # permit it as a raw hash since its structure is enforced downstream.
+          raw = params[:drill][:definition]
+          if raw.present?
+            whitelisted["definition"] = raw.is_a?(Hash) ? raw : raw.to_unsafe_h
+          end
+        end
       end
     end
   end
