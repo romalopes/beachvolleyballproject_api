@@ -37,12 +37,36 @@ module Api
 
       private
 
-      # Backend version (see config/initializers/app_version.rb). Read via a
-      # helper instead of referencing BACK_END_VERSION directly: initializers
-      # load after eager-loaded app code in some boot paths, so a direct
-      # reference can raise "uninitialized constant" on a stale server.
+      # Backend version. Prefers the value set on the Rails Application config
+      # in config/application.rb (freshly booted process), then the
+      # BACK_END_VERSION constant, then "unknown". On a long-running dev server
+      # that predates config/application.rb / the app_version initializer (or
+      # that hot-reloaded controllers but never re-ran those boot files), the
+      # config key and/or constant may be absent, so we load the version file on
+      # demand. Every read path is rescued/guarded so the endpoint can never 500
+      # on a missing version.
       def backend_version
-        defined?(BACK_END_VERSION) ? BACK_END_VERSION : "unknown"
+        version = health_config_version
+        if version.blank?
+          load_backend_version_constant unless defined?(BACK_END_VERSION)
+          version = BACK_END_VERSION if defined?(BACK_END_VERSION)
+        end
+        version.presence || "unknown"
+      end
+
+      def health_config_version
+        Rails.application.config.health_version
+      rescue StandardError
+        nil
+      end
+
+      # config/initializers/app_version.rb only defines the constant and logs,
+      # so it is safe to require on demand from a long-running (stale) process.
+      def load_backend_version_constant
+        file = Rails.root.join("config/initializers/app_version.rb")
+        require file if file.exist?
+      rescue StandardError
+        nil
       end
 
       def database_connected?

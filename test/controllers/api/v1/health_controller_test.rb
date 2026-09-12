@@ -58,6 +58,7 @@ class Api::V1::HealthControllerTest < ActionDispatch::IntegrationTest
     assert_equal "ok", body["database"]
     assert_equal Rails.env, body["environment"]
     assert_equal BACK_END_VERSION, body["version"]
+    assert_equal Rails.application.config.health_version, body["version"]
     assert body["timestamp"].present?
 
     db = body["database_details"]
@@ -107,6 +108,32 @@ class Api::V1::HealthControllerTest < ActionDispatch::IntegrationTest
     assert_kind_of Hash, body["server"]
     assert_kind_of Hash, body["endpoint"]
     assert_kind_of Hash, body["counts"]
+  end
+
+  # Regression: a dev server hot-reloads controllers but never re-runs
+  # config/application.rb, so Rails.application.config.health_version raises
+  # NoMethodError. backend_version must degrade to the constant (or "unknown")
+  # instead of letting the endpoint 500.
+  test "backend_version falls back to the constant when the config read raises" do
+    rails_module = Rails.singleton_class
+    alias_set = false
+    begin
+      rails_module.send(:alias_method, :__health_orig_application, :application)
+      alias_set = true
+      fake_app = Object.new
+      fake_app.define_singleton_method(:config) do
+        raise NoMethodError, "undefined method 'health_version' for Rails::Application::Configuration"
+      end
+      rails_module.send(:define_method, :application) { fake_app }
+
+      controller = Api::V1::HealthController.new
+      assert_equal BACK_END_VERSION, controller.send(:backend_version)
+    ensure
+      if alias_set
+        rails_module.send(:alias_method, :application, :__health_orig_application)
+        rails_module.send(:remove_method, :__health_orig_application)
+      end
+    end
   end
 
   private

@@ -16,7 +16,9 @@ module Admin
       @user = User.find(params[:id])
       role = params[:role]
 
-      if role == "admin" && @user.admin? && User.joins(:roles).where(roles: { name: "admin" }).count <= 1
+      if role == "admin" && @user == Current.real_user
+        redirect_to admin_users_path, alert: "You cannot remove your own admin role."
+      elsif role == "admin" && @user.admin? && User.joins(:roles).where(roles: { name: "admin" }).count <= 1
         redirect_to admin_users_path, alert: "Cannot remove the last admin."
       else
         @user.remove_role(role)

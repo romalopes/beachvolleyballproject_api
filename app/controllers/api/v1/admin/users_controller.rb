@@ -29,7 +29,9 @@ module Api
           @user = User.find(params[:user_id])
           role = params[:role]
 
-          if role == "admin" && @user.admin? && User.joins(:roles).where(roles: { name: "admin" }).count <= 1
+          if role == "admin" && @user == Current.real_user
+            render json: { error: "You cannot remove your own admin role" }, status: :unprocessable_entity
+          elsif role == "admin" && @user.admin? && User.joins(:roles).where(roles: { name: "admin" }).count <= 1
             render json: { error: "Cannot remove the last admin" }, status: :unprocessable_entity
           else
             @user.remove_role(role)
