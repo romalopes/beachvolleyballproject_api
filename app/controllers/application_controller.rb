@@ -1,5 +1,6 @@
 class ApplicationController < ActionController::Base
   include Authentication
+  include Impersonation
   # Only allow modern browsers supporting webp images, web push, badges, import maps, CSS nesting, and CSS :has.
   allow_browser versions: :modern
 
@@ -15,8 +16,14 @@ class ApplicationController < ActionController::Base
   private
 
   # Authorization helpers
+  #
+  # Admin checks use the REAL authenticated user so an admin who is
+  # impersonating a normal user never loses access to admin functionality.
+  # Content/ownership checks intentionally use the EFFECTIVE user
+  # (Current.user), so operations performed while impersonating act as the
+  # impersonated user.
   def authorize_admin!
-    return if Current.user&.admin?
+    return if Current.real_user&.admin?
 
     if Current.user.nil?
       if request.format.json?

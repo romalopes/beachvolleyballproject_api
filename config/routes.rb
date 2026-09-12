@@ -70,6 +70,9 @@ Rails.application.routes.draw do
         # Admin audit logs (read-only)
         resources :logs, only: [:index, :show]
 
+        # Admin "Act as User" impersonation
+        resource :impersonations, only: %i[create destroy], controller: "impersonations"
+
         # Tail of the application's Rails log file
         resources :system_logs, only: [:index], defaults: { format: :json }
       end

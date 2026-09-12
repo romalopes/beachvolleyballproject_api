@@ -23,6 +23,8 @@ module Api
       def destroy
         resume_session
         user = Current.session&.user
+        Current.session&.update(impersonated_user: nil)
+        session.delete(:impersonated_user_id)
         terminate_session if Current.session
         log_auth("User logged out", user)
         head :no_content

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_11_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_12_064819) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -85,10 +85,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_000001) do
     t.index ["created_by_id"], name: "index_drills_on_created_by_id"
     t.index ["slug"], name: "index_drills_on_slug", unique: true
     t.index ["training_stage"], name: "index_drills_on_training_stage"
-    t.check_constraint "difficulty_level::text = ANY (ARRAY['beginner'::character varying, 'intermediate'::character varying, 'advanced'::character varying]::text[])", name: "drills_difficulty_level_check"
+    t.check_constraint "difficulty_level::text = ANY (ARRAY['beginner'::character varying::text, 'intermediate'::character varying::text, 'advanced'::character varying::text])", name: "drills_difficulty_level_check"
     t.check_constraint "ideal_num_players >= min_players AND ideal_num_players <= max_players", name: "drills_ideal_players_check"
     t.check_constraint "min_players <= max_players", name: "drills_player_range_check"
-    t.check_constraint "training_stage::text = ANY (ARRAY['warmup'::character varying, 'beginning'::character varying, 'middle'::character varying, 'end'::character varying]::text[])", name: "drills_training_stage_check"
+    t.check_constraint "training_stage::text = ANY (ARRAY['warmup'::character varying::text, 'beginning'::character varying::text, 'middle'::character varying::text, 'end'::character varying::text])", name: "drills_training_stage_check"
   end
 
   create_table "log_objects", force: :cascade do |t|
@@ -151,11 +151,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_000001) do
     t.string "api_token"
     t.datetime "api_token_expires_at"
     t.datetime "created_at", null: false
+    t.bigint "impersonated_user_id"
     t.string "ip_address"
     t.datetime "updated_at", null: false
     t.string "user_agent"
     t.bigint "user_id", null: false
     t.index ["api_token"], name: "index_sessions_on_api_token", unique: true
+    t.index ["impersonated_user_id"], name: "index_sessions_on_impersonated_user_id"
     t.index ["user_id"], name: "index_sessions_on_user_id"
   end
 
@@ -214,6 +216,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_000001) do
   add_foreign_key "media_assets", "skills"
   add_foreign_key "media_assets", "users", column: "uploaded_by_id"
   add_foreign_key "sessions", "users"
+  add_foreign_key "sessions", "users", column: "impersonated_user_id"
   add_foreign_key "skills", "categories"
   add_foreign_key "skills", "users", column: "created_by_id"
   add_foreign_key "training_sessions", "drills"
