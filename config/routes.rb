@@ -43,6 +43,8 @@ Rails.application.routes.draw do
       post "sessions", to: "sessions#create"
       delete "sessions", to: "sessions#destroy"
       get "me", to: "me#show"
+      get "health", to: "health#index"
+      get "health/detailed", to: "health#detailed"
       post "passwords", to: "passwords#create"
       put "passwords/:token", to: "passwords#update"
 
