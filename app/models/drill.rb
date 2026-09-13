@@ -1,3 +1,8 @@
+# Explicitly require the validator: app/validators was added after the running
+# server booted, and Zeitwerk only picks up new autoload roots at boot. The
+# eager require keeps this robust across stale dev-server processes.
+require Rails.root.join("app/validators/drill_definition_validator")
+
 class Drill < ApplicationRecord
   include Sluggable
   source_column :title

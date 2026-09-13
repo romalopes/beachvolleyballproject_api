@@ -155,14 +155,17 @@ class DrillDefinitionTest < ActiveSupport::TestCase
     assert drill.errors[:definition].any? { |e| e.include?("must have a location") }
   end
 
-  test "rejects inactive participant with location" do
+  test "allows inactive participant with location (not rendered)" do
     defn = JSON.parse(minimal_definition.to_json)
     defn["steps"][0]["participants"] = [
       { "id" => "P1", "active" => false, "location" => { "court" => "court_1", "x" => 3, "y" => 2 } },
     ]
+    # P1 is parked off the play in S1, so its S1 movement no longer applies
+    # (movements describe visible transitions of active entities).
+    defn["steps"][0]["participant_movements"] = []
     drill = Drill.new(valid_attributes(definition: defn))
-    assert_not drill.valid?
-    assert drill.errors[:definition].any? { |e| e.include?("must not have a location") }
+    assert drill.valid?, "Expected valid but got errors: #{drill.errors.full_messages.join(', ')}"
+    assert_not drill.errors[:definition].any? { |e| e.include?("location") }
   end
 
   # --- Coordinate bounds validation ---

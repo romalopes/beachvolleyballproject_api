@@ -58,15 +58,12 @@ module Api
       def drill_params
         params.require(:drill).permit(
           :title, :setup_instructions, :training_stage, :difficulty_level,
-          :min_players, :max_players, :ideal_num_players
-        ).to_h.tap do |whitelisted|
-          # definition is a JSONB column validated against the v1 schema by the model;
-          # permit it as a raw hash since its structure is enforced downstream.
-          raw = params[:drill][:definition]
-          if raw.present?
-            whitelisted["definition"] = raw.is_a?(Hash) ? raw : raw.to_unsafe_h
-          end
-        end
+          :min_players, :max_players, :ideal_num_players,
+          # definition is a JSONB column validated against the v1 schema by the
+          # model; permit it as an open hash since its structure is enforced
+          # downstream. (A bare :definition symbol would drop the value.)
+          definition: {}
+        )
       end
     end
   end

@@ -43,7 +43,8 @@ class DrillDefinitionValidator
     schemer = JSONSchemer.schema(schema)
     schemer.validate(@definition).each do |err|
       pointer = err["pointer"].presence || "root"
-      @record.errors.add(:definition, "schema: #{pointer} — #{err['message']}")
+      detail = err["message"].presence || err["type"] || "invalid value"
+      @record.errors.add(:definition, "schema: #{pointer} — #{detail}")
     end
   rescue StandardError => e
     @record.errors.add(:definition, "schema validation error: #{e.message}")
@@ -117,13 +118,13 @@ class DrillDefinitionValidator
         end
 
         step[coll].each do |state|
-          if state["active"]
-            @record.errors.add(:definition, "domain: active #{coll.singularize} '#{state['id']}' in step '#{step['id']}' must have a location") \
-              if state["location"].nil?
-          else
-            @record.errors.add(:definition, "domain: inactive #{coll.singularize} '#{state['id']}' in step '#{step['id']}' must not have a location") \
-              if state["location"].present?
-          end
+          next unless state["active"]
+
+          # Active entities must be positioned. Inactive entities may keep a
+          # location (e.g. a parked/off-court position): it is stored for
+          # reference but ignored — the viewer never renders inactive entities.
+          @record.errors.add(:definition, "domain: active #{coll.singularize} '#{state['id']}' in step '#{step['id']}' must have a location") \
+            if state["location"].nil?
         end
       end
     end
