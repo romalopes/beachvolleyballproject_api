@@ -25,9 +25,16 @@ module Api
         end
 
         def create
-          @drill = Drill.new(drill_params.merge(created_by: Current.user))
+          skill_ids = Array(params[:drill][:skill_ids]).reject(&:blank?).map(&:to_i).uniq
+          if skill_ids.empty?
+            render json: { errors: ["Skills must include at least one skill"] }, status: :unprocessable_entity
+            return
+          end
+
+          @drill = Drill.new(drill_params.except(:skill_ids).merge(created_by: Current.user))
 
           if @drill.save
+            assign_skills(@drill, skill_ids)
             render json: @drill, status: :created, include: {
               skills: { only: [:id, :title, :slug], include: { category: { only: [:id, :name, :slug] } } }
             }
@@ -37,7 +44,16 @@ module Api
         end
 
         def update
-          if @drill.update(drill_params)
+          if params[:drill].key?(:skill_ids)
+            skill_ids = Array(params[:drill][:skill_ids]).reject(&:blank?).map(&:to_i).uniq
+            if skill_ids.empty?
+              render json: { errors: ["Skills must include at least one skill"] }, status: :unprocessable_entity
+              return
+            end
+          end
+
+          if @drill.update(drill_params.except(:skill_ids))
+            assign_skills(@drill, params[:drill][:skill_ids]) if params[:drill].key?(:skill_ids)
             render json: @drill, include: {
               skills: { only: [:id, :title, :slug], include: { category: { only: [:id, :name, :slug] } } }
             }
@@ -64,6 +80,19 @@ module Api
 
         private
 
+        def assign_skills(drill, skill_ids)
+          return if skill_ids.nil?
+
+          ids = Array(skill_ids).reject(&:blank?).map(&:to_i).uniq
+          # Only keep ids that reference existing skills to avoid FK errors.
+          valid_ids = Skill.where(id: ids).pluck(:id)
+
+          drill.drill_skills.destroy_all
+          valid_ids.each do |skill_id|
+            drill.drill_skills.create!(skill_id: skill_id)
+          end
+        end
+
         def set_drill
           @drill = Drill.includes(:media_assets, :training_sessions, skills: :category)
                         .find_by(slug: params[:id]) ||
@@ -77,6 +106,7 @@ module Api
           params.require(:drill).permit(
             :title, :setup_instructions, :training_stage, :difficulty_level,
             :min_players, :max_players, :ideal_num_players,
+            skill_ids: [],
             # definition is a JSONB column validated against the v1 schema by the
             # model; permit it as an open hash since its structure is enforced
             # downstream. (A bare :definition symbol would drop the value.)
