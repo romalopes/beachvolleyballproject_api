@@ -28,6 +28,7 @@ class Api::V1::Admin::DrillsControllerTest < ActionDispatch::IntegrationTest
       drill: {
         title: "New Drill", setup_instructions: "Instructions", training_stage: "beginning",
         difficulty_level: "beginner", min_players: 2, max_players: 8, ideal_num_players: 4
+    skill_ids: [skills(:one).id]
       }
     }
     assert_response :created
@@ -150,15 +151,15 @@ class Api::V1::Admin::DrillsControllerTest < ActionDispatch::IntegrationTest
     {
       "version" => 1,
       "view" => { "orientation" => "top_down" },
-      "court" => { "grid" => { "columns" => 5, "rows" => 4 } },
+      "side" => { "grid" => { "columns" => 5, "rows" => 4 } },
       "participants" => [{ "id" => "P1", "type" => "player" }],
       "balls" => [{ "id" => "B1", "type" => "volleyball" }],
       "objects" => [],
       "steps" => [
         {
           "id" => "S1",
-          "participants" => [{ "id" => "P1", "active" => true, "location" => { "court" => "court_1", "x" => 3, "y" => 2 } }],
-          "balls" => [{ "id" => "B1", "active" => true, "location" => { "court" => "court_1", "x" => 3, "y" => 2 } }],
+          "participants" => [{ "id" => "P1", "active" => true, "location" => { "side" => "side_1", "x" => 3, "y" => 2 } }],
+          "balls" => [{ "id" => "B1", "active" => true, "location" => { "side" => "side_1", "x" => 3, "y" => 2 } }],
           "objects" => [],
           "actions" => [],
           "participant_movements" => [],

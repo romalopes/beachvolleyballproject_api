@@ -121,7 +121,7 @@ class DrillDefinitionValidator
           next unless state["active"]
 
           # Active entities must be positioned. Inactive entities may keep a
-          # location (e.g. a parked/off-court position): it is stored for
+          # location (e.g. a parked/off-side position): it is stored for
           # reference but ignored — the viewer never renders inactive entities.
           @record.errors.add(:definition, "domain: active #{coll.singularize} '#{state['id']}' in step '#{step['id']}' must have a location") \
             if state["location"].nil?
@@ -149,36 +149,36 @@ class DrillDefinitionValidator
   end
 
   def validate_location(loc, context, bounds)
-    court = loc["court"]
-    unless bounds[court]
-      @record.errors.add(:definition, "domain: #{context} references invalid court '#{court}'")
+    side = loc["side"]
+    unless bounds[side]
+      @record.errors.add(:definition, "domain: #{context} references invalid side '#{side}'")
       return
     end
-    b = bounds[court]
+    b = bounds[side]
     unless loc["x"] >= b[:x_min] && loc["x"] <= b[:x_max]
-      @record.errors.add(:definition, "domain: #{context} x=#{loc['x']} out of bounds for #{court} (#{b[:x_min]}..#{b[:x_max]})")
+      @record.errors.add(:definition, "domain: #{context} x=#{loc['x']} out of bounds for #{side} (#{b[:x_min]}..#{b[:x_max]})")
     end
     unless loc["y"] >= b[:y_min] && loc["y"] <= b[:y_max]
-      @record.errors.add(:definition, "domain: #{context} y=#{loc['y']} out of bounds for #{court} (#{b[:y_min]}..#{b[:y_max]})")
+      @record.errors.add(:definition, "domain: #{context} y=#{loc['y']} out of bounds for #{side} (#{b[:y_min]}..#{b[:y_max]})")
     end
   end
 
-  # Bounds per court derived from grid + extended_area (spec §11).
+  # Bounds per side derived from grid + extended_area (spec §11).
   def compute_bounds
-    grid = @definition.dig("court", "grid") || { "columns" => 5, "rows" => 4 }
+    grid = @definition.dig("side", "grid") || { "columns" => 5, "rows" => 4 }
     cols = grid["columns"].to_i
     rows = grid["rows"].to_i
-    ext = @definition.dig("court", "extended_area") || {}
+    ext = @definition.dig("side", "extended_area") || {}
     left = ext["left"] ? true : false
     right = ext["right"] ? true : false
-    c1 = ext["court_1"] ? true : false
-    c2 = ext["court_2"] ? true : false
+    c1 = ext["side_1"] ? true : false
+    c2 = ext["side_2"] ? true : false
 
     x_min = left ? 0 : 1
     x_max = right ? cols + 1 : cols
     {
-      "court_1" => { x_min: x_min, x_max: x_max, y_min: c1 ? 0 : 1, y_max: rows },
-      "court_2" => { x_min: x_min, x_max: x_max, y_min: 1, y_max: c2 ? rows + 1 : rows },
+      "side_1" => { x_min: x_min, x_max: x_max, y_min: c1 ? 0 : 1, y_max: rows },
+      "side_2" => { x_min: x_min, x_max: x_max, y_min: 1, y_max: c2 ? rows + 1 : rows },
     }
   end
 
@@ -230,7 +230,7 @@ class DrillDefinitionValidator
   end
 
   def same_location?(a, b)
-    a["court"] == b["court"] && a["x"] == b["x"] && a["y"] == b["y"]
+    a["side"] == b["side"] && a["x"] == b["x"] && a["y"] == b["y"]
   end
 
   def each_step

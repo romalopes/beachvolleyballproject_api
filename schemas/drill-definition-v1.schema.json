@@ -5,14 +5,7 @@
   "description": "Structured beach-volleyball drill definition. Logical positions only.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "version",
-    "court",
-    "participants",
-    "balls",
-    "objects",
-    "steps"
-  ],
+  "required": ["version", "side", "participants", "balls", "objects", "steps"],
   "properties": {
     "version": {
       "const": 1
@@ -24,8 +17,8 @@
     "view": {
       "$ref": "#/$defs/view"
     },
-    "court": {
-      "$ref": "#/$defs/court"
+    "side": {
+      "$ref": "#/$defs/side"
     },
     "participants": {
       "type": "array",
@@ -56,17 +49,11 @@
   "$defs": {
     "orientation": {
       "type": "string",
-      "enum": [
-        "top_down",
-        "lateral"
-      ]
+      "enum": ["top_down", "lateral"]
     },
-    "courtId": {
+    "sideId": {
       "type": "string",
-      "enum": [
-        "court_1",
-        "court_2"
-      ]
+      "enum": ["side_1", "side_2"]
     },
     "view": {
       "type": "object",
@@ -81,10 +68,7 @@
     "grid": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "columns",
-        "rows"
-      ],
+      "required": ["columns", "rows"],
       "properties": {
         "columns": {
           "type": "integer",
@@ -99,9 +83,7 @@
     "extendedArea": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled"
-      ],
+      "required": ["enabled"],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -112,20 +94,18 @@
         "right": {
           "type": "boolean"
         },
-        "court_1": {
+        "side_1": {
           "type": "boolean"
         },
-        "court_2": {
+        "side_2": {
           "type": "boolean"
         }
       }
     },
-    "court": {
+    "side": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "grid"
-      ],
+      "required": ["grid"],
       "properties": {
         "grid": {
           "$ref": "#/$defs/grid"
@@ -138,14 +118,10 @@
     "location": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "court",
-        "x",
-        "y"
-      ],
+      "required": ["side", "x", "y"],
       "properties": {
-        "court": {
-          "$ref": "#/$defs/courtId"
+        "side": {
+          "$ref": "#/$defs/sideId"
         },
         "x": {
           "type": "number"
@@ -157,20 +133,12 @@
     },
     "participantType": {
       "type": "string",
-      "enum": [
-        "player",
-        "coach",
-        "assistant_coach",
-        "demonstrator"
-      ]
+      "enum": ["player", "coach", "assistant_coach", "demonstrator"]
     },
     "participant": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "id",
-        "type"
-      ],
+      "required": ["id", "type"],
       "properties": {
         "id": {
           "type": "string",
@@ -189,19 +157,12 @@
     },
     "ballType": {
       "type": "string",
-      "enum": [
-        "volleyball",
-        "frescoball",
-        "other"
-      ]
+      "enum": ["volleyball", "frescoball", "other"]
     },
     "ball": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "id",
-        "type"
-      ],
+      "required": ["id", "type"],
       "properties": {
         "id": {
           "type": "string",
@@ -238,10 +199,7 @@
     "drillObject": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "id",
-        "type"
-      ],
+      "required": ["id", "type"],
       "properties": {
         "id": {
           "type": "string",
@@ -258,10 +216,7 @@
     "entityState": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "id",
-        "active"
-      ],
+      "required": ["id", "active"],
       "properties": {
         "id": {
           "type": "string",
@@ -300,9 +255,7 @@
     "action": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "type"
-      ],
+      "required": ["type"],
       "properties": {
         "type": {
           "$ref": "#/$defs/actionType"
@@ -315,10 +268,7 @@
     "actionEvent": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "participant_id",
-        "action"
-      ],
+      "required": ["participant_id", "action"],
       "properties": {
         "participant_id": {
           "type": "string",
@@ -332,10 +282,7 @@
     "participantMovement": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "participant_id",
-        "to"
-      ],
+      "required": ["participant_id", "to"],
       "properties": {
         "participant_id": {
           "type": "string",
@@ -355,10 +302,7 @@
     "ballMovement": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "ball_id",
-        "to"
-      ],
+      "required": ["ball_id", "to"],
       "properties": {
         "ball_id": {
           "type": "string",
@@ -378,10 +322,7 @@
     "objectMovement": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "object_id",
-        "to"
-      ],
+      "required": ["object_id", "to"],
       "properties": {
         "object_id": {
           "type": "string",

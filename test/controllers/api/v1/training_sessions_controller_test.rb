@@ -37,7 +37,7 @@ class Api::V1::TrainingSessionsControllerTest < ActionDispatch::IntegrationTest
     sign_in_as(@coach)
     assert_difference("TrainingSession.count") do
       post "/api/v1/training_sessions", params: { training_session: {
-        drill_id: @drill.id, scheduled_at: 2.days.from_now.iso8601, location: "Court 1"
+        drill_id: @drill.id, scheduled_at: 2.days.from_now.iso8601, location: "Side 1"
       } }
     end
     assert_response :created
@@ -68,9 +68,9 @@ class Api::V1::TrainingSessionsControllerTest < ActionDispatch::IntegrationTest
 
   test "owner can update their training session" do
     sign_in_as(@coach)
-    patch "/api/v1/training_sessions/#{@owned.id}", params: { training_session: { location: "Court 2" } }
+    patch "/api/v1/training_sessions/#{@owned.id}", params: { training_session: { location: "Side 2" } }
     assert_response :success
-    assert_equal "Court 2", @owned.reload.location
+    assert_equal "Side 2", @owned.reload.location
   end
 
   test "non-owner cannot update another user's training session" do
