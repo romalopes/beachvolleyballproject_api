@@ -6,15 +6,24 @@ class Api::V1::HealthControllerTest < ActionDispatch::IntegrationTest
     @player = users(:one)   # player role only
   end
 
-  test "liveness is public and returns ok" do
-    get "/api/v1/health"
-    assert_response :success
-    assert_equal({ "status" => "ok" }, JSON.parse(response.body))
+  # Application version contract: the single source of truth must be 0.0.21.
+  test "application version is 0.0.21" do
+    assert_equal "0.0.21", APP_VERSION
+    assert_equal APP_VERSION, Rails.application.config.health_version
   end
 
-  test "liveness does not leak version, environment or stack details" do
+  test "liveness is public and returns ok with the application version" do
     get "/api/v1/health"
-    assert_equal ["status"], JSON.parse(response.body).keys
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "ok", body["status"]
+    assert_equal "0.0.21", body["version"]
+    assert_equal APP_VERSION, body["version"]
+  end
+
+  test "liveness leaks no environment or stack details, only status and version" do
+    get "/api/v1/health"
+    assert_equal %w[status version], JSON.parse(response.body).keys
   end
 
   test "liveness returns 503 when the database connection fails" do
@@ -22,7 +31,9 @@ class Api::V1::HealthControllerTest < ActionDispatch::IntegrationTest
       get "/api/v1/health"
     end
     assert_response :service_unavailable
-    assert_equal({ "status" => "error" }, JSON.parse(response.body))
+    body = JSON.parse(response.body)
+    assert_equal "error", body["status"]
+    assert_equal APP_VERSION, body["version"]
   end
 
   test "detailed requires authentication" do
@@ -57,7 +68,8 @@ class Api::V1::HealthControllerTest < ActionDispatch::IntegrationTest
     assert_equal "bvb-api", body["service"]
     assert_equal "ok", body["database"]
     assert_equal Rails.env, body["environment"]
-    assert_equal BACK_END_VERSION, body["version"]
+    assert_equal "0.0.21", body["version"]
+    assert_equal APP_VERSION, body["version"]
     assert_equal Rails.application.config.health_version, body["version"]
     assert body["timestamp"].present?
 
@@ -127,7 +139,7 @@ class Api::V1::HealthControllerTest < ActionDispatch::IntegrationTest
       rails_module.send(:define_method, :application) { fake_app }
 
       controller = Api::V1::HealthController.new
-      assert_equal BACK_END_VERSION, controller.send(:backend_version)
+      assert_equal APP_VERSION, controller.send(:backend_version)
     ensure
       if alias_set
         rails_module.send(:alias_method, :application, :__health_orig_application)

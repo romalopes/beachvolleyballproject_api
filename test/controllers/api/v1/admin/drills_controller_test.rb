@@ -27,8 +27,8 @@ class Api::V1::Admin::DrillsControllerTest < ActionDispatch::IntegrationTest
     post "/api/v1/admin/drills", params: {
       drill: {
         title: "New Drill", setup_instructions: "Instructions", training_stage: "beginning",
-        difficulty_level: "beginner", min_players: 2, max_players: 8, ideal_num_players: 4
-    skill_ids: [skills(:one).id]
+        difficulty_level: "beginner", min_players: 2, max_players: 8, ideal_num_players: 4,
+        skill_ids: [skills(:one).id]
       }
     }
     assert_response :created

@@ -24,11 +24,12 @@ module BeachvolleyballprojectApi
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
 
-    # Backend version surfaced by GET /api/v1/health/detailed. Kept on the
-    # Application config object so it is always present at request time,
-    # independent of initializer/eager-load ordering. The React app mirrors
-    # this in beachvolleyballproject/src/constants/versions.ts and the
-    # "Backend Version Matches Frontend Constant" health check flags drift.
-    config.health_version = ENV["BACK_END_VERSION"].presence || "0.0.1"
+    # Application version surfaced by GET /api/v1/health and
+    # /api/v1/health/detailed. Kept on the Application config object so it is
+    # always present at request time, independent of initializer/eager-load
+    # ordering. The React app mirrors this in
+    # beachvolleyballproject/src/constants/versions.ts (APP_VERSION) and the
+    # "Backend Version Matches APP_VERSION" health check flags drift.
+    config.health_version = ENV["APP_VERSION"].presence || "0.0.21"
   end
 end

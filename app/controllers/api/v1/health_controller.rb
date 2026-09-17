@@ -2,8 +2,8 @@ module Api
   module V1
     # Health probes for the React SPA's API Health diagnostics page.
     #
-    # GET /api/v1/health          — public liveness check (no auth, no
-    #                               version/env/stack details exposed).
+    # GET /api/v1/health          — public liveness check (no auth; returns
+    #                               status plus the application version).
     # GET /api/v1/health/detailed — admin-only diagnostics: infrastructure
     #                               info plus record counts for the domain
     #                               resources the SPA consumes.
@@ -12,9 +12,10 @@ module Api
 
       def index
         if database_connected?
-          render json: { status: "ok" }
+          render json: { status: "ok", version: backend_version }
         else
-          render json: { status: "error" }, status: :service_unavailable
+          render json: { status: "error", version: backend_version },
+                 status: :service_unavailable
         end
       end
 
@@ -39,7 +40,7 @@ module Api
 
       # Backend version. Prefers the value set on the Rails Application config
       # in config/application.rb (freshly booted process), then the
-      # BACK_END_VERSION constant, then "unknown". On a long-running dev server
+      # APP_VERSION constant, then "unknown". On a long-running dev server
       # that predates config/application.rb / the app_version initializer (or
       # that hot-reloaded controllers but never re-ran those boot files), the
       # config key and/or constant may be absent, so we load the version file on
@@ -48,8 +49,8 @@ module Api
       def backend_version
         version = health_config_version
         if version.blank?
-          load_backend_version_constant unless defined?(BACK_END_VERSION)
-          version = BACK_END_VERSION if defined?(BACK_END_VERSION)
+          load_backend_version_constant unless defined?(APP_VERSION)
+          version = APP_VERSION if defined?(APP_VERSION)
         end
         version.presence || "unknown"
       end
