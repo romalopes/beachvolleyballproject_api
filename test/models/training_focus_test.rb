@@ -75,9 +75,9 @@ class TrainingFocusTest < ActiveSupport::TestCase
   end
 
   test "keeps the intentional position order" do
-    assert_equal [0, 1], training_sessions(:one).training_focuses.map(&:position)
-    assert_equal [training_focuses(:serve_reception).id,
-                  training_focuses(:transition_communication).id],
+    assert_equal [ 0, 1 ], training_sessions(:one).training_focuses.map(&:position)
+    assert_equal [ training_focuses(:serve_reception).id,
+                  training_focuses(:transition_communication).id ],
                  training_sessions(:one).training_focuses.map(&:id)
   end
 end

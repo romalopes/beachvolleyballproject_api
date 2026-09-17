@@ -88,8 +88,8 @@ class TrainingSessionTest < ActiveSupport::TestCase
   end
 
   test "ordered scope sorts by start time" do
-    assert_equal [training_sessions(:one).id, training_sessions(:two).id,
-                  training_sessions(:three).id], TrainingSession.ordered.pluck(:id)
+    assert_equal [ training_sessions(:one).id, training_sessions(:two).id,
+                  training_sessions(:three).id ], TrainingSession.ordered.pluck(:id)
   end
 
   test "starting_between scopes the calendar window" do
@@ -104,7 +104,7 @@ class TrainingSessionTest < ActiveSupport::TestCase
   end
 
   test "visible_to shows everything to coaches, curators and admins" do
-    [users(:three), users(:four), users(:two)].each do |manager|
+    [ users(:three), users(:four), users(:two) ].each do |manager|
       assert_includes TrainingSession.visible_to(manager), training_sessions(:two)
     end
   end
@@ -115,12 +115,12 @@ class TrainingSessionTest < ActiveSupport::TestCase
     skill_ids = session.training_focuses.where.not(skill_id: nil).pluck(:skill_id)
     assert session.training_session_drills.any?
 
-    assert_difference(["TrainingFocus.count", "TrainingSessionDrill.count"], -2) do
+    assert_difference([ "TrainingFocus.count", "TrainingSessionDrill.count" ], -2) do
       session.destroy
     end
 
-    assert_equal drill_ids, Drill.where(id: drill_ids).pluck(:id).sort
-    assert_equal skill_ids, Skill.where(id: skill_ids).pluck(:id).sort
+    assert_equal drill_ids.sort, Drill.where(id: drill_ids).pluck(:id).sort
+    assert_equal skill_ids.sort, Skill.where(id: skill_ids).pluck(:id).sort
   end
 
   private
