@@ -17,7 +17,7 @@ transition_communication:
 
 draft_defense:
   training_session: two
-  skill: two
+  skill: one
   position: 0
 
 curator_game_simulation:

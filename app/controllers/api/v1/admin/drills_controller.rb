@@ -4,30 +4,30 @@ module Api
       class DrillsController < ApplicationController
         include RequestLogging
         before_action :authorize_admin!
-        before_action :set_drill, only: [:show, :update, :destroy]
+        before_action :set_drill, only: [ :show, :update, :destroy ]
 
         def index
-          @drills = Drill.includes([:media_assets, :training_sessions, skills: :category])
+          @drills = Drill.includes([ :media_assets, :training_sessions, skills: :category ])
                           .order(:title)
-          render json: @drills, except: [:definition], include: {
-            skills: { only: [:id, :title, :slug], include: { category: { only: [:id, :name, :slug] } } },
-            media_assets: { only: [:id, :title, :slug, :asset_type, :video_url, :thumbnail_url] },
-            training_sessions: { only: [:id, :scheduled_at, :location, :notes] }
+          render json: @drills, except: [ :definition ], include: {
+            skills: { only: [ :id, :title, :slug ], include: { category: { only: [ :id, :name, :slug ] } } },
+            media_assets: { only: [ :id, :title, :slug, :asset_type, :video_url, :thumbnail_url ] },
+            training_sessions: { only: [ :id, :title, :starts_at, :ends_at, :location, :status ] }
           }
         end
 
         def show
           render json: @drill, include: {
-            skills: { only: [:id, :title, :description, :slug], include: { category: { only: [:id, :name, :slug] } } },
-            media_assets: { only: [:id, :title, :slug, :asset_type, :video_url, :thumbnail_url] },
-            training_sessions: { only: [:id, :scheduled_at, :location, :notes] }
+            skills: { only: [ :id, :title, :description, :slug ], include: { category: { only: [ :id, :name, :slug ] } } },
+            media_assets: { only: [ :id, :title, :slug, :asset_type, :video_url, :thumbnail_url ] },
+            training_sessions: { only: [ :id, :title, :starts_at, :ends_at, :location, :status ] }
           }
         end
 
         def create
           skill_ids = Array(params[:drill][:skill_ids]).reject(&:blank?).map(&:to_i).uniq
           if skill_ids.empty?
-            render json: { errors: ["Skills must include at least one skill"] }, status: :unprocessable_entity
+            render json: { errors: [ "Skills must include at least one skill" ] }, status: :unprocessable_entity
             return
           end
 
@@ -36,7 +36,7 @@ module Api
           if @drill.save
             assign_skills(@drill, skill_ids)
             render json: @drill, status: :created, include: {
-              skills: { only: [:id, :title, :slug], include: { category: { only: [:id, :name, :slug] } } }
+              skills: { only: [ :id, :title, :slug ], include: { category: { only: [ :id, :name, :slug ] } } }
             }
           else
             render json: { errors: @drill.errors.full_messages }, status: :unprocessable_entity
@@ -47,7 +47,7 @@ module Api
           if params[:drill].key?(:skill_ids)
             skill_ids = Array(params[:drill][:skill_ids]).reject(&:blank?).map(&:to_i).uniq
             if skill_ids.empty?
-              render json: { errors: ["Skills must include at least one skill"] }, status: :unprocessable_entity
+              render json: { errors: [ "Skills must include at least one skill" ] }, status: :unprocessable_entity
               return
             end
           end
@@ -55,7 +55,7 @@ module Api
           if @drill.update(drill_params.except(:skill_ids))
             assign_skills(@drill, params[:drill][:skill_ids]) if params[:drill].key?(:skill_ids)
             render json: @drill, include: {
-              skills: { only: [:id, :title, :slug], include: { category: { only: [:id, :name, :slug] } } }
+              skills: { only: [ :id, :title, :slug ], include: { category: { only: [ :id, :name, :slug ] } } }
             }
           else
             render json: { errors: @drill.errors.full_messages }, status: :unprocessable_entity

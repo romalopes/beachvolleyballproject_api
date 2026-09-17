@@ -7,11 +7,15 @@ class TrainingFocus < ApplicationRecord
   belongs_to :training_session
   belongs_to :skill, optional: true
 
+  # Blank custom text must become NULL, otherwise a skill-based focus would
+  # carry an empty string and violate the skill-xor-custom check constraint.
+  normalizes :custom_focus, with: ->(value) { value.strip.presence }
+
   validates :position, numericality: { only_integer: true, greater_than_or_equal_to: 0 },
                        allow_nil: true
-  # Skill-based focuses are unique within a training; custom focuses are not
-  # constrained (the database enforces the same rule via a partial-unique
-  # index over [training_session_id, skill_id]).
+  validate :skill_must_exist
+  # Skill-based focuses are unique within a training (the database enforces the
+  # same rule through a unique index over [training_session_id, skill_id]).
   validates :skill_id, uniqueness: { scope: :training_session_id }, allow_nil: true
   validate :skill_or_custom_focus
 
@@ -31,6 +35,15 @@ class TrainingFocus < ApplicationRecord
   end
 
   private
+
+  # A client-supplied skill id is never trusted; it must reference a real
+  # Skill (which the training workflow itself never creates).
+  def skill_must_exist
+    return if skill_id.blank?
+    return if Skill.exists?(skill_id)
+
+    errors.add(:skill, "must exist")
+  end
 
   # A focus must be exactly one of: an existing Skill, or custom text.
   def skill_or_custom_focus

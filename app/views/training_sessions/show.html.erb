@@ -5,14 +5,11 @@
       Back to Training
     <% end %>
     <span class="section-label">Training Session</span>
-    <h1><%= @session.drill&.title || "Training Session" %></h1>
+    <h1><%= @session.title %></h1>
     <div class="tags" style="margin-top: 1rem">
-      <%= tag_pill(variant: :primary) { "Session" } %>
-      <% if @session.drill %>
-        <%= tag_pill(variant: :teal) { @session.drill.difficulty_level } %>
-        <%= tag_pill { @session.drill.training_stage_label } %>
-        <%= tag_pill { @session.drill.player_range_label } %>
-        <%= tag_pill { @session.drill.ideal_label } %>
+      <%= tag_pill(variant: :primary) { @session.status_label } %>
+      <% if @session.location.present? %>
+        <%= tag_pill { @session.location } %>
       <% end %>
     </div>
   </div>
@@ -21,50 +18,66 @@
     <h2>When &amp; Where</h2>
     <p>
       <%= icon("calendar-days", size: 16, style: "margin-right: 0.5rem;") %>
-      <strong>Date:</strong> <%= long_date(@session.scheduled_at) %>
+      <strong>Time:</strong> <%= long_date(@session.starts_at) %> &ndash; <%= @session.ends_at.strftime("%H:%M") %>
+      (<%= @session.duration_minutes %> minutes)
     </p>
-    <% if @session.location %>
-      <p>
-        <%= icon("map-pin", size: 16, style: "margin-right: 0.5rem;") %>
-        <strong>Location:</strong> <%= @session.location %>
-      </p>
+    <% if @session.created_by %>
+      <p><strong>Created by:</strong> <%= @session.created_by.name %></p>
     <% end %>
   </section>
 
-  <% if @session.notes %>
+  <% if @session.description.present? %>
     <section class="detail-section">
-      <h2>Notes</h2>
-      <p><%= @session.notes %></p>
+      <h2>Description</h2>
+      <p><%= @session.description %></p>
     </section>
   <% end %>
 
-  <% if @session.drill %>
-    <section class="detail-section">
-      <h2>Related Drill</h2>
-      <%= link_to drill_path(@session.drill), class: "related-item" do %>
-        <span class="related-item-title">
-          <%= icon("dumbbell", size: 16, style: "margin-right: 0.5rem;") %>
-          <%= @session.drill.title %>
-        </span>
-        <span class="related-item-meta"><%= @session.drill.difficulty_level %> &middot; <%= @session.drill.player_range_label %> &middot; <%= @session.drill.training_stage_label %></span>
-      <% end %>
-    </section>
-  <% end %>
-
-  <% if @session.drill&.skills.present? %>
-    <section class="detail-section">
-      <h2>Skills in this Session</h2>
+  <section class="detail-section">
+    <h2>Training Focuses</h2>
+    <% if @focuses.empty? %>
+      <p>No focuses recorded.</p>
+    <% else %>
       <div class="related-list">
-        <% @session.drill.skills.each do |skill| %>
-          <%= link_to skill_path(skill), class: "related-item" do %>
+        <% @focuses.each do |focus| %>
+          <div class="related-item">
             <span class="related-item-title">
               <%= icon("target", size: 16, style: "margin-right: 0.5rem;") %>
-              <%= skill.title %>
+              <%= focus.label %>
             </span>
-            <span class="related-item-meta"><%= skill.category&.name %></span>
-          <% end %>
+            <span class="related-item-meta">
+              <% if focus.skill_based? && focus.skill&.category %>
+                <%= focus.skill.category.name %>
+              <% else %>
+                Custom focus
+              <% end %>
+              <% if focus.description.present? %> &middot; <%= focus.description %><% end %>
+            </span>
+          </div>
         <% end %>
       </div>
-    </section>
-  <% end %>
+    <% end %>
+  </section>
+
+  <section class="detail-section">
+    <h2>Drills</h2>
+    <% if @session_drills.empty? %>
+      <p>No drills selected.</p>
+    <% else %>
+      <div class="related-list">
+        <% @session_drills.each_with_index do |entry, index| %>
+          <div class="related-item">
+            <span class="related-item-title">
+              <%= index + 1 %>.
+              <%= link_to entry.drill.title, drill_path(entry.drill) %>
+              <% if entry.duration_minutes %> &middot; <%= entry.duration_minutes %> minutes<% end %>
+            </span>
+            <span class="related-item-meta">
+              <% if entry.notes.present? %><%= entry.notes %><% end %>
+            </span>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </section>
 </div>

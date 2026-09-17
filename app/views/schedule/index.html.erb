@@ -8,14 +8,15 @@
       <% @sessions.each do |session| %>
         <div class="schedule-item">
           <div class="schedule-date">
-            <span class="schedule-day"><%= session.scheduled_at.day %></span>
-            <span class="schedule-month"><%= session.scheduled_at.strftime("%b") %></span>
+            <span class="schedule-day"><%= session.starts_at.day %></span>
+            <span class="schedule-month"><%= session.starts_at.strftime("%b") %></span>
           </div>
           <div class="schedule-info">
-            <h4><%= session.drill&.title || "Training Session" %></h4>
+            <h4><%= session.title %></h4>
             <p>
               <%= icon("map-pin", size: 14, style: "margin-right: 0.375rem;") %>
-              <%= session.location || "No location" %> &middot; <%= session.scheduled_at.strftime("%a") %> at <%= session.scheduled_at.strftime("%H:%M") %>
+              <%= session.location || "No location" %> &middot; <%= session.starts_at.strftime("%a") %> at <%= session.starts_at.strftime("%H:%M") %>
+              <% unless session.scheduled? %> &middot; <%= session.status_label %><% end %>
             </p>
           </div>
         </div>

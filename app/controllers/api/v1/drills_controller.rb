@@ -2,21 +2,21 @@ module Api
   module V1
     class DrillsController < ApplicationController
       include ContentAuthorization
-      before_action :set_drill, only: [:show, :update, :destroy]
+      before_action :set_drill, only: [ :show, :update, :destroy ]
       before_action :require_content_creator!, only: :create
 
       def index
         @drills = Drill.includes(skills: :category).all
-        render json: @drills, except: [:definition], include: {
-          skills: { only: [:id, :title, :slug], include: { category: { only: [:id, :name, :slug] } } }
+        render json: @drills, except: [ :definition ], include: {
+          skills: { only: [ :id, :title, :slug ], include: { category: { only: [ :id, :name, :slug ] } } }
         }
       end
 
       def show
         render json: @drill, include: {
-          skills: { only: [:id, :title, :description, :slug], include: { category: { only: [:id, :name, :slug] } } },
-          media_assets: { only: [:id, :title, :slug, :asset_type, :video_url, :thumbnail_url] },
-          training_sessions: { only: [:id, :scheduled_at, :location, :notes] }
+          skills: { only: [ :id, :title, :description, :slug ], include: { category: { only: [ :id, :name, :slug ] } } },
+          media_assets: { only: [ :id, :title, :slug, :asset_type, :video_url, :thumbnail_url ] },
+          training_sessions: { only: [ :id, :title, :starts_at, :ends_at, :location, :status ] }
         }
       end
 

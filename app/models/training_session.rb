@@ -77,6 +77,11 @@ class TrainingSession < ApplicationRecord
     status.to_s.capitalize
   end
 
+  # Non-draft trainings belong to the shared schedule.
+  def publicly_visible?
+    !draft?
+  end
+
   # Total scheduled length in minutes (the sum of the selected drills may
   # differ; this reflects the calendar block).
   def duration_minutes
