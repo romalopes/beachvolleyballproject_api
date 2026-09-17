@@ -1,13 +1,32 @@
 # Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+#
+# `created_by` is audit information only — fixtures intentionally cover
+# sessions created by a different coach/curator than the one who manages them
+# (shared schedule, not per-creator ownership).
 
 one:
-  drill: one
-  scheduled_at: 2026-09-06 16:37:37
-  location: MyString
-  notes: MyText
+  title: Serve Reception Training
+  description: Platform work against float serves.
+  starts_at: 2026-09-21 09:00:00
+  ends_at: 2026-09-21 11:00:00
+  location: Coogee Beach
+  status: scheduled
+  created_by: three
 
 two:
-  drill: two
-  scheduled_at: 2026-09-06 16:37:37
-  location: MyString
-  notes: MyText
+  title: Draft Defense Training
+  description: Still being prepared, not part of the shared calendar.
+  starts_at: 2026-09-22 09:00:00
+  ends_at: 2026-09-22 10:30:00
+  location: Manly Beach
+  status: draft
+  created_by: three
+
+three:
+  title: Curator Sunset Session
+  description: Conditioning and game simulation before sunset.
+  starts_at: 2026-09-28 17:00:00
+  ends_at: 2026-09-28 18:30:00
+  location: Bondi Beach
+  status: scheduled
+  created_by: four

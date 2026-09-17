@@ -1,0 +1,26 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+#
+# A focus references an existing skill (never created from a training) or
+# carries custom text — never both.
+
+serve_reception:
+  training_session: one
+  skill: one
+  description: Focus on platform angle against float serves.
+  position: 0
+
+transition_communication:
+  training_session: one
+  custom_focus: Transition communication
+  description: Players should call early after the block.
+  position: 1
+
+draft_defense:
+  training_session: two
+  skill: two
+  position: 0
+
+curator_game_simulation:
+  training_session: three
+  custom_focus: Game simulation
+  position: 0

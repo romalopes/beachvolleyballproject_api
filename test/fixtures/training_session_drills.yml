@@ -1,0 +1,29 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+#
+# Drill data (description, visual definition, steps) always comes from the
+# Drill record; only the session-specific order, duration and notes live here.
+
+serve_receive_progression:
+  training_session: one
+  drill: one
+  position: 0
+  duration_minutes: 15
+  notes: Use stronger serves for the second round.
+
+defensive_movement:
+  training_session: one
+  drill: two
+  position: 1
+  duration_minutes: 20
+
+draft_warm_up:
+  training_session: two
+  drill: one
+  position: 0
+  duration_minutes: 10
+
+curator_game_simulation:
+  training_session: three
+  drill: two
+  position: 0
+  notes: Play to 21, switch sides every 7 points.
