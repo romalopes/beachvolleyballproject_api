@@ -40,16 +40,43 @@ Rails.application.configure do
   # Don't care if the mailer can't send.
   config.action_mailer.raise_delivery_errors = false
 
+  # Real delivery when SMTP credentials are provided (e.g. Gmail app password
+  # in .env.development). Otherwise fall back to writing emails to tmp/mails
+  # so the reset flow remains testable without a mail server.
+  if ENV["SMTP_ADDRESS"].present?
+    puts "Using SMTP delivery method"
+    config.action_mailer.delivery_method = :smtp
+    config.action_mailer.smtp_settings = {
+      address: ENV["SMTP_ADDRESS"],
+      port: ENV.fetch("SMTP_PORT", 587).to_i,
+      domain: ENV.fetch("SMTP_DOMAIN", "localhost"),
+      user_name: ENV["SMTP_USERNAME"],
+      password: ENV["SMTP_PASSWORD"],
+      authentication: ENV.fetch("SMTP_AUTHENTICATION", "plain").to_sym,
+      enable_starttls_auto: ENV.fetch("SMTP_ENABLE_STARTTLS", "true") == "true",
+      open_timeout: 5,
+      read_timeout: 5
+    }
+  else
+    puts "Using file delivery method"
+    config.action_mailer.delivery_method = :file
+    config.action_mailer.file_settings = { location: Rails.root.join("tmp/mails") }
+  end
+
+
   # Make template changes take effect immediately.
   config.action_mailer.perform_caching = false
 
   # Set localhost to be used by links generated in mailer templates.
   config.action_mailer.default_url_options = { host: "localhost", port: 3001 }
 
+  # React frontend URL for password-reset email links (dev server runs on port 5174).
+  ENV["FRONTEND_URL"] ||= "http://localhost:5174"
+
   # Deliver mails to files in tmp/mails so password-reset links can be
   # retrieved locally without an SMTP server.
-  config.action_mailer.delivery_method = :file
-  config.action_mailer.file_settings = { location: Rails.root.join("tmp/mails") }
+  # config.action_mailer.delivery_method = :file
+  # config.action_mailer.file_settings = { location: Rails.root.join("tmp/mails") }
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log
