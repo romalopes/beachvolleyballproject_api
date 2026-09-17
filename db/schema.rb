@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_15_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_17_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -85,10 +85,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_000001) do
     t.index ["created_by_id"], name: "index_drills_on_created_by_id"
     t.index ["slug"], name: "index_drills_on_slug", unique: true
     t.index ["training_stage"], name: "index_drills_on_training_stage"
-    t.check_constraint "difficulty_level::text = ANY (ARRAY['beginner'::character varying, 'intermediate'::character varying, 'advanced'::character varying]::text[])", name: "drills_difficulty_level_check"
+    t.check_constraint "difficulty_level::text = ANY (ARRAY['beginner'::character varying::text, 'intermediate'::character varying::text, 'advanced'::character varying::text])", name: "drills_difficulty_level_check"
     t.check_constraint "ideal_num_players >= min_players AND ideal_num_players <= max_players", name: "drills_ideal_players_check"
     t.check_constraint "min_players <= max_players", name: "drills_player_range_check"
-    t.check_constraint "training_stage::text = ANY (ARRAY['warmup'::character varying, 'beginning'::character varying, 'middle'::character varying, 'end'::character varying]::text[])", name: "drills_training_stage_check"
+    t.check_constraint "training_stage::text = ANY (ARRAY['warmup'::character varying::text, 'beginning'::character varying::text, 'middle'::character varying::text, 'end'::character varying::text])", name: "drills_training_stage_check"
   end
 
   create_table "log_objects", force: :cascade do |t|
@@ -174,16 +174,66 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_000001) do
     t.index ["slug"], name: "index_skills_on_slug", unique: true
   end
 
+  create_table "training_focuses", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "custom_focus"
+    t.text "description"
+    t.integer "position", default: 0, null: false
+    t.bigint "skill_id"
+    t.bigint "training_session_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["skill_id"], name: "index_training_focuses_on_skill_id"
+    t.index ["training_session_id", "position"], name: "index_training_focuses_on_training_session_id_and_position"
+    t.index ["training_session_id", "skill_id"], name: "index_training_focuses_on_session_and_skill", unique: true
+    t.index ["training_session_id"], name: "index_training_focuses_on_training_session_id"
+    t.check_constraint "\"position\" >= 0", name: "training_focuses_position_non_negative"
+    t.check_constraint "skill_id IS NOT NULL AND custom_focus IS NULL OR skill_id IS NULL AND custom_focus IS NOT NULL", name: "training_focuses_skill_xor_custom_focus"
+  end
+
+  create_table "training_session_drills", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "drill_id", null: false
+    t.integer "duration_minutes"
+    t.text "notes"
+    t.integer "position", default: 0, null: false
+    t.bigint "training_session_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["drill_id"], name: "index_training_session_drills_on_drill_id"
+    t.index ["training_session_id", "drill_id"], name: "index_training_session_drills_on_session_and_drill", unique: true
+    t.index ["training_session_id", "position"], name: "index_training_session_drills_on_session_and_position"
+    t.index ["training_session_id"], name: "index_training_session_drills_on_training_session_id"
+    t.check_constraint "\"position\" >= 0", name: "training_session_drills_position_non_negative"
+    t.check_constraint "duration_minutes IS NULL OR duration_minutes > 0", name: "training_session_drills_duration_minutes_positive"
+  end
+
+  create_table "training_session_media_assets", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "media_asset_id", null: false
+    t.integer "position", default: 0, null: false
+    t.string "title"
+    t.bigint "training_session_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["media_asset_id"], name: "index_training_session_media_assets_on_media_asset_id"
+    t.index ["training_session_id", "media_asset_id"], name: "index_training_session_media_assets_on_session_and_asset", unique: true
+    t.index ["training_session_id", "position"], name: "index_training_session_media_assets_on_session_and_position"
+    t.index ["training_session_id"], name: "index_training_session_media_assets_on_training_session_id"
+  end
+
   create_table "training_sessions", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
-    t.bigint "drill_id", null: false
+    t.text "description"
+    t.datetime "ends_at", null: false
     t.string "location"
-    t.text "notes"
-    t.datetime "scheduled_at"
+    t.datetime "starts_at", null: false
+    t.string "status", default: "draft", null: false
+    t.string "title", null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_training_sessions_on_created_by_id"
-    t.index ["drill_id"], name: "index_training_sessions_on_drill_id"
+    t.index ["starts_at"], name: "index_training_sessions_on_starts_at"
+    t.index ["status"], name: "index_training_sessions_on_status"
+    t.check_constraint "ends_at > starts_at", name: "training_sessions_ends_at_after_starts_at"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'scheduled'::character varying, 'cancelled'::character varying, 'completed'::character varying]::text[])", name: "training_sessions_status"
   end
 
   create_table "user_roles", force: :cascade do |t|
@@ -219,7 +269,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_000001) do
   add_foreign_key "sessions", "users", column: "impersonated_user_id"
   add_foreign_key "skills", "categories"
   add_foreign_key "skills", "users", column: "created_by_id"
-  add_foreign_key "training_sessions", "drills"
+  add_foreign_key "training_focuses", "skills"
+  add_foreign_key "training_focuses", "training_sessions"
+  add_foreign_key "training_session_drills", "drills"
+  add_foreign_key "training_session_drills", "training_sessions"
+  add_foreign_key "training_session_media_assets", "media_assets"
+  add_foreign_key "training_session_media_assets", "training_sessions"
   add_foreign_key "training_sessions", "users", column: "created_by_id"
   add_foreign_key "user_roles", "roles"
   add_foreign_key "user_roles", "users"

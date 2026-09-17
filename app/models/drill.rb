@@ -11,7 +11,10 @@ class Drill < ApplicationRecord
   has_many :drill_skills, dependent: :destroy
   has_many :skills, through: :drill_skills
   has_many :media_assets, dependent: :destroy
-  has_many :training_sessions, dependent: :destroy
+  # A drill is referenced by training sessions through ordered join rows; the
+  # join row is destroyed with the drill, never the training session itself.
+  has_many :training_session_drills, dependent: :destroy
+  has_many :training_sessions, through: :training_session_drills
 
   validates :title, presence: true
 

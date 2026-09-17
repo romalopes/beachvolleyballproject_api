@@ -14,3 +14,10 @@
 # ActiveSupport::Inflector.inflections(:en) do |inflect|
 #   inflect.acronym "RESTful"
 # end
+
+ActiveSupport::Inflector.inflections(:en) do |inflect|
+  # The plural used by the training_focuses table. Without this rule the
+  # inflector singularizes "focuses" to "focuse", which breaks association
+  # reflection (e.g. TrainingSession#training_focuses, inverse_of lookups).
+  inflect.irregular "focus", "focuses"
+end
