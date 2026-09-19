@@ -75,7 +75,11 @@ module VideoProviders
 
     def self.query_params(url)
       query = URI.parse(url.to_s).query
-      query ? CGI.parse(query) : {}
+      return {} if query.blank?
+
+      # URI.decode_www_form (not CGI.parse, whose load state varies between
+      # the test suite and a running server).
+      URI.decode_www_form(query).to_h { |key, value| [ key, [ value ] ] }
     rescue URI::Error
       {}
     end

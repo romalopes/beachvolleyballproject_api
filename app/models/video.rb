@@ -69,6 +69,9 @@ class Video < ApplicationRecord
     provider_class.label
   end
 
+  # API field name without the Ruby predicate suffix (rendered as "can_embed").
+  alias_method :can_embed, :can_embed?
+
   # Lightweight usage count for list views (with video_references preloaded).
   def reference_count
     video_references.size

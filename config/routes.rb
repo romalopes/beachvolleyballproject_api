@@ -64,7 +64,7 @@ Rails.application.routes.draw do
         resources :video_references, only: %i[create update destroy]
       end
       resources :drill_skills
-      resources :videos, only: [ :index ]
+      resources :videos, only: [ :index, :create ]
       resources :training_sessions
 
       # Admin role management

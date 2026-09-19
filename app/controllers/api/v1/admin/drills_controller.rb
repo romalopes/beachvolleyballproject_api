@@ -18,6 +18,11 @@ module Api
         def show
           render json: @drill, include: {
             skills: { only: [ :id, :title, :description, :slug ], include: { category: { only: [ :id, :name, :slug ] } } },
+            video_references: {
+              only: VideoReferencesController::REFERENCE_ONLY,
+              methods: VideoReferencesController::REFERENCE_METHODS,
+              include: { video: { only: VideoReferencesController::VIDEO_ONLY, methods: VideoReferencesController::VIDEO_METHODS } }
+            },
             training_sessions: { only: [ :id, :title, :starts_at, :ends_at, :location, :status ] }
           }
         end
