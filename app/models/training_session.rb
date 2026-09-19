@@ -25,10 +25,8 @@ class TrainingSession < ApplicationRecord
            dependent: :destroy, inverse_of: :training_session
   has_many :drills, through: :training_session_drills
 
-  # Future media support: reuses the existing MediaAsset model.
-  has_many :training_session_media_assets, -> { order(:position, :id) },
-           dependent: :destroy, inverse_of: :training_session
-  has_many :media_assets, through: :training_session_media_assets
+  # Media: a TrainingSession is a future VideoReference target — the
+  # polymorphic VideoReference covers it without a dedicated join table.
 
   accepts_nested_attributes_for :training_focuses, allow_destroy: true, reject_if: :all_blank
   accepts_nested_attributes_for :training_session_drills, allow_destroy: true, reject_if: :all_blank

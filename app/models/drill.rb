@@ -10,7 +10,6 @@ class Drill < ApplicationRecord
   belongs_to :created_by, class_name: "User", optional: true
   has_many :drill_skills, dependent: :destroy
   has_many :skills, through: :drill_skills
-  has_many :media_assets, dependent: :destroy
   has_many :video_references, as: :referenced, dependent: :destroy
   has_many :videos, through: :video_references
   # A drill is referenced by training sessions through ordered join rows; the
