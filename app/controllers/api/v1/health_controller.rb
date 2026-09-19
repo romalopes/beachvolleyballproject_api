@@ -155,7 +155,8 @@ module Api
           skills: safe_count(Skill),
           drills: safe_count(Drill),
           drill_skills: safe_count(DrillSkill),
-          media_assets: safe_count(MediaAsset),
+          videos: safe_count(Video),
+          video_references: safe_count(VideoReference),
           training_sessions: safe_count(TrainingSession),
           users: safe_count(User)
         }

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_19_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_19_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -121,24 +121,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000002) do
     t.index ["user_id"], name: "index_logs_on_user_id"
   end
 
-  create_table "media_assets", force: :cascade do |t|
-    t.string "asset_type"
-    t.datetime "created_at", null: false
-    t.text "description"
-    t.bigint "drill_id", null: false
-    t.bigint "skill_id"
-    t.string "slug"
-    t.string "thumbnail_url"
-    t.string "title"
-    t.datetime "updated_at", null: false
-    t.bigint "uploaded_by_id"
-    t.string "video_url"
-    t.index ["drill_id"], name: "index_media_assets_on_drill_id"
-    t.index ["skill_id"], name: "index_media_assets_on_skill_id"
-    t.index ["slug"], name: "index_media_assets_on_slug", unique: true
-    t.index ["uploaded_by_id"], name: "index_media_assets_on_uploaded_by_id"
-  end
-
   create_table "roles", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.text "description"
@@ -204,19 +186,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000002) do
     t.index ["training_session_id"], name: "index_training_session_drills_on_training_session_id"
     t.check_constraint "\"position\" >= 0", name: "training_session_drills_position_non_negative"
     t.check_constraint "duration_minutes IS NULL OR duration_minutes > 0", name: "training_session_drills_duration_minutes_positive"
-  end
-
-  create_table "training_session_media_assets", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.bigint "media_asset_id", null: false
-    t.integer "position", default: 0, null: false
-    t.string "title"
-    t.bigint "training_session_id", null: false
-    t.datetime "updated_at", null: false
-    t.index ["media_asset_id"], name: "index_training_session_media_assets_on_media_asset_id"
-    t.index ["training_session_id", "media_asset_id"], name: "index_training_session_media_assets_on_session_and_asset", unique: true
-    t.index ["training_session_id", "position"], name: "index_training_session_media_assets_on_session_and_position"
-    t.index ["training_session_id"], name: "index_training_session_media_assets_on_training_session_id"
   end
 
   create_table "training_sessions", force: :cascade do |t|
@@ -299,9 +268,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000002) do
   add_foreign_key "drill_skills", "skills"
   add_foreign_key "drills", "users", column: "created_by_id"
   add_foreign_key "log_objects", "logs"
-  add_foreign_key "media_assets", "drills"
-  add_foreign_key "media_assets", "skills"
-  add_foreign_key "media_assets", "users", column: "uploaded_by_id"
   add_foreign_key "sessions", "users"
   add_foreign_key "sessions", "users", column: "impersonated_user_id"
   add_foreign_key "skills", "categories"
@@ -310,8 +276,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000002) do
   add_foreign_key "training_focuses", "training_sessions"
   add_foreign_key "training_session_drills", "drills"
   add_foreign_key "training_session_drills", "training_sessions"
-  add_foreign_key "training_session_media_assets", "media_assets"
-  add_foreign_key "training_session_media_assets", "training_sessions"
   add_foreign_key "training_sessions", "users", column: "created_by_id"
   add_foreign_key "user_roles", "roles"
   add_foreign_key "user_roles", "users"

@@ -30,13 +30,13 @@ class Api::V1::DrillsControllerTest < ActionDispatch::IntegrationTest
     assert drill.key?("skills")
   end
 
-  test "show is public and includes skills, media_assets and training_sessions" do
+  test "show is public and includes skills, video_references and training_sessions" do
     get "/api/v1/drills/mystring-one"
     assert_response :success
     body = JSON.parse(response.body)
     assert_equal "mystring-one", body["slug"]
     assert body.key?("skills")
-    assert body.key?("media_assets")
+    assert body.key?("video_references")
     assert body.key?("training_sessions")
   end
 

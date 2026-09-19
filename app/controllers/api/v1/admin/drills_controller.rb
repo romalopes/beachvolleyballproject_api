@@ -7,11 +7,10 @@ module Api
         before_action :set_drill, only: [ :show, :update, :destroy ]
 
         def index
-          @drills = Drill.includes([ :media_assets, :training_sessions, skills: :category ])
+          @drills = Drill.includes([ :training_sessions, { video_references: :video }, skills: :category ])
                           .order(:title)
           render json: @drills, except: [ :definition ], include: {
             skills: { only: [ :id, :title, :slug ], include: { category: { only: [ :id, :name, :slug ] } } },
-            media_assets: { only: [ :id, :title, :slug, :asset_type, :video_url, :thumbnail_url ] },
             training_sessions: { only: [ :id, :title, :starts_at, :ends_at, :location, :status ] }
           }
         end
@@ -19,7 +18,6 @@ module Api
         def show
           render json: @drill, include: {
             skills: { only: [ :id, :title, :description, :slug ], include: { category: { only: [ :id, :name, :slug ] } } },
-            media_assets: { only: [ :id, :title, :slug, :asset_type, :video_url, :thumbnail_url ] },
             training_sessions: { only: [ :id, :title, :starts_at, :ends_at, :location, :status ] }
           }
         end
@@ -64,7 +62,7 @@ module Api
 
         def destroy
           reasons = []
-          reasons << "#{@drill.media_assets.count} media asset(s)" if @drill.media_assets.any?
+          reasons << "#{@drill.video_references.count} video reference(s)" if @drill.video_references.any?
           reasons << "#{@drill.training_sessions.count} training session(s)" if @drill.training_sessions.any?
           reasons << "#{@drill.skills.count} skill(s)" if @drill.skills.any?
 
@@ -94,9 +92,9 @@ module Api
         end
 
         def set_drill
-          @drill = Drill.includes(:media_assets, :training_sessions, skills: :category)
+          @drill = Drill.includes(:training_sessions, { video_references: :video }, skills: :category)
                         .find_by(slug: params[:id]) ||
-                    Drill.includes(:media_assets, :training_sessions, skills: :category)
+                    Drill.includes(:training_sessions, { video_references: :video }, skills: :category)
                          .find_by(id: params[:id])
         rescue ActiveRecord::RecordNotFound
           render json: { error: "Drill not found" }, status: :not_found

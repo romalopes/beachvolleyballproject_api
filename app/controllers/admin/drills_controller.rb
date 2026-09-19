@@ -38,7 +38,7 @@ module Admin
 
     def destroy
       reasons = []
-      reasons << "#{@drill.media_assets.count} media asset(s)" if @drill.media_assets.any?
+      reasons << "#{@drill.video_references.count} video reference(s)" if @drill.video_references.any?
       reasons << "#{@drill.training_sessions.count} training session(s)" if @drill.training_sessions.any?
       reasons << "#{@drill.skills.count} skill(s)" if @drill.skills.any?
 

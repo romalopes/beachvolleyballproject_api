@@ -15,9 +15,17 @@
 # "future" hook — is dropped too: the polymorphic VideoReference already
 # covers referencing a TrainingSession without any new table.
 class MergeMediaAssetsIntoVideos < ActiveRecord::Migration[8.1]
+  # The MediaAsset model no longer exists, so the legacy table is read through
+  # a minimal inline model — migrations must be self-contained.
+  class LegacyMediaAsset < ActiveRecord::Base
+    self.table_name = "media_assets"
+    belongs_to :drill, class_name: "::Drill", optional: false
+    belongs_to :skill, class_name: "::Skill", optional: true
+  end
+
   def up
     say_with_time "Migrating media_assets into videos + video_references" do
-      MediaAsset.includes(:drill, :skill).find_each do |asset|
+      LegacyMediaAsset.includes(:drill, :skill).find_each do |asset|
         next if asset.video_url.blank?
 
         analysis = VideoProviders.analyze(asset.video_url)
@@ -51,7 +59,7 @@ class MergeMediaAssetsIntoVideos < ActiveRecord::Migration[8.1]
           end
         end
       end
-      MediaAsset.count
+      LegacyMediaAsset.count
     end
 
     drop_table :training_session_media_assets

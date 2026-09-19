@@ -2,6 +2,6 @@ class VideosController < ApplicationController
   allow_unauthenticated_access
 
   def index
-    @videos = MediaAsset.includes(:drill).order(:title)
+    @videos = Video.includes(:video_references).order(:title)
   end
 end

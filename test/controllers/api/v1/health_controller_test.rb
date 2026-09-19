@@ -99,7 +99,7 @@ class Api::V1::HealthControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     counts = JSON.parse(response.body)["counts"]
     assert_kind_of Hash, counts
-    %w[categories skills drills drill_skills media_assets training_sessions users].each do |key|
+    %w[categories skills drills drill_skills videos video_references training_sessions users].each do |key|
       assert_kind_of Integer, counts[key], "expected integer count for #{key}"
     end
     assert_operator counts["categories"], :>=, 1

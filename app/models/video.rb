@@ -69,6 +69,11 @@ class Video < ApplicationRecord
     provider_class.label
   end
 
+  # Lightweight usage count for list views (with video_references preloaded).
+  def reference_count
+    video_references.size
+  end
+
   private
 
   # Detects the provider from source_url and fills in the normalized identity:
