@@ -77,6 +77,12 @@ class Video < ApplicationRecord
     video_references.size
   end
 
+  # --- Category & Tags ---
+
+  belongs_to :video_category, optional: true
+  has_many :video_taggings, dependent: :destroy
+  has_many :video_tags, through: :video_taggings
+
   private
 
   # Detects the provider from source_url and fills in the normalized identity:

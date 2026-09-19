@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_19_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_19_000008) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -224,6 +224,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000003) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  create_table "video_categories", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.text "description"
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.string "slug"
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_video_categories_on_created_by_id"
+    t.index ["name"], name: "index_video_categories_on_name", unique: true
+    t.index ["position"], name: "index_video_categories_on_position"
+    t.index ["slug"], name: "index_video_categories_on_slug", unique: true
+  end
+
   create_table "video_references", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.text "description"
@@ -243,6 +257,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000003) do
     t.check_constraint "start_seconds IS NULL OR start_seconds >= 0", name: "video_references_start_seconds_non_negative"
   end
 
+  create_table "video_taggings", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "video_id", null: false
+    t.bigint "video_tag_id", null: false
+    t.index ["video_id", "video_tag_id"], name: "index_video_taggings_on_video_id_and_video_tag_id", unique: true
+    t.index ["video_id"], name: "index_video_taggings_on_video_id"
+    t.index ["video_tag_id"], name: "index_video_taggings_on_video_tag_id"
+  end
+
+  create_table "video_tags", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((name)::text)", name: "index_video_tags_on_lower_name", unique: true
+    t.index ["name"], name: "index_video_tags_on_name", unique: true
+  end
+
   create_table "videos", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
@@ -255,6 +287,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000003) do
     t.string "thumbnail_url"
     t.string "title"
     t.datetime "updated_at", null: false
+    t.bigint "video_category_id"
     t.index ["created_by_id"], name: "index_videos_on_created_by_id"
     t.index ["provider", "provider_video_id"], name: "index_videos_on_provider_and_provider_video_id", unique: true, where: "(provider_video_id IS NOT NULL)"
     t.index ["provider"], name: "index_videos_on_provider"
@@ -279,6 +312,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_000003) do
   add_foreign_key "training_sessions", "users", column: "created_by_id"
   add_foreign_key "user_roles", "roles"
   add_foreign_key "user_roles", "users"
+  add_foreign_key "video_categories", "users", column: "created_by_id"
   add_foreign_key "video_references", "videos"
+  add_foreign_key "video_taggings", "video_tags"
+  add_foreign_key "video_taggings", "videos"
   add_foreign_key "videos", "users", column: "created_by_id"
+  add_foreign_key "videos", "video_categories", on_delete: :nullify
 end

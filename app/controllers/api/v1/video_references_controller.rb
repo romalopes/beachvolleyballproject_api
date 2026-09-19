@@ -20,8 +20,15 @@ module Api
 
       REFERENCE_ONLY = %i[id start_seconds end_seconds title description position].freeze
       REFERENCE_METHODS = %i[can_embed embed_url external_url].freeze
-      VIDEO_ONLY = %i[id title provider source_url thumbnail_url duration_seconds].freeze
+      VIDEO_ONLY = %i[id title description provider source_url thumbnail_url
+                      duration_seconds created_by_id].freeze
       VIDEO_METHODS = %i[provider_label].freeze
+      # Category/tags live on the Video, so the reference payload carries them
+      # for the form to preload (see README "Video categories & tags").
+      VIDEO_INCLUDE = {
+        video_category: { only: %i[id name slug description position] },
+        video_tags: { only: %i[id name] },
+      }.freeze
 
       def create
         video = resolve_video
@@ -92,25 +99,50 @@ module Api
       end
 
       # Reuse-or-create: an existing Video with the same normalized provider
-      # identity is reused so the same clip is never duplicated.
+      # identity is reused so the same clip is never duplicated. When the
+      # client supplies a category/tags alongside the URL they are applied to
+      # that Video — they are Video metadata, not per-reference overrides.
       def resolve_video
         if (video_id = params.dig(:video_reference, :video_id)).present?
-          return Video.find_by(id: video_id)
+          video = Video.find_by(id: video_id)
+          apply_video_metadata(video) if video
+          return video
         end
 
         video_params = params.dig(:video_reference, :video) || {}
         return nil if video_params[:source_url].blank?
 
-        Video.find_or_create_from_url!(
+        video = Video.find_or_create_from_url!(
           video_params[:source_url],
           video_params.permit(:title, :description).to_h,
         )
+        apply_video_metadata(video) if video
+        video
+      end
+
+      # Categories/tags are organisational metadata (who curated this clip into
+      # which shelf), so content creators may set them; the Video's own
+      # title/description/URL stay owner-protected via VideosController#update.
+      def apply_video_metadata(video)
+        video_params = params.dig(:video_reference, :video) || {}
+        return unless video_params.is_a?(ActionController::Parameters)
+        return unless video_params.key?(:video_category_id) || video_params.key?(:video_tag_ids)
+
+        if video_params.key?(:video_category_id)
+          video.video_category_id = video_params[:video_category_id].presence
+        end
+        if video_params.key?(:video_tag_ids)
+          video.video_tags = VideoTag.where(id: Array(video_params[:video_tag_ids]).map(&:to_i))
+        end
+        video.save
       end
 
       def reference_params
         params.require(:video_reference)
               .permit(:start_seconds, :end_seconds, :title, :description, :position,
-                      :video_id, video: %i[source_url title description])
+                      :video_id,
+                      video: [:source_url, :title, :description, :video_category_id,
+                              { video_tag_ids: [] }])
               .except(:video_id, :video)
       end
 
@@ -119,7 +151,8 @@ module Api
                status: status,
                only: REFERENCE_ONLY,
                methods: REFERENCE_METHODS,
-               include: { video: { only: VIDEO_ONLY, methods: VIDEO_METHODS } }
+               include: { video: { only: VIDEO_ONLY, methods: VIDEO_METHODS,
+                                   include: VIDEO_INCLUDE } }
       end
     end
   end

@@ -199,3 +199,16 @@ drills_data.each do |drill_data|
 end
 
 puts "Seeded #{Drill.count} drills with skill associations"
+
+# Video Categories
+VideoCategory.find_or_create_by!(name: "Technique") { |c| c.position = 0 }
+VideoCategory.find_or_create_by!(name: "Drills") { |c| c.position = 1 }
+VideoCategory.find_or_create_by!(name: "Strategy") { |c| c.position = 2 }
+VideoCategory.find_or_create_by!(name: "Serve") { |c| c.position = 3 }
+VideoCategory.find_or_create_by!(name: "Reception") { |c| c.position = 4 }
+VideoCategory.find_or_create_by!(name: "Attack") { |c| c.position = 5 }
+VideoCategory.find_or_create_by!(name: "Block") { |c| c.position = 6 }
+VideoCategory.find_or_create_by!(name: "Defense") { |c| c.position = 7 }
+VideoCategory.find_or_create_by!(name: "Match Analysis") { |c| c.position = 8 }
+VideoCategory.find_or_create_by!(name: "Coaching") { |c| c.position = 9 }
+puts "Seeded #{VideoCategory.count} video categories"

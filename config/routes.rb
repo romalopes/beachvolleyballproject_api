@@ -64,7 +64,19 @@ Rails.application.routes.draw do
         resources :video_references, only: %i[create update destroy]
       end
       resources :drill_skills
-      resources :videos, only: [ :index, :create ]
+      resources :video_categories, only: [:index, :show]
+      namespace :admin do
+        # index is used by the SPA settings pages (usage counts per category).
+        resources :video_categories, only: [:index, :create, :update, :destroy]
+      end
+
+      resources :video_tags, only: [:index, :show]
+      namespace :admin do
+        # index is used by the SPA settings pages (usage counts per tag).
+        resources :video_tags, only: [:index, :create, :update, :destroy]
+      end
+
+      resources :videos, only: [:index, :create, :show, :update, :destroy]
       resources :training_sessions
 
       # Admin role management
