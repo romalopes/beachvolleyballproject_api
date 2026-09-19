@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_17_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_19_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -85,10 +85,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_000003) do
     t.index ["created_by_id"], name: "index_drills_on_created_by_id"
     t.index ["slug"], name: "index_drills_on_slug", unique: true
     t.index ["training_stage"], name: "index_drills_on_training_stage"
-    t.check_constraint "difficulty_level::text = ANY (ARRAY['beginner'::character varying::text, 'intermediate'::character varying::text, 'advanced'::character varying::text])", name: "drills_difficulty_level_check"
+    t.check_constraint "difficulty_level::text = ANY (ARRAY['beginner'::character varying, 'intermediate'::character varying, 'advanced'::character varying]::text[])", name: "drills_difficulty_level_check"
     t.check_constraint "ideal_num_players >= min_players AND ideal_num_players <= max_players", name: "drills_ideal_players_check"
     t.check_constraint "min_players <= max_players", name: "drills_player_range_check"
-    t.check_constraint "training_stage::text = ANY (ARRAY['warmup'::character varying::text, 'beginning'::character varying::text, 'middle'::character varying::text, 'end'::character varying::text])", name: "drills_training_stage_check"
+    t.check_constraint "training_stage::text = ANY (ARRAY['warmup'::character varying, 'beginning'::character varying, 'middle'::character varying, 'end'::character varying]::text[])", name: "drills_training_stage_check"
   end
 
   create_table "log_objects", force: :cascade do |t|
@@ -255,6 +255,43 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_000003) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  create_table "video_references", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.integer "end_seconds"
+    t.integer "position"
+    t.bigint "referenced_id", null: false
+    t.string "referenced_type", null: false
+    t.integer "start_seconds"
+    t.string "title"
+    t.datetime "updated_at", null: false
+    t.bigint "video_id", null: false
+    t.index ["referenced_type", "referenced_id", "position"], name: "index_video_references_on_referenced_and_position"
+    t.index ["referenced_type", "referenced_id"], name: "index_video_references_on_referenced"
+    t.index ["video_id"], name: "index_video_references_on_video_id"
+    t.check_constraint "end_seconds IS NULL OR end_seconds >= 0", name: "video_references_end_seconds_non_negative"
+    t.check_constraint "end_seconds IS NULL OR start_seconds IS NULL OR end_seconds > start_seconds", name: "video_references_end_after_start"
+    t.check_constraint "start_seconds IS NULL OR start_seconds >= 0", name: "video_references_start_seconds_non_negative"
+  end
+
+  create_table "videos", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.text "description"
+    t.integer "duration_seconds"
+    t.string "provider", null: false
+    t.string "provider_video_id"
+    t.string "source_url"
+    t.string "storage_key"
+    t.string "thumbnail_url"
+    t.string "title"
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_videos_on_created_by_id"
+    t.index ["provider", "provider_video_id"], name: "index_videos_on_provider_and_provider_video_id", unique: true, where: "(provider_video_id IS NOT NULL)"
+    t.index ["provider"], name: "index_videos_on_provider"
+    t.index ["provider_video_id"], name: "index_videos_on_provider_video_id"
+  end
+
   add_foreign_key "account_addresses", "accounts"
   add_foreign_key "accounts", "users"
   add_foreign_key "admin_activities", "users"
@@ -278,4 +315,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_000003) do
   add_foreign_key "training_sessions", "users", column: "created_by_id"
   add_foreign_key "user_roles", "roles"
   add_foreign_key "user_roles", "users"
+  add_foreign_key "video_references", "videos"
+  add_foreign_key "videos", "users", column: "created_by_id"
 end

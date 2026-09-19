@@ -49,8 +49,15 @@ Rails.application.routes.draw do
       put "passwords/:token", to: "passwords#update"
 
       resources :categories
-      resources :skills
-      resources :drills
+      resources :skills do
+        # Videos attached to a Skill; the reference target comes from the
+        # nested URL. See VideoReferencesController.
+        resources :video_references, only: %i[create update destroy]
+      end
+      resources :drills do
+        # Videos attached to a Drill; same contract as for skills.
+        resources :video_references, only: %i[create update destroy]
+      end
       resources :drill_skills
       resources :media_assets
       resources :training_sessions

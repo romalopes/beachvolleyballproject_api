@@ -20,4 +20,10 @@ ActiveSupport::Inflector.inflections(:en) do |inflect|
   # inflector singularizes "focuses" to "focuse", which breaks association
   # reflection (e.g. TrainingSession#training_focuses, inverse_of lookups).
   inflect.irregular "focus", "focuses"
+
+  # Brand casing for the video providers. Without these rules Zeitwerk inflects
+  # youtube.rb -> Youtube / tiktok.rb -> Tiktok, which never matches the
+  # VideoProviders::YouTube / ::TikTok class names.
+  inflect.acronym "YouTube"
+  inflect.acronym "TikTok"
 end

@@ -7,6 +7,8 @@ class Skill < ApplicationRecord
   has_many :drill_skills, dependent: :destroy
   has_many :drills, through: :drill_skills
   has_many :media_assets, dependent: :nullify
+  has_many :video_references, as: :referenced, dependent: :destroy
+  has_many :videos, through: :video_references
 
   validates :title, presence: true
 

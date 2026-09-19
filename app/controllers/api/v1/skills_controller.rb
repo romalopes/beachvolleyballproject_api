@@ -11,7 +11,14 @@ module Api
       end
 
       def show
-        render json: @skill, include: :category
+        render json: @skill, include: {
+          category: { only: [ :id, :name, :slug ] },
+          video_references: {
+            only: VideoReferencesController::REFERENCE_ONLY,
+            methods: VideoReferencesController::REFERENCE_METHODS,
+            include: { video: { only: VideoReferencesController::VIDEO_ONLY, methods: VideoReferencesController::VIDEO_METHODS } }
+          }
+        }
       end
 
       def create
@@ -40,7 +47,10 @@ module Api
       private
 
       def set_skill
-        @skill = Skill.find_by(slug: params[:id]) || Skill.find_by(id: params[:id])
+        @skill = Skill.includes({ video_references: :video }, :category)
+                      .find_by(slug: params[:id]) ||
+                 Skill.includes({ video_references: :video }, :category)
+                      .find_by(id: params[:id])
         authorize_content_owner!(@skill.created_by) unless action_name == "show"
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Skill not found" }, status: :not_found

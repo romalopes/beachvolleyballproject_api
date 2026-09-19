@@ -16,6 +16,11 @@ module Api
         render json: @drill, include: {
           skills: { only: [ :id, :title, :description, :slug ], include: { category: { only: [ :id, :name, :slug ] } } },
           media_assets: { only: [ :id, :title, :slug, :asset_type, :video_url, :thumbnail_url ] },
+          video_references: {
+            only: VideoReferencesController::REFERENCE_ONLY,
+            methods: VideoReferencesController::REFERENCE_METHODS,
+            include: { video: { only: VideoReferencesController::VIDEO_ONLY, methods: VideoReferencesController::VIDEO_METHODS } }
+          },
           training_sessions: { only: [ :id, :title, :starts_at, :ends_at, :location, :status ] }
         }
       end
@@ -46,9 +51,9 @@ module Api
       private
 
       def set_drill
-        @drill = Drill.includes(:media_assets, :training_sessions, skills: :category)
+        @drill = Drill.includes(:media_assets, :training_sessions, { video_references: :video }, skills: :category)
                       .find_by(slug: params[:id]) ||
-                Drill.includes(:media_assets, :training_sessions, skills: :category)
+                Drill.includes(:media_assets, :training_sessions, { video_references: :video }, skills: :category)
                      .find_by(id: params[:id])
         authorize_content_owner!(@drill.created_by) unless action_name == "show"
       rescue ActiveRecord::RecordNotFound
