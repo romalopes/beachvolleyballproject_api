@@ -62,11 +62,22 @@ module Api
             Drill.find_by(id: params[:drill_id])
           elsif params[:skill_id]
             Skill.find_by(id: params[:skill_id])
+          elsif params[:training_session_id]
+            TrainingSession.find_by(id: params[:training_session_id])
           end
         return if @referenceable
 
-        render json: { error: "#{params[:drill_id] ? "Drill" : "Skill"} not found" },
-               status: :not_found
+        render json: { error: "#{referenceable_label} not found" }, status: :not_found
+      end
+
+      def referenceable_label
+        if params[:drill_id]
+          "Drill"
+        elsif params[:skill_id]
+          "Skill"
+        else
+          "Training Session"
+        end
       end
 
       def set_video_reference

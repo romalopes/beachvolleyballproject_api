@@ -232,4 +232,46 @@ class Api::V1::VideoReferencesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "https://cdn.example.com/clip.mp4", reference["external_url"]
     assert_equal "external", reference.dig("video", "provider")
   end
+
+  # --- Training sessions ---
+
+  test "coach can add a video reference to a training session" do
+    sign_in_as(@coach)
+    assert_difference [ "Video.count", "VideoReference.count" ], 1 do
+      post "/api/v1/training_sessions/#{training_sessions(:one).id}/video_references",
+           params: { video_reference: { video: { source_url: @youtube_url }, start_seconds: 0 } },
+           as: :json
+    end
+    assert_response :created
+    assert_equal true, JSON.parse(response.body)["can_embed"]
+  end
+
+  test "coach can attach an existing video to a training session by id" do
+    video = Video.create!(source_url: @youtube_url, created_by: @coach)
+    sign_in_as(@coach)
+    assert_no_difference "Video.count" do
+      post "/api/v1/training_sessions/#{training_sessions(:one).id}/video_references",
+           params: { video_reference: { video_id: video.id } }, as: :json
+    end
+    assert_response :created
+  end
+
+  test "training session show exposes video_references" do
+    VideoReference.create!(video: Video.create!(source_url: @youtube_url),
+                           referenced: training_sessions(:one), title: "Session recording")
+    sign_in_as(@admin)
+    get "/api/v1/training_sessions/#{training_sessions(:one).id}", as: :json
+    assert_response :success
+
+    reference = JSON.parse(response.body)["video_references"].first
+    assert_equal "Session recording", reference["title"]
+    assert_equal "youtube", reference.dig("video", "provider")
+  end
+
+  test "nonexistent training session returns not found" do
+    sign_in_as(@coach)
+    post "/api/v1/training_sessions/0/video_references",
+         params: { video_reference: { video: { source_url: @youtube_url } } }, as: :json
+    assert_response :not_found
+  end
 end

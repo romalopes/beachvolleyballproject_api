@@ -58,6 +58,11 @@ Rails.application.routes.draw do
         # Videos attached to a Drill; same contract as for skills.
         resources :video_references, only: %i[create update destroy]
       end
+      resources :training_sessions do
+        # Videos attached to a TrainingSession (e.g. a session recording);
+        # same contract as for drills and skills.
+        resources :video_references, only: %i[create update destroy]
+      end
       resources :drill_skills
       resources :videos, only: [ :index ]
       resources :training_sessions

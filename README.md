@@ -78,12 +78,14 @@ need no change.
 ## API
 
 * `GET /api/v1/videos` — public video library with `reference_count`.
-* `POST/PATCH/DELETE /api/v1/drills/:drill_id/video_references(/:id)` and
-  `/api/v1/skills/:skill_id/video_references(/:id)` — the reference target
-  comes from the URL. Create accepts `video: { source_url, … }` (reusing an
-  existing matching Video) or `video_id`. Update touches only the reference.
-* Drill/Skill `show` embed `video_references` (with `video`) — the frontend
-  renders the embed or the fallback from `can_embed`/`embed_url`.
+* `POST/PATCH/DELETE /api/v1/drills/:drill_id/video_references(/:id)`,
+  `/api/v1/skills/:skill_id/video_references(/:id)` and
+  `/api/v1/training_sessions/:training_session_id/video_references(/:id)` —
+  the reference target comes from the URL. Create accepts
+  `video: { source_url, … }` (reusing an existing matching Video) or
+  `video_id`. Update touches only the reference.
+* Drill/Skill/TrainingSession `show` embed `video_references` (with `video`) —
+  the frontend renders the embed or the fallback from `can_embed`/`embed_url`.
 
 Authorization: create requires coach/admin (`require_content_creator!`);
 update/destroy require the video's creator or an admin

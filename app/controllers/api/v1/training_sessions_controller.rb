@@ -98,7 +98,8 @@ module Api
       def set_training_session
         session = TrainingSession
                     .includes(:created_by, training_focuses: { skill: :category },
-                              training_session_drills: { drill: { skills: :category } })
+                              training_session_drills: { drill: { skills: :category } },
+                              video_references: :video)
                     .find_by(id: params[:id])
         # A draft the user may not see is reported as not found rather than
         # forbidden, so the API never reveals that a draft exists.
@@ -135,6 +136,11 @@ module Api
                 }
               }
             }
+          },
+          video_references: {
+            only: VideoReferencesController::REFERENCE_ONLY,
+            methods: VideoReferencesController::REFERENCE_METHODS,
+            include: { video: { only: VideoReferencesController::VIDEO_ONLY, methods: VideoReferencesController::VIDEO_METHODS } }
           }
         }
       end
