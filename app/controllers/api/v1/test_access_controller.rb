@@ -33,6 +33,12 @@ module Api
       end
 
       def show
+        # Gate disabled (no TEST_ACCESS_PASSWORD configured): everything is
+        # open, so verification reports success so the SPA stays unlocked.
+        unless TestAccessToken.enabled?
+          return render json: { authenticated: true, disabled: true }
+        end
+
         if TestAccessToken.valid?(request.headers[TestAccess::TEST_ACCESS_HEADER])
           render json: { authenticated: true }
         else

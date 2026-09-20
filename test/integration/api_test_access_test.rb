@@ -108,6 +108,13 @@ class ApiTestAccessTest < ActionDispatch::IntegrationTest
     assert_equal true, body["authenticated"]
     assert_equal true, body["disabled"]
     assert_nil body["token"]
+
+    # Verification also reports success so a deployed SPA stays unlocked.
+    get "/api/v1/test_access", as: :json
+    assert_response :ok
+    body = JSON.parse(response.body)
+    assert_equal true, body["authenticated"]
+    assert_equal true, body["disabled"]
   end
 
   test "test-access create is open even when the gate is enabled" do
