@@ -45,6 +45,11 @@ Rails.application.routes.draw do
       get "me", to: "me#show"
       get "health", to: "health#index"
       get "health/detailed", to: "health#detailed"
+
+      # Private test-access gate (see TestAccessToken): password -> signed
+      # token; token verification for the SPA on boot.
+      post "test_access", to: "test_access#create"
+      get "test_access", to: "test_access#show"
       post "passwords", to: "passwords#create"
       put "passwords/:token", to: "passwords#update"
 

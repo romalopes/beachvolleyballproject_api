@@ -8,6 +8,7 @@ module Api
     #                               info plus record counts for the domain
     #                               resources the SPA consumes.
     class HealthController < ApplicationController
+      allow_test_access only: :index
       before_action :authorize_admin!, only: :detailed
 
       def index

@@ -24,6 +24,46 @@ Things you may want to cover:
 * ...
 # beachvolleyballproject_api
 
+## Private test-access gate
+
+The application is in a private testing phase. While the gate is enabled, the
+browser must first exchange a password for a signed, expiring token and send
+that token on every API request (header `X-Test-Access-Token`).
+
+* **Password**: server-side only, from the `TEST_ACCESS_PASSWORD` environment
+  variable (Render env var in production). It is **never** in the React source
+  and **never** committed. Leave it blank locally to disable the gate.
+* **Token**: signed with Rails' `message_verifier` (`TestAccessToken`), expires
+  after `TEST_ACCESS_TOKEN_EXPIRATION` (default 7 days). It is not a User
+  credential and does not touch the existing User/Session authentication.
+* **Endpoints** (open even when the gate is on):
+  * `POST /api/v1/test_access` `{ "password": "…" }` →
+    `{ authenticated: true, token, expires_at }` or 401
+    `{ authenticated: false, error: "Invalid password" }` (rate-limited).
+  * `GET /api/v1/test_access` — verifies the header token.
+  * `GET /api/v1/health` — stays public for uptime probes.
+* **Rotating the password**: change `TEST_ACCESS_PASSWORD` on Render and
+  restart. Old tokens keep working until they expire; run
+  `TestAccessToken.generate` in a console to mint new ones if you need to
+  invalidate everything sooner (or change the `PURPOSE` constant once, which
+  invalidates all issued tokens at once).
+* **Removing the feature later**: delete `app/services/test_access_token.rb`,
+  `app/controllers/concerns/test_access.rb`,
+  `app/controllers/api/v1/test_access_controller.rb`, the two `test_access`
+  routes, the `include TestAccess` line in
+  `app/controllers/api/v1/application_controller.rb`, and the matching React
+  gate (`src/auth/TestAccessContext.tsx`, `src/pages/TestAccess.tsx`). The
+  User/Session authentication system is unaffected throughout.
+
+Local setup:
+
+```bash
+cp .env.example .env.development
+# edit .env.development: TEST_ACCESS_PASSWORD=<choose a secret>
+```
+
+Use a **different** password than the Wine Words API in production.
+
 # Videos & VideoReferences
 
 > **A Video represents the actual media resource. A VideoReference represents

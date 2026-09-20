@@ -8,8 +8,13 @@ module Api
       # POSTs. JSON POSTs are protected cross-origin by CORS anyway.
       skip_forgery_protection
 
-      # Public API — no authentication required to browse data.
+      # Public API — no User authentication required to browse data.
       skip_before_action :require_authentication, raise: false
+
+      # Private test-access gate: while TEST_ACCESS_PASSWORD is configured,
+      # every API request must carry a valid signed test-access token (see
+      # TestAccess / TestAccessToken). Independent of User authentication.
+      include TestAccess
 
       # Always populate Current.session from the cookie so authorization helpers
       # (admin?/coach?/owner checks) work even when authentication is optional.
