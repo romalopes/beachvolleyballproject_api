@@ -5,6 +5,18 @@ module Api
 
       def create
         if (user = User.authenticate_by(params.permit(:email_address, :password)))
+          # Block login when email verification is required but pending.
+          if user.email_verification_pending?
+            raw_token = EmailVerificationService.send_verification(user)
+            render json: {
+              status: "pending_verification",
+              email: user.email_address,
+              token: raw_token,
+              message: "Please verify your email address before logging in."
+            }, status: :accepted
+            return
+          end
+
           if api_grant?
             session = start_api_session_for(user)
             Current.session = session

@@ -1,0 +1,17 @@
+<%# @user, @token, @expires_in, @verify_url are set by the mailer %>
+<p>Hi <%= @user.name %>,</p>
+
+<p>Thanks for joining Beach Volleyball Project! Please verify your email address by clicking the link below:</p>
+
+<p>
+  <a href="<%= @verify_url %>">Verify my email address</a>
+</p>
+
+<p>This link expires in <%= @expires_in.in_hours == 1 ? "1 hour" : "#{@expires_in.in_hours} hours" %>.</p>
+
+<%# The raw token is what makes the link work — the digest is what's stored on the user.
+    Never include the raw token in plain text outside the link itself. %>
+
+<p>If you didn't create an account, you can safely ignore this email.</p>
+
+<p>— Beach Volleyball Project Team</p>

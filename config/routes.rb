@@ -53,6 +53,12 @@ Rails.application.routes.draw do
       post "passwords", to: "passwords#create"
       put "passwords/:token", to: "passwords#update"
 
+      # Email verification flow (§3). Available only when EmailVerification.require?
+      # is true at runtime — the controller/service already guards this, but the
+      # routes are always present so the SPA can call them unconditionally.
+      get "email-verifications/:token", to: "email_verifications#show"
+      post "email-verifications/resend", to: "email_verifications_resend#create"
+
       resources :categories
       resources :skills do
         # Videos attached to a Skill; the reference target comes from the

@@ -55,10 +55,58 @@ class User < ApplicationRecord
     has_role?(:admin)
   end
 
-  # Users who may create/manage shared content (skills, drills, media and
+    # Users who may create/manage shared content (skills, drills, media and
   # training sessions). Visibility is separate from management: everyone can
   # browse the shared schedule, but only these roles may mutate it.
   def content_manager?
     coach? || curator? || admin?
+  end
+
+  # --- Email verification state ----------------------------------------------
+  # These are pure state predicates. The workflow (token generation, delivery,
+  # validation) lives in EmailVerificationService to keep the verification
+  # logic separate from general authentication.
+
+  # True once the user has clicked a valid verification link.
+  def email_verified?
+    email_verified_at.present?
+  end
+
+  # True while verification is required by config and the user has not yet
+  # confirmed their address. Such users may not authenticate even though
+  # their account exists.
+  def email_verification_pending?
+    EmailVerification.require? && !email_verified?
+  end
+
+  # Generate (and persist) a fresh verification token for this user, return the
+  # *raw* token so the caller (the mailer) can email it. The digest of the token
+  # is what is stored — the raw value never lands in the database or logs.
+  def generate_email_verification_token!
+    raw_token = SecureRandom.urlsafe_base64(32)
+    self.email_verification_token_digest = Digest::SHA256.hexdigest(raw_token)
+    self.email_verification_sent_at = Time.current
+    save!
+    raw_token
+  end
+
+  # Consume a verification token: verify the user if the digest matches and the
+  # token has not expired. Returns the user on success, nil otherwise. Clears
+  # the token so it is single-use.
+  def consume_email_verification_token(raw_token)
+    return nil if email_verification_token_digest.blank?
+
+    threshold = Time.current - EmailVerification.expiration
+    return nil if email_verification_sent_at && email_verification_sent_at < threshold
+
+    expected = Digest::SHA256.hexdigest(raw_token)
+    return nil unless ActiveSupport::SecurityUtils.secure_compare(expected, email_verification_token_digest)
+
+    update!(
+      email_verified_at: Time.current,
+      email_verification_token_digest: nil,
+      email_verification_sent_at: nil
+    )
+    self
   end
 end

@@ -50,4 +50,8 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Email verification gating is ON in tests so the controller tests can
+  # exercise the verification flow (§3.2) and the session/registration gating.
+  ENV["REQUIRE_EMAIL_VERIFICATION"] = "true"
 end

@@ -2,7 +2,7 @@ require "test_helper"
 
 class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
   test "registers a new user with a cookie session by default" do
-    assert_difference(["User.count", "Session.count"]) do
+    assert_difference("User.count") do
       post "/api/v1/registrations", params: { user: {
         name: "New Player",
         email_address: "newbie@example.com",
@@ -10,11 +10,15 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
         password_confirmation: "password123"
       } }
     end
-    assert_response :created
+    # With email verification required (the default in test env), standard
+    # registration returns 202 Accepted with pending_verification status and
+    # the raw verification token so the SPA can forward it to the verify route.
+    assert_response :accepted
     body = JSON.parse(response.body)
     assert_equal "newbie@example.com", body["email_address"]
     assert_includes body["roles"], "player"
-    assert_nil body["token"]
+    assert_not_nil body["token"], "raw verification token should be returned"
+    assert_equal "pending_verification", body["status"]
   end
 
   test "registers a new user and returns an API token when api=true" do

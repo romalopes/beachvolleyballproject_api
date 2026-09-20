@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_21_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -202,7 +202,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000002) do
     t.index ["starts_at"], name: "index_training_sessions_on_starts_at"
     t.index ["status"], name: "index_training_sessions_on_status"
     t.check_constraint "ends_at > starts_at", name: "training_sessions_ends_at_after_starts_at"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'scheduled'::character varying, 'cancelled'::character varying, 'completed'::character varying]::text[])", name: "training_sessions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'scheduled'::character varying::text, 'cancelled'::character varying::text, 'completed'::character varying::text])", name: "training_sessions_status"
   end
 
   create_table "user_roles", force: :cascade do |t|
@@ -218,10 +218,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000002) do
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email_address", null: false
+    t.datetime "email_verification_sent_at"
+    t.string "email_verification_token_digest"
+    t.datetime "email_verified_at"
     t.string "name"
     t.string "password_digest", null: false
     t.datetime "updated_at", null: false
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
+    t.index ["email_verification_token_digest"], name: "index_users_on_email_verification_token_digest"
   end
 
   create_table "video_categories", force: :cascade do |t|
