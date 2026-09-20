@@ -7,6 +7,7 @@ module Api
     module Admin
       class VideoCategoriesController < ApplicationController
         include RequestLogging
+        include Reorderable
         before_action :authorize_admin!
 
         def index
@@ -46,10 +47,21 @@ module Api
           render json: { error: "Video category not found" }, status: :not_found
         end
 
+        # Drag-and-drop ordering for the settings page: the client sends the
+        # complete ordered id list and every position becomes its index.
+        def reorder
+          return unless reorder_records(VideoCategory)
+
+          render json: VideoCategory.ordered.includes(:videos), methods: [:video_count]
+        end
+
         private
 
         def category_params
-          params.require(:video_category).permit(:name, :description, :position)
+          # `position` is intentionally excluded: order is managed by
+          # drag-and-drop (see #reorder), which keeps positions dense and
+          # duplicate-free. New categories are appended by the model.
+          params.require(:video_category).permit(:name, :description)
         end
       end
     end

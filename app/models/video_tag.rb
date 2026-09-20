@@ -9,8 +9,14 @@ class VideoTag < ApplicationRecord
   validates :name, presence: true,
                    uniqueness: { case_sensitive: false,
                                  conditions: -> { where.not(name: nil) } }
+  validates :position, numericality: { greater_than_or_equal_to: 0 }, allow_nil: false
 
   before_validation :normalize_name
+  # Positions are app-managed (drag-and-drop in the settings page): a new tag is
+  # appended after the last one rather than trusting a caller-supplied number.
+  before_validation :assign_next_position, on: :create
+
+  scope :ordered, -> { order(position: :asc, name: :asc) }
 
   def display_name
     name.titleize
@@ -30,5 +36,10 @@ class VideoTag < ApplicationRecord
   def normalize_name
     return if name.blank?
     self.name = name.strip.downcase
+  end
+
+  def assign_next_position
+    return if position.present? && position > 0
+    self.position = (self.class.maximum(:position) || -1) + 1
   end
 end

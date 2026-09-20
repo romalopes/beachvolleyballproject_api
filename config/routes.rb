@@ -72,13 +72,19 @@ Rails.application.routes.draw do
       resources :video_categories, only: [:index, :show]
       namespace :admin do
         # index is used by the SPA settings pages (usage counts per category).
-        resources :video_categories, only: [:index, :create, :update, :destroy]
+        # reorder persists the drag-and-drop order.
+        resources :video_categories, only: [:index, :create, :update, :destroy] do
+          collection { patch :reorder }
+        end
       end
 
       resources :video_tags, only: [:index, :show]
       namespace :admin do
         # index is used by the SPA settings pages (usage counts per tag).
-        resources :video_tags, only: [:index, :create, :update, :destroy]
+        # reorder persists the drag-and-drop order.
+        resources :video_tags, only: [:index, :create, :update, :destroy] do
+          collection { patch :reorder }
+        end
       end
 
       resources :videos, only: [:index, :create, :show, :update, :destroy]

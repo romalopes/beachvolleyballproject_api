@@ -11,7 +11,7 @@ module Api
         # returned — the admin management page and the reference form's picker
         # both need to offer unused tags. video_count comes from the preloaded
         # taggings, so this stays a single extra query.
-        scope = VideoTag.includes(:video_taggings).order(:name)
+        scope = VideoTag.includes(:video_taggings).ordered
         scope = scope.where("LOWER(video_tags.name) LIKE ?", "%#{search.downcase}%") if search.present?
         render json: scope, methods: [:video_count]
       end
