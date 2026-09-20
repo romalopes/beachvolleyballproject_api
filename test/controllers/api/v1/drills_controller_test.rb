@@ -27,7 +27,23 @@ class Api::V1::DrillsControllerTest < ActionDispatch::IntegrationTest
     drill = body.find { |d| d["slug"] == "mystring-one" }
     assert_not_nil drill
     assert_not drill.key?("definition")
+    # `has_definition` stands in for the omitted column.
+    assert_equal false, drill["has_definition"]
     assert drill.key?("skills")
+  end
+
+  test "index flags drills that carry a visual definition" do
+    visual = Drill.create!(title: "Visual Drill", definition: visual_drill_definition)
+
+    get "/api/v1/drills"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    drill = body.find { |d| d["id"] == visual.id }
+    assert_not_nil drill
+    assert_equal true, drill["has_definition"]
+    # The heavy definition blob stays out of the list payload.
+    assert_not drill.key?("definition")
   end
 
   test "show is public and includes skills, video_references and training_sessions" do

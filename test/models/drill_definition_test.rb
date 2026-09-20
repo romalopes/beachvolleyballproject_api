@@ -79,6 +79,17 @@ class DrillDefinitionTest < ActiveSupport::TestCase
     assert drill.valid?, "Expected valid but got errors: #{drill.errors.full_messages.join(', ')}"
   end
 
+  # --- has_definition (list-payload flag) ---
+
+  test "has_definition is false for the empty default" do
+    assert_equal false, Drill.new(valid_attributes).has_definition
+  end
+
+  test "has_definition is true for a valid visual definition" do
+    drill = Drill.new(valid_attributes(definition: visual_drill_definition))
+    assert_equal true, drill.has_definition
+  end
+
   test "rejects invalid orientation" do
     defn = minimal_definition.merge("view" => { "orientation" => "sideways" })
     drill = Drill.new(valid_attributes(definition: defn))

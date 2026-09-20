@@ -1,0 +1,651 @@
+# pg_dump "$DATABASE_URL" \
+# --format=custom \
+# --file=backup.dump \
+# zip -r backup.zip backup.dump encryption_key: "$BACKUP_ENCRYPTION_KEY" \
+# rm backup.dump
+name: Database Backup
+
+on:
+  schedule:
+    # Every day at 02:00 UTC
+    # 12:00 midday Sydney during AEST
+    - cron: "0 2 * * *"
+
+  workflow_dispatch:
+    inputs:
+      restore_test:
+        description: "Run restore test after creating backups"
+        required: false
+        default: false
+        type: boolean
+
+      retention_days:
+        description: "Number of days to retain backups"
+        required: false
+        default: "30"
+        type: string
+
+env:
+  RETENTION_DAYS: ${{ inputs.retention_days || '30' }}
+
+jobs:
+  backup:
+    name: Backup PostgreSQL databases
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      # ------------------------------------------------------------
+      # 1. Checkout
+      # ------------------------------------------------------------
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------
+      # 2. Install PostgreSQL client
+      # ------------------------------------------------------------
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      # ------------------------------------------------------------
+      # 3. Install AWS CLI
+      #
+      # Cloudflare R2 exposes an S3-compatible API.
+      # ------------------------------------------------------------
+
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get install -y awscli
+
+      # ------------------------------------------------------------
+      # 4. Create backup directory
+      # ------------------------------------------------------------
+
+      - name: Prepare backup directory
+        run: |
+          mkdir -p backups/neon
+          mkdir -p backups/supabase
+
+      # ------------------------------------------------------------
+      # 5. Generate timestamp
+      # ------------------------------------------------------------
+
+      - name: Generate backup timestamp
+        id: timestamp
+        run: |
+          echo "timestamp=$(date -u '+%Y-%m-%d_%H-%M-%S')" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------
+      # 6. Backup Neon
+      # ------------------------------------------------------------
+
+      - name: Backup Neon database
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+
+          TIMESTAMP="${{ steps.timestamp.outputs.timestamp }}"
+
+          RAW_FILE="backups/neon/neon_${TIMESTAMP}.dump"
+          COMPRESSED_FILE="${RAW_FILE}.gz"
+          ENCRYPTED_FILE="${COMPRESSED_FILE}.enc"
+          CHECKSUM_FILE="${ENCRYPTED_FILE}.sha256"
+
+          echo "Creating Neon PostgreSQL dump..."
+
+          pg_dump \
+            "$DATABASE_URL" \
+            --format=custom \
+            --no-owner \
+            --no-acl \
+            --file="$RAW_FILE"
+
+          echo "Compressing backup..."
+
+          gzip "$RAW_FILE"
+
+          echo "Encrypting backup..."
+
+          openssl enc \
+            -aes-256-cbc \
+            -pbkdf2 \
+            -iter 200000 \
+            -salt \
+            -in "$COMPRESSED_FILE" \
+            -out "$ENCRYPTED_FILE" \
+            -pass env:BACKUP_ENCRYPTION_KEY
+
+          rm "$COMPRESSED_FILE"
+
+          echo "Creating checksum..."
+
+          sha256sum "$ENCRYPTED_FILE" > "$CHECKSUM_FILE"
+
+          echo "Neon backup created:"
+          ls -lh backups/neon/
+
+      # ------------------------------------------------------------
+      # 7. Backup Supabase
+      # ------------------------------------------------------------
+
+      - name: Backup Supabase database
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+
+          TIMESTAMP="${{ steps.timestamp.outputs.timestamp }}"
+
+          RAW_FILE="backups/supabase/supabase_${TIMESTAMP}.dump"
+          COMPRESSED_FILE="${RAW_FILE}.gz"
+          ENCRYPTED_FILE="${COMPRESSED_FILE}.enc"
+          CHECKSUM_FILE="${ENCRYPTED_FILE}.sha256"
+
+          echo "Creating Supabase PostgreSQL dump..."
+
+          pg_dump \
+            "$DATABASE_URL" \
+            --format=custom \
+            --no-owner \
+            --no-acl \
+            --file="$RAW_FILE"
+
+          echo "Compressing backup..."
+
+          gzip "$RAW_FILE"
+
+          echo "Encrypting backup..."
+
+          openssl enc \
+            -aes-256-cbc \
+            -pbkdf2 \
+            -iter 200000 \
+            -salt \
+            -in "$COMPRESSED_FILE" \
+            -out "$ENCRYPTED_FILE" \
+            -pass env:BACKUP_ENCRYPTION_KEY
+
+          rm "$COMPRESSED_FILE"
+
+          echo "Creating checksum..."
+
+          sha256sum "$ENCRYPTED_FILE" > "$CHECKSUM_FILE"
+
+          echo "Supabase backup created:"
+          ls -lh backups/supabase/
+
+      # ------------------------------------------------------------
+      # 8. Configure Cloudflare R2
+      # ------------------------------------------------------------
+
+      - name: Configure Cloudflare R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+
+          echo "Cloudflare R2 configured."
+
+      # ------------------------------------------------------------
+      # 9. Upload Neon backup
+      # ------------------------------------------------------------
+
+      - name: Upload Neon backup to R2
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          TIMESTAMP="${{ steps.timestamp.outputs.timestamp }}"
+
+          aws s3 cp \
+            backups/neon/ \
+            "s3://${R2_BUCKET}/postgresql/neon/${TIMESTAMP}/" \
+            --recursive \
+            --endpoint-url "$R2_ENDPOINT"
+
+      # ------------------------------------------------------------
+      # 10. Upload Supabase backup
+      # ------------------------------------------------------------
+
+      - name: Upload Supabase backup to R2
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          TIMESTAMP="${{ steps.timestamp.outputs.timestamp }}"
+
+          aws s3 cp \
+            backups/supabase/ \
+            "s3://${R2_BUCKET}/postgresql/supabase/${TIMESTAMP}/" \
+            --recursive \
+            --endpoint-url "$R2_ENDPOINT"
+
+      # ------------------------------------------------------------
+      # 11. Verify uploaded files
+      # ------------------------------------------------------------
+
+      - name: Verify R2 upload
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          TIMESTAMP="${{ steps.timestamp.outputs.timestamp }}"
+
+          echo "Checking Neon backup..."
+
+          aws s3 ls \
+            "s3://${R2_BUCKET}/postgresql/neon/${TIMESTAMP}/" \
+            --endpoint-url "$R2_ENDPOINT"
+
+          echo "Checking Supabase backup..."
+
+          aws s3 ls \
+            "s3://${R2_BUCKET}/postgresql/supabase/${TIMESTAMP}/" \
+            --endpoint-url "$R2_ENDPOINT"
+
+      # ------------------------------------------------------------
+      # 12. Delete old backups
+      #
+      # R2 lifecycle rules are preferable for production.
+      # This provides an additional workflow-level retention mechanism.
+      # ------------------------------------------------------------
+
+      - name: Remove old Neon backups
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          CUTOFF=$(date -u -d "${RETENTION_DAYS} days ago" '+%Y-%m-%d')
+
+          echo "Removing Neon backups older than ${RETENTION_DAYS} days."
+
+          aws s3api list-objects-v2 \
+            --bucket "$R2_BUCKET" \
+            --prefix "postgresql/neon/" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --query "Contents[?LastModified<'${CUTOFF}T00:00:00Z'].Key" \
+            --output text |
+          while read -r KEY; do
+            if [ -n "$KEY" ] && [ "$KEY" != "None" ]; then
+              echo "Deleting $KEY"
+
+              aws s3 rm \
+                "s3://${R2_BUCKET}/${KEY}" \
+                --endpoint-url "$R2_ENDPOINT"
+            fi
+          done
+
+      - name: Remove old Supabase backups
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          CUTOFF=$(date -u -d "${RETENTION_DAYS} days ago" '+%Y-%m-%d')
+
+          echo "Removing Supabase backups older than ${RETENTION_DAYS} days."
+
+          aws s3api list-objects-v2 \
+            --bucket "$R2_BUCKET" \
+            --prefix "postgresql/supabase/" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --query "Contents[?LastModified<'${CUTOFF}T00:00:00Z'].Key" \
+            --output text |
+          while read -r KEY; do
+            if [ -n "$KEY" ] && [ "$KEY" != "None" ]; then
+              echo "Deleting $KEY"
+
+              aws s3 rm \
+                "s3://${R2_BUCKET}/${KEY}" \
+                --endpoint-url "$R2_ENDPOINT"
+            fi
+          done
+
+      # ------------------------------------------------------------
+      # 13. Summary
+      # ------------------------------------------------------------
+
+      - name: Backup summary
+        run: |
+          echo "## Database Backup Completed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Timestamp: ${{ steps.timestamp.outputs.timestamp }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Neon: backed up and encrypted" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Supabase: backed up and encrypted" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Destination: Cloudflare R2" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Retention: ${RETENTION_DAYS} days" >> "$GITHUB_STEP_SUMMARY"
+
+  # ==================================================================
+  # RESTORE TEST
+  # ==================================================================
+
+  restore_test:
+    name: Restore and validate backups
+    needs: backup
+
+    if: github.event_name == 'workflow_dispatch' && inputs.restore_test == true
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      # ------------------------------------------------------------
+      # 1. Install PostgreSQL
+      # ------------------------------------------------------------
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      # ------------------------------------------------------------
+      # 2. Install AWS CLI
+      # ------------------------------------------------------------
+
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get install -y awscli
+
+      # ------------------------------------------------------------
+      # 3. Configure R2
+      # ------------------------------------------------------------
+
+      - name: Configure Cloudflare R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+
+      # ------------------------------------------------------------
+      # 4. Download latest Neon backup
+      # ------------------------------------------------------------
+
+      - name: Download latest Neon backup
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p restore/neon
+
+          LATEST=$(aws s3api list-objects-v2 \
+            --bucket "$R2_BUCKET" \
+            --prefix "postgresql/neon/" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --query 'Contents | sort_by(@, &LastModified) | [-1].Key' \
+            --output text)
+
+          echo "Latest Neon backup: $LATEST"
+
+          aws s3 cp \
+            "s3://${R2_BUCKET}/${LATEST}" \
+            restore/neon/backup.enc \
+            --endpoint-url "$R2_ENDPOINT"
+
+      # ------------------------------------------------------------
+      # 5. Download latest Supabase backup
+      # ------------------------------------------------------------
+
+      - name: Download latest Supabase backup
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p restore/supabase
+
+          LATEST=$(aws s3api list-objects-v2 \
+            --bucket "$R2_BUCKET" \
+            --prefix "postgresql/supabase/" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --query 'Contents | sort_by(@, &LastModified) | [-1].Key' \
+            --output text)
+
+          echo "Latest Supabase backup: $LATEST"
+
+          aws s3 cp \
+            "s3://${R2_BUCKET}/${LATEST}" \
+            restore/supabase/backup.enc \
+            --endpoint-url "$R2_ENDPOINT"
+
+      # ------------------------------------------------------------
+      # 6. Decrypt Neon
+      # ------------------------------------------------------------
+
+      - name: Decrypt Neon backup
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+
+          openssl enc \
+            -d \
+            -aes-256-cbc \
+            -pbkdf2 \
+            -iter 200000 \
+            -in restore/neon/backup.enc \
+            -out restore/neon/backup.dump.gz \
+            -pass env:BACKUP_ENCRYPTION_KEY
+
+          gunzip restore/neon/backup.dump.gz
+
+      # ------------------------------------------------------------
+      # 7. Decrypt Supabase
+      # ------------------------------------------------------------
+
+      - name: Decrypt Supabase backup
+        env:
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+
+          openssl enc \
+            -d \
+            -aes-256-cbc \
+            -pbkdf2 \
+            -iter 200000 \
+            -in restore/supabase/backup.enc \
+            -out restore/supabase/backup.dump.gz \
+            -pass env:BACKUP_ENCRYPTION_KEY
+
+          gunzip restore/supabase/backup.dump.gz
+
+      # ------------------------------------------------------------
+      # 8. Validate dump files
+      #
+      # pg_restore --list does not modify a database.
+      # It verifies that the PostgreSQL dump is readable.
+      # ------------------------------------------------------------
+
+      - name: Validate Neon dump
+        run: |
+          set -euo pipefail
+
+          pg_restore \
+            --list \
+            restore/neon/backup.dump > /tmp/neon_restore_list.txt
+
+          echo "Neon backup is a valid PostgreSQL dump."
+
+      - name: Validate Supabase dump
+        run: |
+          set -euo pipefail
+
+          pg_restore \
+            --list \
+            restore/supabase/backup.dump > /tmp/supabase_restore_list.txt
+
+          echo "Supabase backup is a valid PostgreSQL dump."
+
+      # ------------------------------------------------------------
+      # 9. Restore Neon into TEST database
+      #
+      # IMPORTANT:
+      # NEON_RESTORE_TEST_DATABASE_URL must point to a disposable
+      # non-production database.
+      # ------------------------------------------------------------
+
+      - name: Restore Neon into test database
+        env:
+          RESTORE_DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          echo "Restoring Neon backup into test database..."
+
+          pg_restore \
+            --clean \
+            --if-exists \
+            --no-owner \
+            --no-acl \
+            --dbname="$RESTORE_DATABASE_URL" \
+            restore/neon/backup.dump
+
+          echo "Neon restore completed."
+
+      # ------------------------------------------------------------
+      # 10. Restore Supabase into TEST database
+      # ------------------------------------------------------------
+
+      - name: Restore Supabase into test database
+        env:
+          RESTORE_DATABASE_URL: ${{ secrets.SUPABASE_RESTORE_TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          echo "Restoring Supabase backup into test database..."
+
+          pg_restore \
+            --clean \
+            --if-exists \
+            --no-owner \
+            --no-acl \
+            --dbname="$RESTORE_DATABASE_URL" \
+            restore/supabase/backup.dump
+
+          echo "Supabase restore completed."
+
+      # ------------------------------------------------------------
+      # 11. Basic validation queries
+      # ------------------------------------------------------------
+
+      - name: Validate restored Neon database
+        env:
+          RESTORE_DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          psql "$RESTORE_DATABASE_URL" \
+            -c "SELECT current_database(), current_timestamp;"
+
+          echo "Neon restored database is accessible."
+
+      - name: Validate restored Supabase database
+        env:
+          RESTORE_DATABASE_URL: ${{ secrets.SUPABASE_RESTORE_TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          psql "$RESTORE_DATABASE_URL" \
+            -c "SELECT current_database(), current_timestamp;"
+
+          echo "Supabase restored database is accessible."
+
+      # ------------------------------------------------------------
+      # 12. Restore test summary
+      # ------------------------------------------------------------
+
+      - name: Restore test summary
+        run: |
+          echo "## Database Restore Test Passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Neon backup: downloaded" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Neon backup: decrypted" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Neon backup: validated" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Neon backup: restored to test database" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Supabase backup: downloaded" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Supabase backup: decrypted" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Supabase backup: validated" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Supabase backup: restored to test database" >> "$GITHUB_STEP_SUMMARY"
+
+  # ==================================================================
+  # FAILURE NOTIFICATION
+  # ==================================================================
+
+  notify_failure:
+    name: Notify backup failure
+    needs:
+      - backup
+      - restore_test
+
+    if: |
+      always() &&
+      (needs.backup.result == 'failure' ||
+       needs.restore_test.result == 'failure')
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Slack notification
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+
+          MESSAGE="🚨 Database backup workflow failed.
+
+          Repository: $GITHUB_REPOSITORY
+          Workflow: $GITHUB_WORKFLOW
+          Run: $GITHUB_RUN_NUMBER
+          Commit: $GITHUB_SHA
+
+          Check:
+          https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          curl \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --data "{\"text\":\"${MESSAGE}\"}" \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: Add failure summary
+        run: |
+          echo "## 🚨 Database Backup Failure" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The database backup workflow failed." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check the failed job above for details." >> "$GITHUB_STEP_SUMMARY"

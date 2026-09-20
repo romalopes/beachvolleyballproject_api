@@ -15,6 +15,21 @@ class Api::V1::Admin::DrillsControllerTest < ActionDispatch::IntegrationTest
     assert body.any? { |d| d["title"] == "MyString" }
   end
 
+  test "admin index flags drills that carry a visual definition" do
+    visual = Drill.create!(title: "Visual Drill", definition: visual_drill_definition)
+
+    sign_in_as(@admin)
+    get "/api/v1/admin/drills"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    drill = body.find { |d| d["id"] == visual.id }
+    assert_not_nil drill
+    assert_equal true, drill["has_definition"]
+    # The heavy definition blob stays out of the list payload.
+    assert_not drill.key?("definition")
+  end
+
   test "admin can show a drill" do
     sign_in_as(@admin)
     get "/api/v1/admin/drills/#{drills(:one).id}"

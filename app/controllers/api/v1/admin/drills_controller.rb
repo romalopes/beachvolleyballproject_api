@@ -9,7 +9,9 @@ module Api
         def index
           @drills = Drill.includes([ :training_sessions, { video_references: :video }, skills: :category ])
                           .order(:title)
-          render json: @drills, except: [ :definition ], include: {
+          # `except` drops the heavy definition blob; `has_definition` tells the
+          # client whether a visualisation exists without transferring it.
+          render json: @drills, except: [ :definition ], methods: [ :has_definition ], include: {
             skills: { only: [ :id, :title, :slug ], include: { category: { only: [ :id, :name, :slug ] } } },
             training_sessions: { only: [ :id, :title, :starts_at, :ends_at, :location, :status ] }
           }

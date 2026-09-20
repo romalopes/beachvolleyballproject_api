@@ -48,6 +48,15 @@ class Drill < ApplicationRecord
     ideal_num_players.nil? ? nil : "Ideal: #{ideal_num_players}"
   end
 
+  # True when the drill carries a renderable v1 visual definition. The JSONB
+  # column defaults to `{}` (no visualisation yet); the validator enforces a
+  # schema-valid definition (with at least one step) whenever it is non-empty,
+  # so a present `steps` array is the exact signal list endpoints can expose
+  # without shipping the whole definition.
+  def has_definition
+    definition.is_a?(Hash) && definition["steps"].present?
+  end
+
   def to_param
     slug
   end
