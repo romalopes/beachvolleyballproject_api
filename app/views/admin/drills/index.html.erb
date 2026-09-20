@@ -29,12 +29,12 @@
       <%= select_tag :stage,
             options_for_select([["All stages", ""]] + Drill::TRAINING_STAGES.map { |s|
               [s == "warmup" ? "Warm-up" : s.capitalize, s]
-            }, @filters[:stage].presence || ""),
+            } + [["Unspecified", "unspecified"]], @filters[:stage].presence || ""),
             onchange: "this.form.requestSubmit()" %>
       <%= select_tag :difficulty,
             options_for_select([["All levels", ""]] + Drill::DIFFICULTY_LEVELS.map { |l|
               [l.capitalize, l]
-            }, @filters[:difficulty].presence || ""),
+            } + [["Unspecified", "unspecified"]], @filters[:difficulty].presence || ""),
             onchange: "this.form.requestSubmit()" %>
       <%= number_field_tag :min_players, @filters[:min_players], min: 1, placeholder: "Min players", "aria-label": "Filter by min players" %>
       <%= number_field_tag :max_players, @filters[:max_players], min: 1, placeholder: "Max players", "aria-label": "Filter by max players" %>
@@ -88,9 +88,9 @@
                 <%= icon("arrow-right", size: 14) %>
               <% end %>
             </td>
-            <td><%= drill.training_stage_label %></td>
-            <td><%= drill.difficulty_level %></td>
-            <td><%= drill.player_range_label %></td>
+            <td><%= drill.training_stage_label.presence || "—" %></td>
+            <td><%= drill.difficulty_level.presence || "—" %></td>
+            <td><%= drill.player_range_label.presence || "—" %></td>
             <td class="admin-actions">
               <%= link_to edit_admin_drill_path(drill), class: "admin-btn admin-btn-edit" do %>
                 <%= icon("edit", size: 14) %> Edit

@@ -8,12 +8,28 @@
     <h1><%= @drill.title %></h1>
     <div class="tags" style="margin-top: 1rem">
       <%= tag_pill(variant: :primary) { "Drill" } %>
-      <%= tag_pill(variant: :teal) { @drill.difficulty_level } %>
-      <%= tag_pill { @drill.training_stage_label } %>
-      <%= tag_pill do %>
-        <%= icon("users", size: 12, style: "margin-right: 0.25rem;") %>Min: <%= @drill.min_players %> &middot; Max: <%= @drill.max_players %>
+      <% if @drill.difficulty_level.present? %>
+        <%= tag_pill(variant: :teal) { @drill.difficulty_level } %>
       <% end %>
-      <%= tag_pill { @drill.ideal_label } %>
+      <% if @drill.training_stage_label.present? %>
+        <%= tag_pill { @drill.training_stage_label } %>
+      <% end %>
+      <%# Optional attributes: show only the sides that were provided. %>
+      <% if @drill.min_players.present? || @drill.max_players.present? %>
+        <%= tag_pill do %>
+          <%= icon("users", size: 12, style: "margin-right: 0.25rem;") %>
+          <% if @drill.min_players.present? && @drill.max_players.present? %>
+            <%= @drill.player_range_label %>
+          <% elsif @drill.min_players.present? %>
+            Min: <%= @drill.min_players %>
+          <% else %>
+            Max: <%= @drill.max_players %>
+          <% end %>
+        <% end %>
+      <% end %>
+      <% if @drill.ideal_label.present? %>
+        <%= tag_pill { @drill.ideal_label } %>
+      <% end %>
     </div>
   </div>
   <section class="detail-section">

@@ -167,4 +167,14 @@ class Admin::DrillsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "Back</a>"
   end
+
+  test "admin can filter drills by unspecified stage and difficulty" do
+    sign_in_as(@admin)
+    drill = Drill.create!(title: "Stageless Drill")
+    get "/admin/drills", params: { stage: "unspecified", difficulty: "unspecified" }
+    assert_response :success
+    assert_includes response.body, "Stageless Drill"
+    assert_not_includes response.body, drills(:one).title
+    drill.destroy
+  end
 end

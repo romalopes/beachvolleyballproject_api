@@ -29,14 +29,14 @@
     <h3>Training Attributes</h3>
 
     <div class="admin-field">
-      <%= form.label :training_stage, "Training Stage", required: true %>
+      <%= form.label :training_stage, "Training Stage" %>
       <%= form.select :training_stage,
           Drill::TRAINING_STAGES.map { |stage| [stage == "warmup" ? "Warm-up" : stage.capitalize, stage] },
           { include_blank: "Select a stage" }, { class: "admin-select" } %>
     </div>
 
     <div class="admin-field">
-      <%= form.label :difficulty_level, "Difficulty Level", required: true %>
+      <%= form.label :difficulty_level, "Difficulty Level" %>
       <%= form.select :difficulty_level,
           Drill::DIFFICULTY_LEVELS.map { |level| [level.capitalize, level] },
           { include_blank: "Select a level" }, { class: "admin-select" } %>
@@ -44,15 +44,15 @@
 
     <div class="admin-field-row">
       <div class="admin-field">
-        <%= form.label :min_players, "Min Players", required: true %>
+        <%= form.label :min_players, "Min Players" %>
         <%= form.number_field :min_players, class: "admin-input", min: 1 %>
       </div>
       <div class="admin-field">
-        <%= form.label :max_players, "Max Players", required: true %>
+        <%= form.label :max_players, "Max Players" %>
         <%= form.number_field :max_players, class: "admin-input", min: 1 %>
       </div>
       <div class="admin-field">
-        <%= form.label :ideal_num_players, "Ideal Players", required: true %>
+        <%= form.label :ideal_num_players, "Ideal Players" %>
         <%= form.number_field :ideal_num_players, class: "admin-input", min: 1 %>
       </div>
     </div>

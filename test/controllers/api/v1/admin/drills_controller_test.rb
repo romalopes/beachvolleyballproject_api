@@ -99,7 +99,7 @@ class Api::V1::Admin::DrillsControllerTest < ActionDispatch::IntegrationTest
       drill: {
         title: "Def Drill", setup_instructions: "Instructions", training_stage: "beginning",
         difficulty_level: "beginner", min_players: 2, max_players: 8, ideal_num_players: 4,
-        definition: valid_def
+        definition: valid_def, skill_ids: [ skills(:one).id ]
       }
     }, as: :json
     assert_response :created
@@ -138,11 +138,46 @@ class Api::V1::Admin::DrillsControllerTest < ActionDispatch::IntegrationTest
       drill: {
         title: "Bad Def", setup_instructions: "Instructions", training_stage: "beginning",
         difficulty_level: "beginner", min_players: 2, max_players: 8, ideal_num_players: 4,
-        definition: invalid_def
+        definition: invalid_def, skill_ids: [ skills(:one).id ]
       }
     }, as: :json
     assert_response :unprocessable_entity
     assert JSON.parse(response.body)["errors"].any? { |e| e.downcase.include?("definition") }
+  end
+
+  test "admin can create a drill without the optional training attributes" do
+    sign_in_as(@admin)
+    post "/api/v1/admin/drills", params: {
+      drill: {
+        title: "Metadata Free Drill", setup_instructions: "Instructions",
+        training_stage: nil, difficulty_level: nil,
+        min_players: nil, max_players: nil, ideal_num_players: nil,
+        skill_ids: [ skills(:one).id ]
+      }
+    }, as: :json
+    assert_response :created
+    drill = Drill.find_by(title: "Metadata Free Drill")
+    assert_nil drill.training_stage
+    assert_nil drill.difficulty_level
+    assert_nil drill.min_players
+    assert_nil drill.max_players
+    assert_nil drill.ideal_num_players
+  end
+
+  test "admin can update a drill by clearing the optional training attributes" do
+    drill = drills(:one)
+    sign_in_as(@admin)
+    patch "/api/v1/admin/drills/#{drill.id}", params: {
+      drill: {
+        training_stage: nil, difficulty_level: nil,
+        min_players: nil, max_players: nil, ideal_num_players: nil
+      }
+    }, as: :json
+    assert_response :success
+    drill.reload
+    assert_nil drill.training_stage
+    assert_nil drill.min_players
+    assert_nil drill.ideal_num_players
   end
 
   private

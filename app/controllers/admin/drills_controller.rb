@@ -83,10 +83,18 @@ module Admin
       end
 
       stage = filters[:stage].to_s
-      scope = scope.where(training_stage: stage) if Drill::TRAINING_STAGES.include?(stage)
+      if stage == "unspecified"
+        scope = scope.where(training_stage: nil)
+      elsif Drill::TRAINING_STAGES.include?(stage)
+        scope = scope.where(training_stage: stage)
+      end
 
       difficulty = filters[:difficulty].to_s
-      scope = scope.where(difficulty_level: difficulty) if Drill::DIFFICULTY_LEVELS.include?(difficulty)
+      if difficulty == "unspecified"
+        scope = scope.where(difficulty_level: nil)
+      elsif Drill::DIFFICULTY_LEVELS.include?(difficulty)
+        scope = scope.where(difficulty_level: difficulty)
+      end
 
       filter_min = integer_param(filters[:min_players])
       filter_max = integer_param(filters[:max_players])

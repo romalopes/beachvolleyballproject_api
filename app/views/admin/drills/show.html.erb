@@ -25,9 +25,9 @@
     <div class="admin-show-section">
       <h2><%= @drill.title %></h2>
       <div class="tags" style="margin-top: 0.5rem;">
-        <%= tag_pill(variant: :teal) { @drill.difficulty_level } %>
-        <%= tag_pill { @drill.training_stage_label } %>
-        <%= tag_pill { @drill.player_range_label } %>
+        <%= tag_pill(variant: :teal) { @drill.difficulty_level } if @drill.difficulty_level.present? %>
+        <%= tag_pill { @drill.training_stage_label } if @drill.training_stage_label.present? %>
+        <%= tag_pill { @drill.player_range_label } if @drill.player_range_label.present? %>
       </div>
     </div>
 
@@ -41,9 +41,9 @@
       <dl class="admin-details">
         <dt>ID</dt><dd><%= @drill.id %></dd>
         <dt>Slug</dt><dd><%= @drill.slug %></dd>
-        <dt>Min players</dt><dd><%= @drill.min_players %></dd>
-        <dt>Max players</dt><dd><%= @drill.max_players %></dd>
-        <dt>Ideal players</dt><dd><%= @drill.ideal_num_players %></dd>
+        <dt>Min players</dt><dd><%= @drill.min_players || "—" %></dd>
+        <dt>Max players</dt><dd><%= @drill.max_players || "—" %></dd>
+        <dt>Ideal players</dt><dd><%= @drill.ideal_num_players || "—" %></dd>
         <dt>Created by</dt><dd><%= @drill.created_by&.name || "—" %></dd>
         <dt>Created at</dt><dd><%= long_date(@drill.created_at) if @drill.created_at %></dd>
         <dt>Updated at</dt><dd><%= long_date(@drill.updated_at) if @drill.updated_at %></dd>

@@ -17,13 +17,13 @@ class DrillTest < ActiveSupport::TestCase
     assert Drill.new(valid_attributes).valid?
   end
 
-  test "defaults apply on new records" do
+  test "defaults are blank on new records" do
     drill = Drill.new(title: "Defaults Drill")
-    assert_equal "beginning", drill.training_stage
-    assert_equal "intermediate", drill.difficulty_level
-    assert_equal 2, drill.min_players
-    assert_equal 8, drill.max_players
-    assert_equal 4, drill.ideal_num_players
+    assert_nil drill.training_stage
+    assert_nil drill.difficulty_level
+    assert_nil drill.min_players
+    assert_nil drill.max_players
+    assert_nil drill.ideal_num_players
     assert drill.valid?
   end
 
@@ -62,7 +62,7 @@ class DrillTest < ActiveSupport::TestCase
     assert Drill.new(valid_attributes(min_players: 2, max_players: 4, ideal_num_players: 4)).valid?
   end
 
-  test "rejects null training attributes" do
+  test "accepts null training attributes" do
     drill = Drill.new(valid_attributes(
       training_stage: nil,
       difficulty_level: nil,
@@ -70,7 +70,20 @@ class DrillTest < ActiveSupport::TestCase
       max_players: nil,
       ideal_num_players: nil
     ))
-    assert_not drill.valid?
+    assert drill.valid?
+  end
+
+  test "accepts partial training attributes" do
+    assert Drill.new(valid_attributes(ideal_num_players: nil)).valid?
+    assert Drill.new(valid_attributes(max_players: nil, ideal_num_players: nil)).valid?
+    assert Drill.new(valid_attributes(training_stage: nil)).valid?
+  end
+
+  test "labels handle missing attributes" do
+    drill = Drill.new(valid_attributes(ideal_num_players: nil))
+    assert_nil drill.ideal_label
+    assert_nil Drill.new(valid_attributes(min_players: nil, max_players: nil, ideal_num_players: nil)).player_range_label
+    assert_nil Drill.new(valid_attributes(training_stage: nil)).training_stage_label
   end
 
   test "range and ideal labels" do

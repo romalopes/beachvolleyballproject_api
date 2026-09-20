@@ -24,15 +24,18 @@ class Drill < ApplicationRecord
   TRAINING_STAGES = %w[warmup beginning middle end].freeze
   DIFFICULTY_LEVELS = %w[beginner intermediate advanced].freeze
 
-  validates :training_stage, presence: true, inclusion: { in: TRAINING_STAGES }
-  validates :difficulty_level, presence: true, inclusion: { in: DIFFICULTY_LEVELS }
+  # These training attributes are optional: inclusion/numericality skip nil
+  # values (allow_nil), while cross-field checks still apply whenever both
+  # sides of the comparison are present.
+  validates :training_stage, inclusion: { in: TRAINING_STAGES, allow_nil: true }
+  validates :difficulty_level, inclusion: { in: DIFFICULTY_LEVELS, allow_nil: true }
   validates :min_players, :max_players, :ideal_num_players,
-            presence: true,
-            numericality: { only_integer: true, greater_than: 0 }
+            numericality: { only_integer: true, greater_than: 0, allow_nil: true }
   validate :min_players_not_greater_than_max_players
   validate :ideal_num_players_within_range
 
   def training_stage_label
+    return nil if training_stage.nil?
     training_stage == "warmup" ? "Warm-up" : training_stage.to_s.capitalize
   end
 

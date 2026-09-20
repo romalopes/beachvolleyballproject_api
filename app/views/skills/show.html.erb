@@ -30,7 +30,7 @@
               <%= drill.title %>
             </span>
             <span class="related-item-meta">
-              <%= drill.difficulty_level %> &middot; <%= drill.player_range_label %> &middot; <%= drill.training_stage_label %>
+              <%= [drill.difficulty_level, drill.player_range_label, drill.training_stage_label].compact_blank.join(" · ") %>
             </span>
           <% end %>
         <% end %>
