@@ -4,9 +4,39 @@ module Api
       class UsersController < ApplicationController
         before_action :authorize_admin!
 
+        # GET /api/v1/admin/users
+        # Supports:
+        #   search   — case-insensitive substring match on name or email
+        #   page     — page number (default 1)
+        #   per_page — page size (default 20, clamped 1..100)
+        # Returns { data: [...], meta: { page, per_page, total, total_pages } }
+        # so the SPA can drive its pagination UI.
         def index
-          @users = User.includes(:roles).order(:id)
-          render json: @users, include: { roles: { only: [:id, :name] } }
+          users = User.includes(:roles).order(:id)
+
+          if params[:search].present?
+            pattern = "%#{ActiveRecord::Base.sanitize_sql_like(params[:search].to_s.strip)}%"
+            users = users.where(
+              "users.name ILIKE ? OR users.email_address ILIKE ?",
+              pattern, pattern
+            )
+          end
+
+          page = (params[:page] || 1).to_i
+          page = 1 if page < 1
+          per_page = (params[:per_page] || 20).to_i.clamp(1, 100)
+          total = users.count
+          users = users.offset((page - 1) * per_page).limit(per_page)
+
+          render json: {
+            data: users.as_json(include: { roles: { only: [:id, :name] } }),
+            meta: {
+              page: page,
+              per_page: per_page,
+              total: total,
+              total_pages: (total.to_f / per_page).ceil
+            }
+          }
         end
 
         def show

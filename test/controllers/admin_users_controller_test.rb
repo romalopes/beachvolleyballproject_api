@@ -11,7 +11,7 @@ class AdminUsersControllerTest < ActionDispatch::IntegrationTest
     get "/api/v1/admin/users"
     assert_response :success
     body = JSON.parse(response.body)
-    assert body.any? { |u| u["email_address"] == @admin.email_address }
+    assert body["data"].any? { |u| u["email_address"] == @admin.email_address }
   end
 
   test "non-admin cannot list users" do

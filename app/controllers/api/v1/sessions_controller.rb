@@ -11,7 +11,7 @@ module Api
             render json: {
               status: "pending_verification",
               email: user.email_address,
-              token: raw_token,
+              verification_token: raw_token,
               message: "Please verify your email address before logging in."
             }, status: :accepted
             return

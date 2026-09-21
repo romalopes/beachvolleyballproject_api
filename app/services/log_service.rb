@@ -15,11 +15,17 @@ class LogService
   #     status: response.status,
   #     objects: [skill, category]
   #   )
-  def self.log(description:, action:, method:, user: nil, path: nil,
+    def self.log(description:, action:, method:, user: nil, path: nil,
                request_id: nil, ip_address: nil, user_agent: nil,
                status: nil, objects: [])
     return if description.blank? || action.blank? || method.blank?
 
+    # Master switch: when logs_enabled is false (the "logs_saved_to_database"
+    # toggle disabled via the Configuration page), skip persisting audit logs
+    # to the database entirely. File/Rails logs are unaffected.
+    return unless AppSetting.logs_enabled?
+
+    log = nil
     ActiveRecord::Base.transaction do
       log = Log.create!(
         description: description,
@@ -41,9 +47,9 @@ class LogService
           object: object
         )
       end
-
-      log
     end
+
+    log
   rescue StandardError => e
     Rails.logger.error("LogService failed: #{e.message}")
     Rails.logger.error(e.backtrace&.first(5)&.join("\n"))

@@ -111,8 +111,17 @@ Rails.application.routes.draw do
         # Admin audit logs (read-only)
         resources :logs, only: [:index, :show]
 
-        # Admin "Act as User" impersonation
+                # Admin "Act as User" impersonation
         resource :impersonations, only: %i[create destroy], controller: "impersonations"
+
+        # Global configuration (admin only): singleton settings for the
+        # Configuration page — log persistence toggle, test-mode email
+        # notifications.
+        resource :configuration, controller: "configurations", only: [:show, :update]
+
+        # Generic app_settings rows (key/value) for the Configuration page's
+        # custom-settings table. Uses the setting key as the identifier.
+        resources :app_settings, param: :key, only: [:index, :create, :update, :destroy]
 
         # Tail of the application's Rails log file
         resources :system_logs, only: [:index], defaults: { format: :json }

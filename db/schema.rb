@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_21_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_21_091547) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -50,6 +50,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_000000) do
     t.index ["action", "created_at"], name: "index_admin_activities_on_action_and_created_at"
     t.index ["entity_type", "entity_id"], name: "index_admin_activities_on_entity_type_and_entity_id"
     t.index ["user_id"], name: "index_admin_activities_on_user_id"
+  end
+
+  create_table "app_settings", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "key", null: false
+    t.datetime "updated_at", null: false
+    t.text "value"
+    t.index ["key"], name: "index_app_settings_on_key", unique: true
   end
 
   create_table "categories", force: :cascade do |t|
@@ -202,7 +210,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_000000) do
     t.index ["starts_at"], name: "index_training_sessions_on_starts_at"
     t.index ["status"], name: "index_training_sessions_on_status"
     t.check_constraint "ends_at > starts_at", name: "training_sessions_ends_at_after_starts_at"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'scheduled'::character varying::text, 'cancelled'::character varying::text, 'completed'::character varying::text])", name: "training_sessions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'scheduled'::character varying, 'cancelled'::character varying, 'completed'::character varying]::text[])", name: "training_sessions_status"
   end
 
   create_table "user_roles", force: :cascade do |t|
