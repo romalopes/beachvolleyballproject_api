@@ -146,6 +146,94 @@ class Api::V1::Admin::DrillsControllerTest < ActionDispatch::IntegrationTest
     refute body.any? { |d| d.key?("definition") }, "index should not include definition"
   end
 
+  test "admin can save a valid definition with a text annotation" do
+    sign_in_as(@admin)
+    valid_def = valid_definition
+    valid_def["steps"][0]["annotations"] = [
+      {
+        "id" => "text_1", "type" => "text",
+        # Logical location: the same coordinate system players use.
+        "location" => { "side" => "side_1", "x" => 5, "y" => 1 },
+        "width" => 0.28, "height" => 0.16,
+        "text" => "P1 = Server\nP2 = Receiver",
+        "font_size" => 14, "bold" => true, "italic" => false,
+        "align" => "left", "background" => true, "border" => false,
+      },
+    ]
+    post "/api/v1/admin/drills", params: {
+      drill: {
+        title: "Annotation Drill", setup_instructions: "Instructions", training_stage: "beginning",
+        difficulty_level: "beginner", min_players: 2, max_players: 8, ideal_num_players: 4,
+        definition: valid_def, skill_ids: [ skills(:one).id ]
+      }
+    }, as: :json
+    assert_response :created
+    drill = Drill.find_by(title: "Annotation Drill")
+    annotation = drill.definition["steps"][0]["annotations"][0]
+    assert_equal "text_1", annotation["id"]
+    assert_equal "text", annotation["type"]
+    assert_equal "P1 = Server\nP2 = Receiver", annotation["text"]
+    assert_equal true, annotation["bold"]
+    assert_equal({ "side" => "side_1", "x" => 5, "y" => 1 }, annotation["location"])
+  end
+
+  test "definition with an annotation location outside the bounds returns 422" do
+    sign_in_as(@admin)
+    invalid_def = valid_definition
+    invalid_def["steps"][0]["annotations"] = [
+      { "id" => "text_1", "type" => "text",
+        # x = 99 is outside the 5×4 grid — the same bounds rule as a player.
+        "location" => { "side" => "side_1", "x" => 99, "y" => 1 },
+        "text" => "out of bounds" },
+    ]
+    post "/api/v1/admin/drills", params: {
+      drill: {
+        title: "Bad Annotation", setup_instructions: "Instructions", training_stage: "beginning",
+        difficulty_level: "beginner", min_players: 2, max_players: 8, ideal_num_players: 4,
+        definition: invalid_def, skill_ids: [ skills(:one).id ]
+      }
+    }, as: :json
+    assert_response :unprocessable_entity
+    assert JSON.parse(response.body)["errors"].any? { |e| e.downcase.include?("definition") }
+  end
+
+  test "definition with duplicate annotation ids returns 422" do
+    sign_in_as(@admin)
+    invalid_def = valid_definition
+    dup = { "id" => "text_1", "type" => "text",
+            "location" => { "side" => "side_1", "x" => 2, "y" => 2 },
+            "text" => "dup" }
+    invalid_def["steps"][0]["annotations"] = [ dup, dup.dup ]
+    post "/api/v1/admin/drills", params: {
+      drill: {
+        title: "Dup Annotation", setup_instructions: "Instructions", training_stage: "beginning",
+        difficulty_level: "beginner", min_players: 2, max_players: 8, ideal_num_players: 4,
+        definition: invalid_def, skill_ids: [ skills(:one).id ]
+      }
+    }, as: :json
+    assert_response :unprocessable_entity
+    assert JSON.parse(response.body)["errors"].any? { |e| e.include?("duplicate annotation") }
+  end
+
+  test "definition with an empty annotation text returns 422" do
+    sign_in_as(@admin)
+    invalid_def = valid_definition
+    invalid_def["steps"][0]["annotations"] = [
+      { "id" => "text_1", "type" => "text",
+        "location" => { "side" => "side_1", "x" => 2, "y" => 2 },
+        "text" => "   " },
+    ]
+    post "/api/v1/admin/drills", params: {
+      drill: {
+        title: "Blank Annotation", setup_instructions: "Instructions", training_stage: "beginning",
+        difficulty_level: "beginner", min_players: 2, max_players: 8, ideal_num_players: 4,
+        definition: invalid_def, skill_ids: [ skills(:one).id ]
+      }
+    }, as: :json
+    assert_response :unprocessable_entity
+    assert JSON.parse(response.body)["errors"].any? { |e| e.include?("non-empty") }
+  end
+
   test "invalid definition returns 422 with errors" do
     sign_in_as(@admin)
     invalid_def = valid_definition.merge("version" => 99)

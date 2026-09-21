@@ -56,6 +56,7 @@ class DrillDefinitionValidator
     check_entity_states
     check_coordinate_bounds
     check_movement_consistency
+    check_annotations
   end
 
   def entities_by_id
@@ -235,6 +236,50 @@ class DrillDefinitionValidator
 
   def each_step
     @definition["steps"].each { |step| yield step }
+  end
+
+  # Per-step text annotations: ids unique within the step, logical location
+  # inside the playable bounds (same rule as players), non-empty text,
+  # optional box fractions in 0..1, positive font size.
+  def check_annotations
+    bounds = compute_bounds
+
+    each_step do |step|
+      annotations = Array(step["annotations"])
+      ids = annotations.map { |a| a["id"] }
+      ids.select { |id| ids.count(id) > 1 }.uniq.each do |dupe|
+        @record.errors.add(:definition, "domain: duplicate annotation id '#{dupe}' in step '#{step['id']}'")
+      end
+
+      annotations.each do |a|
+        label = "annotation '#{a['id']}'"
+
+        location = a["location"]
+        if location.is_a?(Hash)
+          validate_location(location, "#{label} location", bounds)
+        else
+          @record.errors.add(:definition, "domain: #{label} location must be a logical location")
+        end
+
+        %w[width height].each do |key|
+          next unless a.key?(key)
+
+          v = a[key]
+          unless v.is_a?(Numeric) && v >= 0 && v <= 1
+            @record.errors.add(:definition, "domain: #{label} #{key}=#{v.inspect} out of range (0..1)")
+          end
+        end
+
+        text = a["text"]
+        if !text.is_a?(String) || text.strip.empty?
+          @record.errors.add(:definition, "domain: #{label} text must be a non-empty string")
+        end
+
+        if a.key?("font_size") && !(a["font_size"].is_a?(Numeric) && a["font_size"] > 0)
+          @record.errors.add(:definition, "domain: #{label} font_size must be positive")
+        end
+      end
+    end
   end
 end
 

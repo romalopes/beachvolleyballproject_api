@@ -398,6 +398,69 @@
         }
       }
     },
+    "textAlignment": {
+      "type": "string",
+      "enum": [
+        "left",
+        "center",
+        "right"
+      ]
+    },
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "location",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "const": "text"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "font_size": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "bold": {
+          "type": "boolean"
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "align": {
+          "$ref": "#/$defs/textAlignment"
+        },
+        "background": {
+          "type": "boolean"
+        },
+        "border": {
+          "type": "boolean"
+        }
+      },
+      "description": "Per-step text annotation. `location` is the logical side + grid position (the same coordinates as players); width/height are box fractions of the side's rendered rect."
+    },
     "step": {
       "type": "object",
       "additionalProperties": false,
@@ -459,6 +522,13 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/objectMovement"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "description": "Optional per-step text annotations (visual overlays only).",
+          "items": {
+            "$ref": "#/$defs/annotation"
           }
         }
       }
