@@ -189,7 +189,7 @@ drills_data.each do |drill_data|
     d.max_players = max_players
     d.ideal_num_players = ideal
   end
-  
+
   skill_titles.each do |skill_title|
     skill = Skill.find_by(title: skill_title)
     if skill

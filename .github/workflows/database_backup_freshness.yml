@@ -1,0 +1,82 @@
+name: Database Backup Freshness
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+env:
+  DATABASE_PROVIDER: neon
+  SYSTEM_PREFIX: beachvolleyball
+  MAX_AGE_HOURS: "36"
+concurrency:
+  group: database-backup-freshness-beachvolleyball
+  cancel-in-progress: false
+jobs:
+  freshness:
+    name: Check newest backup age
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      status: ${{ steps.check.outputs.status }}
+      age_hours: ${{ steps.check.outputs.age_hours }}
+      backup_key: ${{ steps.check.outputs.backup_key }}
+    steps:
+      - name: Install AWS CLI
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y awscli
+      - name: Check newest backup
+        id: check
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+          PROVIDER="${{ env.DATABASE_PROVIDER }}"
+          BASE="${{ env.SYSTEM_PREFIX }}/postgresql/$PROVIDER/"
+          echo "Checking newest .dump.age under $BASE ..."
+          LAST_MODIFIED=$(aws s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix "$BASE" --endpoint-url "$R2_ENDPOINT" --query "Contents[?ends_with(Key, '.dump.age')] | sort_by(@, &LastModified) | [-1].LastModified" --output text)
+          KEY=$(aws s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix "$BASE" --endpoint-url "$R2_ENDPOINT" --query "Contents[?ends_with(Key, '.dump.age')] | sort_by(@, &LastModified) | [-1].Key" --output text)
+          if [ -z "$LAST_MODIFIED" ] || [ "$LAST_MODIFIED" = "None" ]; then
+            echo "status=missing" >> "$GITHUB_OUTPUT"
+            echo "::error::No backups found under $BASE."
+            exit 1
+          fi
+          NOW=$(date -u +%s)
+          MOD=$(date -u -d "$LAST_MODIFIED" +%s)
+          AGE_HOURS=$(( (NOW - MOD) / 3600 ))
+          echo "Newest backup: $KEY ($LAST_MODIFIED, ${AGE_HOURS}h old)."
+          echo "age_hours=$AGE_HOURS" >> "$GITHUB_OUTPUT"
+          echo "backup_key=$KEY" >> "$GITHUB_OUTPUT"
+          if [ "$AGE_HOURS" -gt "${{ env.MAX_AGE_HOURS }}" ]; then
+            echo "status=stale" >> "$GITHUB_OUTPUT"
+            echo "::error::Newest backup is ${AGE_HOURS}h old (limit ${{ env.MAX_AGE_HOURS }}h)."
+            exit 1
+          fi
+          echo "status=fresh" >> "$GITHUB_OUTPUT"
+          echo "## Backup Freshness: OK" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Provider: $PROVIDER" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Newest: $KEY" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Age: ${AGE_HOURS}h (limit ${{ env.MAX_AGE_HOURS }}h)" >> "$GITHUB_STEP_SUMMARY"
+  notify_failure:
+    name: Notify freshness failure
+    needs: freshness
+    if: always() && needs.freshness.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          MESSAGE="Backup freshness check failed (missing or stale backup). Repository: $GITHUB_REPOSITORY Age: ${{ needs.freshness.outputs.age_hours }}h Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          PAYLOAD=$(python3 -c 'import json,os; print(json.dumps({"text": os.environ["MESSAGE"]}))' MESSAGE="$MESSAGE")
+          curl -X POST -H "Content-Type: application/json" --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"

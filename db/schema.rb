@@ -173,7 +173,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_091547) do
     t.bigint "training_session_id", null: false
     t.datetime "updated_at", null: false
     t.index ["skill_id"], name: "index_training_focuses_on_skill_id"
-    t.index ["training_session_id", "position"], name: "index_training_focuses_on_training_session_id_and_position"
+    t.index ["training_session_id", "position"], name: "index_training_focuses_on_session_and_position"
     t.index ["training_session_id", "skill_id"], name: "index_training_focuses_on_session_and_skill", unique: true
     t.index ["training_session_id"], name: "index_training_focuses_on_training_session_id"
     t.check_constraint "\"position\" >= 0", name: "training_focuses_position_non_negative"

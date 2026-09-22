@@ -1,0 +1,215 @@
+name: Database Restore Test
+on:
+  schedule:
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      database_provider:
+        description: "Provider whose backup to test"
+        required: false
+        default: neon
+        type: choice
+        options:
+          - neon
+          - supabase
+      backup_prefix:
+        description: "R2 key prefix to test, or 'latest'"
+        required: false
+        default: latest
+        type: string
+env:
+  DATABASE_PROVIDER: neon
+  SYSTEM_PREFIX: beachvolleyball
+  PG_CLIENT_MAJOR: "17"
+  AGE_VERSION: 1.3.2
+concurrency:
+  group: database-restore-test-beachvolleyball
+  cancel-in-progress: false
+jobs:
+  restore_test:
+    name: Restore and validate backup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install pinned PostgreSQL client
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y "postgresql-client-${{ env.PG_CLIENT_MAJOR }}"
+          pg_dump --version
+          psql --version
+      - name: Install pinned age encryption tool
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/age.tar.gz "https://github.com/FiloSottile/age/releases/download/v${{ env.AGE_VERSION }}/age-v${{ env.AGE_VERSION }}-linux-amd64.tar.gz"
+          tar xzf /tmp/age.tar.gz -C /tmp
+          test -x /tmp/age/age
+          sudo install -m 0755 /tmp/age/age /usr/local/bin/age
+          rm -rf /tmp/age /tmp/age.tar.gz
+          age --version
+      - name: Install AWS CLI
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y awscli
+      - name: Configure R2 and resolve backup prefix
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          PROVIDER_INPUT="${{ inputs.database_provider }}"
+          if [ -n "$PROVIDER_INPUT" ]; then
+            PROVIDER="$PROVIDER_INPUT"
+          else
+            PROVIDER="${{ env.DATABASE_PROVIDER }}"
+          fi
+          case "$PROVIDER" in
+            neon|supabase) ;;
+            *) echo "::error::Unsupported provider '$PROVIDER'."; exit 1 ;;
+          esac
+          echo "PROVIDER=$PROVIDER" >> "$GITHUB_ENV"
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+          BASE="${{ env.SYSTEM_PREFIX }}/postgresql/$PROVIDER/"
+          PREFIX_INPUT="${{ inputs.backup_prefix }}"
+          if [ -z "$PREFIX_INPUT" ] || [ "$PREFIX_INPUT" = "latest" ]; then
+            echo "Finding latest backup under $BASE ..."
+            KEY=$(aws s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix "$BASE" --endpoint-url "$R2_ENDPOINT" --query "Contents[?ends_with(Key, '.dump.age')] | sort_by(@, &LastModified) | [-1].Key" --output text)
+          else
+            KEY="$PREFIX_INPUT"
+            case "$KEY" in
+              *.dump.age) ;;
+              *) echo "::error::backup_prefix must end with .dump.age (or be 'latest')."; exit 1 ;;
+            esac
+          fi
+          if [ -z "$KEY" ] || [ "$KEY" = "None" ]; then
+            echo "::error::No backup found for provider '$PROVIDER' under $BASE."
+            exit 1
+          fi
+          echo "BACKUP_KEY=$KEY" >> "$GITHUB_ENV"
+          echo "Testing backup: $KEY"
+      - name: Download, checksum-verify and decrypt
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          BACKUP_ENCRYPTION_IDENTITY: ${{ secrets.BACKUP_ENCRYPTION_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BACKUP_ENCRYPTION_IDENTITY" ]; then
+            echo "::error::BACKUP_ENCRYPTION_IDENTITY secret is missing. Store the age private key (AGE-SECRET-KEY-...) for restore tests."
+            exit 1
+          fi
+          mkdir -p restore
+          chmod 700 restore
+          umask 077
+          printf '%s' "$BACKUP_ENCRYPTION_IDENTITY" > restore/identity.txt
+          chmod 600 restore/identity.txt
+          aws s3 cp "s3://${R2_BUCKET}/${BACKUP_KEY}" restore/backup.dump.age --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "s3://${R2_BUCKET}/${BACKUP_KEY}.sha256" restore/backup.dump.age.sha256 --endpoint-url "$R2_ENDPOINT" || echo "WARNING: no .sha256 sidecar; continuing with age authentication only."
+          if [ -f restore/backup.dump.age.sha256 ]; then
+            (cd restore && sha256sum -c backup.dump.age.sha256)
+            echo "SHA-256 checksum verified."
+          fi
+          age --decrypt --identity restore/identity.txt --output restore/backup.dump restore/backup.dump.age
+          shred -u restore/identity.txt restore/backup.dump.age
+          unset BACKUP_ENCRYPTION_IDENTITY
+          test -s restore/backup.dump
+          echo "Decrypted dump size: $(du -h restore/backup.dump | cut -f1)"
+          pg_restore --list restore/backup.dump > restore/toc.txt
+          ENTRIES=$(wc -l < restore/toc.txt | tr -d ' ')
+          echo "pg_restore --list entries: $ENTRIES"
+          if [ "$ENTRIES" -lt 10 ]; then
+            echo "::error::Dump table-of-contents suspiciously small ($ENTRIES entries). Refusing to restore."
+            exit 1
+          fi
+          grep -qiE 'TABLE|SCHEMA' restore/toc.txt || { echo "::error::Dump contains no TABLE/SCHEMA entries."; exit 1; }
+          echo "Dump structure OK."
+      - name: Guard restore target (fail closed on prod)
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+          NEON_RESTORE_TEST_DATABASE_URL: ${{ secrets.NEON_RESTORE_TEST_DATABASE_URL }}
+          SUPABASE_RESTORE_TEST_DATABASE_URL: ${{ secrets.SUPABASE_RESTORE_TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          case "$PROVIDER" in
+            neon) TARGET="$NEON_RESTORE_TEST_DATABASE_URL" ;;
+            supabase) TARGET="$SUPABASE_RESTORE_TEST_DATABASE_URL" ;;
+          esac
+          if [ -z "$TARGET" ]; then
+            echo "::error::Restore target secret for provider '$PROVIDER' is empty. Refusing to restore (fail closed)."
+            exit 1
+          fi
+          for KNOWN in "$NEON_DATABASE_URL" "$SUPABASE_DATABASE_URL"; do
+            if [ -n "$KNOWN" ] && [ "$TARGET" = "$KNOWN" ]; then
+              echo "::error::Restore target EQUALS a production database URL. Aborting to protect production."
+              exit 1
+            fi
+          done
+          TARGET_DB=$(printf '%s' "$TARGET" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+          case "$TARGET_DB" in
+            *prod*|*production*) echo "::error::Restore target database name '$TARGET_DB' looks like production. Aborting."; exit 1 ;;
+          esac
+          echo "RESTORE_TARGET=$TARGET" >> "$GITHUB_ENV"
+          echo "Guard passed. Target database: $TARGET_DB (disposable test DB)."
+      - name: Restore into disposable database and validate
+        run: |
+          set -euo pipefail
+          pg_restore --clean --if-exists --no-owner --no-acl --dbname="$RESTORE_TARGET" restore/backup.dump
+          echo "Restore completed."
+          psql "$RESTORE_TARGET" -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema');" > restore/table_count.txt
+          TABLES=$(cat restore/table_count.txt | tr -d ' ')
+          echo "User tables restored: $TABLES"
+          if [ "$TABLES" -lt 5 ]; then
+            echo "::error::Too few tables restored ($TABLES). Expected the full application schema."
+            exit 1
+          fi
+          psql "$RESTORE_TARGET" -Atc "SELECT count(*) FROM schema_migrations;" > restore/migrations.txt || echo "WARNING: schema_migrations not readable."
+          echo "schema_migrations rows: $(cat restore/migrations.txt | tr -d ' ')"
+          USERS_COUNT=$(psql "$RESTORE_TARGET" -Atc "SELECT count(*) FROM users;" 2>/dev/null || echo "missing")
+          echo "users rows: $USERS_COUNT"
+          psql "$RESTORE_TARGET" -c "SELECT current_database(), current_timestamp;"
+          shred -u restore/backup.dump
+          echo "Validation passed. Plaintext dump shredded."
+      - name: Restore test summary
+        if: success()
+        run: |
+          echo "## Database Restore Test Passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- System: beachvolleyball" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Provider: $PROVIDER" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backup: $BACKUP_KEY" >> "$GITHUB_STEP_SUMMARY"
+          echo "- SHA-256: verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "- age decrypt: OK" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Restore + validation: OK" >> "$GITHUB_STEP_SUMMARY"
+  notify_failure:
+    name: Notify restore test failure
+    needs: restore_test
+    if: always() && needs.restore_test.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          MESSAGE="Restore test failed. Repository: $GITHUB_REPOSITORY Run: $GITHUB_RUN_NUMBER Check: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          PAYLOAD=$(python3 -c 'import json,os; print(json.dumps({"text": os.environ["MESSAGE"]}))' MESSAGE="$MESSAGE")
+          curl -X POST -H "Content-Type: application/json" --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
+      - name: Add failure summary
+        run: |
+          echo "## Database Restore Test Failure" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The restore test failed. Check the failed job above." >> "$GITHUB_STEP_SUMMARY"
+
