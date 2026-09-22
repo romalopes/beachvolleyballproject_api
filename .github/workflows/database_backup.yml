@@ -64,8 +64,23 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
           echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
+          # Remove any pre-installed PostgreSQL client to avoid version conflicts
+          sudo apt-get remove -y --purge postgresql-client-* postgresql-* 2>/dev/null || true
+          sudo apt-get autoremove -y
+          # Install the pinned version
           sudo apt-get install -y "postgresql-client-${{ env.PG_CLIENT_MAJOR }}"
-          pg_dump --version
+          # Verify the correct version is installed and on PATH
+          PG_DUMP_PATH=$(which pg_dump)
+          echo "pg_dump location: $PG_DUMP_PATH"
+          PG_DUMP_VERSION=$(pg_dump --version)
+          echo "pg_dump version: $PG_DUMP_VERSION"
+          # Extract major version and verify it matches what we asked for
+          INSTALLED_MAJOR=$(echo "$PG_DUMP_VERSION" | grep -oE '[0-9]+' | head -1)
+          echo "Installed major version: $INSTALLED_MAJOR"
+          if [ "$INSTALLED_MAJOR" != "${{ env.PG_CLIENT_MAJOR }}" ]; then
+            echo "::error::Expected PostgreSQL client major ${{ env.PG_CLIENT_MAJOR }} but got $INSTALLED_MAJOR. Installation failed."
+            exit 1
+          fi
           psql --version
 
       # ----------------------------------------------------------
