@@ -97,7 +97,8 @@ jobs:
       - name: Install AWS CLI
         run: |
           set -euo pipefail
-          sudo apt-get install -y awscli
+          python3 -m pip install --upgrade awscli
+          aws --version
 
       # ----------------------------------------------------------
       # Resolve the single active provider and its DIRECT database

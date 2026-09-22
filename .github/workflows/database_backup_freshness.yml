@@ -24,8 +24,8 @@ jobs:
       - name: Install AWS CLI
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y awscli
+          python3 -m pip install --upgrade awscli
+          aws --version
       - name: Check newest backup
         id: check
         env:
