@@ -212,3 +212,14 @@ VideoCategory.find_or_create_by!(name: "Defense") { |c| c.position = 7 }
 VideoCategory.find_or_create_by!(name: "Match Analysis") { |c| c.position = 8 }
 VideoCategory.find_or_create_by!(name: "Coaching") { |c| c.position = 9 }
 puts "Seeded #{VideoCategory.count} video categories"
+
+# Video Tags
+VideoTag.find_or_create_by!(name: "Beginner") { |c| c.position = 0 }
+VideoTag.find_or_create_by!(name: "Intermediate") { |c| c.position = 1 }
+VideoTag.find_or_create_by!(name: "Advanced") { |c| c.position = 2 }
+puts "Seeded #{VideoTag.count} video tags"
+
+# user = User.find_or_create_by!(email: "6H7VX@example.com") { |u| u.password = "password" }
+# user.add_role(:admin)
+
+puts "Seeding complete"
