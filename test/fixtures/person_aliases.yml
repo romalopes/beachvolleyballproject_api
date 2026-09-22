@@ -1,0 +1,9 @@
+johnny:
+  person: one
+  full_name: Johnny Smith
+  alias_type: nickname
+
+joao:
+  person: one
+  full_name: João Smith
+  alias_type: transliteration

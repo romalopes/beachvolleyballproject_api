@@ -1,0 +1,9 @@
+# Accounts live on dedicated fixture users so the pre-existing tests that
+# assume users(:one)/(:two) are accountless keep working.
+one:
+  user: five
+  person: one
+
+two:
+  user: six
+  person: two

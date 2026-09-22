@@ -4,6 +4,7 @@ class User < ApplicationRecord
   has_many :user_roles, dependent: :destroy
   has_many :roles, through: :user_roles
   has_one :account, dependent: :destroy
+  has_one :person, through: :account
 
   normalizes :email_address, with: ->(e) { e.strip.downcase }
 

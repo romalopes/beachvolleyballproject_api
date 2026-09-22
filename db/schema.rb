@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_21_091547) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_22_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -28,12 +28,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_091547) do
 
   create_table "accounts", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.date "date_of_birth"
-    t.string "first_name"
-    t.string "last_name"
-    t.string "phone"
+    t.bigint "person_id", null: false
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
+    t.index ["person_id"], name: "index_accounts_on_person_id", unique: true
     t.index ["user_id"], name: "index_accounts_on_user_id", unique: true
   end
 
@@ -66,6 +64,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_091547) do
     t.string "slug"
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_categories_on_slug", unique: true
+  end
+
+  create_table "coach_profiles", force: :cascade do |t|
+    t.string "coaching_level"
+    t.datetime "created_at", null: false
+    t.bigint "person_id", null: false
+    t.text "qualifications"
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.index ["person_id"], name: "index_coach_profiles_on_person_id", unique: true
+    t.index ["status"], name: "index_coach_profiles_on_status"
   end
 
   create_table "drill_skills", force: :cascade do |t|
@@ -129,6 +138,46 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_091547) do
     t.index ["user_id"], name: "index_logs_on_user_id"
   end
 
+  create_table "people", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.string "creation_source", default: "system", null: false
+    t.date "date_of_birth"
+    t.string "email"
+    t.string "first_name", null: false
+    t.string "last_name"
+    t.bigint "merged_into_id"
+    t.string "phone"
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_people_on_created_by_id"
+    t.index ["creation_source"], name: "index_people_on_creation_source"
+    t.index ["email"], name: "index_people_on_email"
+    t.index ["merged_into_id"], name: "index_people_on_merged_into_id"
+    t.index ["status"], name: "index_people_on_status"
+  end
+
+  create_table "person_aliases", force: :cascade do |t|
+    t.string "alias_type"
+    t.datetime "created_at", null: false
+    t.string "full_name", null: false
+    t.bigint "person_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["full_name"], name: "index_person_aliases_on_full_name"
+    t.index ["person_id"], name: "index_person_aliases_on_person_id"
+  end
+
+  create_table "player_profiles", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "level"
+    t.bigint "person_id", null: false
+    t.string "preferred_position"
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.index ["person_id"], name: "index_player_profiles_on_person_id", unique: true
+    t.index ["status"], name: "index_player_profiles_on_status"
+  end
+
   create_table "roles", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.text "description"
@@ -173,7 +222,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_091547) do
     t.bigint "training_session_id", null: false
     t.datetime "updated_at", null: false
     t.index ["skill_id"], name: "index_training_focuses_on_skill_id"
-    t.index ["training_session_id", "position"], name: "index_training_focuses_on_session_and_position"
+    t.index ["training_session_id", "position"], name: "index_training_focuses_on_training_session_id_and_position"
     t.index ["training_session_id", "skill_id"], name: "index_training_focuses_on_session_and_skill", unique: true
     t.index ["training_session_id"], name: "index_training_focuses_on_training_session_id"
     t.check_constraint "\"position\" >= 0", name: "training_focuses_position_non_negative"
@@ -309,12 +358,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_091547) do
   end
 
   add_foreign_key "account_addresses", "accounts"
+  add_foreign_key "accounts", "people"
   add_foreign_key "accounts", "users"
   add_foreign_key "admin_activities", "users"
+  add_foreign_key "coach_profiles", "people"
   add_foreign_key "drill_skills", "drills"
   add_foreign_key "drill_skills", "skills"
   add_foreign_key "drills", "users", column: "created_by_id"
   add_foreign_key "log_objects", "logs"
+  add_foreign_key "people", "people", column: "merged_into_id"
+  add_foreign_key "people", "users", column: "created_by_id"
+  add_foreign_key "person_aliases", "people"
+  add_foreign_key "player_profiles", "people"
   add_foreign_key "sessions", "users"
   add_foreign_key "sessions", "users", column: "impersonated_user_id"
   add_foreign_key "skills", "categories"

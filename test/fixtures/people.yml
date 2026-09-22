@@ -1,0 +1,39 @@
+one:
+  first_name: John
+  last_name: Smith
+  email: one@example.com
+  phone: "+61400000001"
+  date_of_birth: 1995-04-12
+  status: active
+  creation_source: signup
+  created_by: one
+
+two:
+  first_name: Maria
+  last_name: Silva
+  email: two@example.com
+  status: active
+  creation_source: signup
+  created_by: two
+
+# An accountless player created by a coach (no Account will ever reference
+# this Person).
+accountless_player:
+  first_name: Pedro
+  last_name: Santos
+  status: active
+  creation_source: coach_created
+  created_by: two
+
+archived:
+  first_name: Old
+  last_name: Record
+  status: archived
+  creation_source: system
+
+merged:
+  first_name: Duplicate
+  last_name: John
+  status: merged
+  merged_into: one
+  creation_source: system

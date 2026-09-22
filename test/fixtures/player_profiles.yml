@@ -1,0 +1,11 @@
+john_player:
+  person: one
+  preferred_position: blocker
+  level: intermediate
+  status: active
+
+pedro_player:
+  person: accountless_player
+  preferred_position: setter
+  level: beginner
+  status: active

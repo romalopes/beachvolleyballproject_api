@@ -24,3 +24,15 @@ four:
   email_address: four@example.com
   password_digest: <%= password_digest %>
   email_verified_at: <%= 1.day.ago %>
+
+five:
+  name: Player Five
+  email_address: five@example.com
+  password_digest: <%= password_digest %>
+  email_verified_at: <%= 1.day.ago %>
+
+six:
+  name: Coach Six
+  email_address: six@example.com
+  password_digest: <%= password_digest %>
+  email_verified_at: <%= 1.day.ago %>
