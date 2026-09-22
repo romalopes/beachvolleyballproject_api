@@ -133,6 +133,12 @@ jobs:
           aws s3 cp "s3://${R2_BUCKET}/${BACKUP_KEY}" restore/backup.dump.age --endpoint-url "$R2_ENDPOINT"
           aws s3 cp "s3://${R2_BUCKET}/${BACKUP_KEY}.sha256" restore/backup.dump.age.sha256 --endpoint-url "$R2_ENDPOINT" || echo "WARNING: no .sha256 sidecar; continuing with age authentication only."
           if [ -f restore/backup.dump.age.sha256 ]; then
+            # The checksum sidecar references the original backup filename
+            # (e.g. database-20260922T032619Z.dump.age), not the name we
+            # downloaded as (backup.dump.age). Update it so sha256sum -c can
+            # verify the file we actually have.
+            EXPECTED_HASH=$(awk '{print $1}' restore/backup.dump.age.sha256)
+            echo "$EXPECTED_HASH  backup.dump.age" > restore/backup.dump.age.sha256
             (cd restore && sha256sum -c backup.dump.age.sha256)
             echo "SHA-256 checksum verified."
           fi
