@@ -105,7 +105,7 @@ class Api::V1::TrainingSessionsControllerTest < ActionDispatch::IntegrationTest
     get "/api/v1/training_sessions"
 
     entry = json.first
-    assert_equal %w[created_by created_by_id duration_minutes ends_at id location starts_at status status_label title],
+    assert_equal %w[created_by created_by_id duration_minutes ends_at id location starts_at status status_label title visibility],
                  entry.keys.sort
     assert_not entry.key?("drill")
     assert_not entry.key?("training_focuses")
@@ -169,7 +169,10 @@ class Api::V1::TrainingSessionsControllerTest < ActionDispatch::IntegrationTest
     get "/api/v1/training_sessions?status=draft"
 
     assert_response :success
-    assert_equal [ @draft.title ], json.map { |s| s["title"] }
+    # Coaches (managers) see all draft sessions, including private ones.
+    titles = json.map { |s| s["title"] }.sort
+    assert_includes titles, @draft.title
+    assert_includes titles, "Private Drill Design"
   end
 
   # --- show ----------------------------------------------------------------

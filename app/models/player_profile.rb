@@ -9,6 +9,8 @@ class PlayerProfile < ApplicationRecord
 
   has_many :training_session_participants, dependent: :destroy, inverse_of: :player_profile
 
+  accepts_nested_attributes_for :person, allow_destroy: false
+
   validates :person_id, uniqueness: true
   validates :status, presence: true, inclusion: { in: STATUSES }
 
@@ -16,5 +18,24 @@ class PlayerProfile < ApplicationRecord
 
   def full_name
     person.full_name
+  end
+
+  def account_status
+    person.account ? "connected" : "profile_only"
+  end
+
+  def metadata
+    {
+      id: id,
+      player_profile_id: id,
+      person_id: person_id,
+      preferred_position: preferred_position,
+      level: level,
+      status: status,
+      full_name: full_name,
+      account_status: account_status,
+      created_at: created_at,
+      updated_at: updated_at
+    }
   end
 end

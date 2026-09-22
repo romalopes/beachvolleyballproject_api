@@ -16,4 +16,23 @@ class CoachProfile < ApplicationRecord
   def full_name
     person.full_name
   end
+
+  def account_status
+    person.account ? "connected" : "profile_only"
+  end
+
+  def metadata
+    {
+      id: id,
+      coach_profile_id: id,
+      person_id: person_id,
+      coaching_level: coaching_level,
+      qualifications: qualifications,
+      status: status,
+      full_name: full_name,
+      account_status: account_status,
+      created_at: created_at,
+      updated_at: updated_at
+    }
+  end
 end

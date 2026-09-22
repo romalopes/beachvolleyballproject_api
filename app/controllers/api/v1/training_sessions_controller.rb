@@ -19,11 +19,13 @@ module Api
     class TrainingSessionsController < ApplicationController
       include ContentAuthorization
 
-      CALENDAR_ATTRIBUTES = %i[id title starts_at ends_at location status created_by_id].freeze
-      DETAIL_ATTRIBUTES = %i[id title description starts_at ends_at location status created_by_id
+      CALENDAR_ATTRIBUTES = %i[id title starts_at ends_at location status visibility created_by_id].freeze
+      DETAIL_ATTRIBUTES = %i[id title description starts_at ends_at location status visibility created_by_id
                              created_at updated_at].freeze
       FOCUS_ATTRIBUTES = %i[id skill_id custom_focus description position].freeze
       SESSION_DRILL_ATTRIBUTES = %i[id drill_id position duration_minutes notes].freeze
+      PARTICIPANT_ATTRIBUTES = %i[id player_profile_id status notes].freeze
+      INLINE_PERSON_ATTRIBUTES = %i[first_name last_name email phone date_of_birth].freeze
 
       before_action :set_training_session, only: %i[show update destroy]
       before_action :require_training_manager!, only: %i[create update destroy]
@@ -74,7 +76,14 @@ module Api
         else
           render json: { errors: @training_session.errors.full_messages }, status: :unprocessable_entity
         end
-      rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
+      rescue ActiveRecord::RecordInvalid => e
+        if e.record.is_a?(Person)
+          # An inline-created accountless player failed validation.
+          render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+        else
+          render json: { errors: [ duplicate_reference_message(e) ] }, status: :unprocessable_entity
+        end
+      rescue ActiveRecord::RecordNotUnique => e
         render json: { errors: [ duplicate_reference_message(e) ] }, status: :unprocessable_entity
       rescue ActiveRecord::InvalidForeignKey
         render json: { errors: [ "The training references a skill or drill that does not exist" ] },
@@ -86,6 +95,15 @@ module Api
       end
 
       def filtered_training_sessions
+        # mine=1 narrows the calendar to the current player's own sessions
+        # ("my schedule"): sessions visible to them that they participate in.
+        if params[:mine] == "1"
+          profile = Current.user&.person&.player_profile
+          return TrainingSession.none unless profile
+
+          return TrainingSession.visible_to(Current.user).participated_by(profile).ordered
+        end
+
         scope = TrainingSession
                   .visible_to(Current.user)
                   .starting_between(params[:starts_at_from], params[:starts_at_to])
@@ -99,11 +117,13 @@ module Api
         session = TrainingSession
                     .includes(:created_by, training_focuses: { skill: :category },
                               training_session_drills: { drill: { skills: :category } },
+                              training_session_participants: { player_profile: { person: :account } },
                               video_references: :video)
                     .find_by(id: params[:id])
-        # A draft the user may not see is reported as not found rather than
-        # forbidden, so the API never reveals that a draft exists.
-        unless session && (session.publicly_visible? || Current.user&.content_manager?)
+        # A session the user may not see is reported as not found rather than
+        # forbidden, so the API never reveals that it exists. All visibility
+        # rules live in TrainingSession#visible_to_user?.
+        unless session && session.visible_to_user?(Current.user)
           return render json: { error: "Training Session not found" }, status: :not_found
         end
 
@@ -141,6 +161,16 @@ module Api
             only: VideoReferencesController::REFERENCE_ONLY,
             methods: VideoReferencesController::REFERENCE_METHODS,
             include: { video: { only: VideoReferencesController::VIDEO_ONLY, methods: VideoReferencesController::VIDEO_METHODS } }
+          },
+          training_session_participants: {
+            only: PARTICIPANT_ATTRIBUTES,
+            methods: %i[player_name account_connected?],
+            include: {
+              player_profile: {
+                only: %i[id preferred_position level],
+                include: { person: { only: %i[id first_name last_name email phone] } }
+              }
+            }
           }
         }
       end
@@ -170,12 +200,40 @@ module Api
         permitted = params.require(:training_session).permit(
           :title, :description, :starts_at, :ends_at, :location, :status,
           training_focuses_attributes: %i[id skill_id custom_focus description position _destroy],
-          training_session_drills_attributes: %i[id drill_id position duration_minutes notes _destroy]
+          training_session_drills_attributes: %i[id drill_id position duration_minutes notes _destroy],
+          training_session_participants_attributes: [
+            :id, :player_profile_id, :status, :notes, :_destroy,
+            { person: INLINE_PERSON_ATTRIBUTES }
+          ]
         )
 
+        resolve_inline_participants!(permitted)
         fill_missing_positions!(permitted, :training_focuses_attributes)
         fill_missing_positions!(permitted, :training_session_drills_attributes)
         permitted
+      end
+
+      # A participant row may carry inline `person:` attributes instead of a
+      # `player_profile_id`. That is the "coach adds a player who does not
+      # have an account yet" workflow: a Person (creation_source:
+      # coach_created) + PlayerProfile are created and linked, with no
+      # Account. RecordInvalid bubbles up so persist can render the person's
+      # validation errors.
+      def resolve_inline_participants!(permitted)
+        rows = permitted[:training_session_participants_attributes]
+        return if rows.blank?
+
+        rows.each do |row|
+          person_attrs = row.delete("person") || row.delete(:person)
+          next if person_attrs.blank? || row[:player_profile_id].present? || row["player_profile_id"].present?
+
+          person = Person.new(person_attrs.to_h)
+          person.creation_source = "coach_created"
+          person.created_by = Current.user
+          person.build_player_profile
+          person.save!
+          row[:player_profile_id] = person.player_profile.id
+        end
       end
 
       # The submitted array order is the intended order. Explicit positions are
@@ -192,6 +250,8 @@ module Api
 
       def duplicate_reference_message(error)
         case error.message
+        when /index_training_session_participants_on_session_and_player/
+          "Players must be unique within a training session"
         when /index_training_session_drills_on_session_and_drill/
           "Drills must be unique within a training session"
         when /index_training_focuses_on_session_and_skill/

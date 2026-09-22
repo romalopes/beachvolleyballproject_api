@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_22_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_22_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -28,7 +28,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000002) do
 
   create_table "accounts", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "person_id", null: false
+    t.bigint "person_id"
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.index ["person_id"], name: "index_accounts_on_person_id", unique: true
@@ -245,6 +245,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000002) do
     t.check_constraint "duration_minutes IS NULL OR duration_minutes > 0", name: "training_session_drills_duration_minutes_positive"
   end
 
+  create_table "training_session_participants", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "notes"
+    t.bigint "player_profile_id", null: false
+    t.string "status", default: "invited", null: false
+    t.bigint "training_session_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["player_profile_id"], name: "index_training_session_participants_on_player_profile_id"
+    t.index ["status"], name: "index_training_session_participants_on_status"
+    t.index ["training_session_id", "player_profile_id"], name: "index_training_session_participants_on_session_and_player", unique: true
+    t.index ["training_session_id"], name: "index_training_session_participants_on_training_session_id"
+  end
+
   create_table "training_sessions", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
@@ -255,9 +268,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000002) do
     t.string "status", default: "draft", null: false
     t.string "title", null: false
     t.datetime "updated_at", null: false
+    t.string "visibility", default: "shared", null: false
     t.index ["created_by_id"], name: "index_training_sessions_on_created_by_id"
     t.index ["starts_at"], name: "index_training_sessions_on_starts_at"
     t.index ["status"], name: "index_training_sessions_on_status"
+    t.index ["visibility"], name: "index_training_sessions_on_visibility"
     t.check_constraint "ends_at > starts_at", name: "training_sessions_ends_at_after_starts_at"
     t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'scheduled'::character varying, 'cancelled'::character varying, 'completed'::character varying]::text[])", name: "training_sessions_status"
   end
@@ -378,6 +393,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000002) do
   add_foreign_key "training_focuses", "training_sessions"
   add_foreign_key "training_session_drills", "drills"
   add_foreign_key "training_session_drills", "training_sessions"
+  add_foreign_key "training_session_participants", "player_profiles"
+  add_foreign_key "training_session_participants", "training_sessions"
   add_foreign_key "training_sessions", "users", column: "created_by_id"
   add_foreign_key "user_roles", "roles"
   add_foreign_key "user_roles", "users"

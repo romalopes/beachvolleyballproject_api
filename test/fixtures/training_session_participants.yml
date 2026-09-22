@@ -1,0 +1,24 @@
+# Participation references PlayerProfile (domain identity), never User. An
+# accountless player can be a participant and accumulate attendance history.
+#
+# Statuses: invited, confirmed, declined, attended, absent.
+# `player_name` and `account_connected?` are model methods used by the API.
+
+session_with_participants:
+  training_session: one
+  player_profile: john_player
+  status: confirmed
+  notes: "Called ahead to confirm attendance."
+
+accountless_participant:
+  training_session: one
+  player_profile: pedro_player
+  status: invited
+  notes: ""
+
+private_session_participant:
+  training_session: private_work
+  player_profile: john_player
+  status: invited
+  notes: "Invited by coach for private one-on-one."
+

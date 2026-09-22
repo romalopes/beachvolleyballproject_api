@@ -94,6 +94,8 @@ Rails.application.routes.draw do
       end
 
       resources :videos, only: [:index, :create, :show, :update, :destroy]
+      resources :players, only: %i[index show create]
+      resources :coaches, only: %i[index show create]
       resources :training_sessions
 
       # Admin role management

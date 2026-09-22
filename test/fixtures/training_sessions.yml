@@ -11,6 +11,7 @@ one:
   ends_at: 2026-09-21 11:00:00
   location: Coogee Beach
   status: scheduled
+  visibility: shared
   created_by: three
 
 two:
@@ -20,6 +21,7 @@ two:
   ends_at: 2026-09-22 10:30:00
   location: Manly Beach
   status: draft
+  visibility: shared
   created_by: three
 
 three:
@@ -29,4 +31,29 @@ three:
   ends_at: 2026-09-28 18:30:00
   location: Bondi Beach
   status: scheduled
+  visibility: shared
   created_by: four
+
+# A private session created for a specific player. Only that player (and any
+# training manager) may see it; it does not appear on the shared schedule.
+private_work:
+  title: Private Setters Development
+  description: One-on-one setters refinement with Coach Two.
+  starts_at: 2026-09-25 10:00:00
+  ends_at: 2026-09-25 11:30:00
+  location: Coogee Beach
+  status: scheduled
+  visibility: private
+  created_by: two
+
+# A private draft — must stay hidden from everyone except the creating manager
+# (and, once scheduled, from its participants).
+private_draft:
+  title: Private Drill Design
+  description: Draft in progress.
+  starts_at: 2026-10-01 09:00:00
+  ends_at: 2026-10-01 10:00:00
+  location: Manly Beach
+  status: draft
+  visibility: private
+  created_by: two
