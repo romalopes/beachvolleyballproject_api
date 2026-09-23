@@ -19,10 +19,10 @@ module Api
 
       # Permitted input.
       PERSON_ATTRS = %i[first_name last_name email phone date_of_birth].freeze
-      PROFILE_ATTRS = %i[preferred_position level status].freeze
+      PROFILE_ATTRS = %i[preferred_position level status visibility].freeze
 
       # Serializable output.
-      PROFILE_ONLY = %i[id person_id preferred_position level status created_at updated_at].freeze
+      PROFILE_ONLY = %i[id person_id preferred_position level status visibility created_at updated_at].freeze
       PERSON_ONLY = %i[id first_name last_name email phone date_of_birth creation_source].freeze
       PROFILE_METHODS = %i[full_name account_status player_profile_id].freeze
       DETAIL_METHODS = PROFILE_METHODS + %i[training_session_count]
@@ -31,8 +31,13 @@ module Api
         # Archived players are hidden from the catalogue by default (they are no
         # longer schedulable) but stay reachable with `?status=archived`, which
         # is how the SPA offers "show archived" and "restore".
+        #
+        # Visibility is the soft variant: other coaches' private players are
+        # hidden from the listing, but the training form's picker must still
+        # see everyone (`?include_private=1`) because visibility never blocks
+        # scheduling. `?mine=1` narrows to the players this user recorded.
         players = profile_scope
-                  .includes(:person)
+                  .includes(:person, :created_by)
                   .joins(:person)
                   .order(people: { last_name: :asc, first_name: :asc }, player_profiles: { id: :asc })
 
@@ -44,6 +49,12 @@ module Api
         if params[:email].present?
           players = players.where(people: { email: params[:email] })
         end
+        unless params[:include_private].present?
+          players = players.visible_to(Current.user)
+        end
+        if params[:mine].present?
+          players = players.owned_by(Current.user)
+        end
 
         records, meta = paginate(players)
 
@@ -53,19 +64,32 @@ module Api
         }
       end
 
+      # Soft visibility: a private player is 404 to a coach who neither owns
+      # them nor is a curator/admin (the same as not existing, so the catalogue
+      # and the detail can never disagree).
       def show
-        render json: @player,
-               only: PROFILE_ONLY,
-               include: {
-                 person: { only: PERSON_ONLY },
-                 training_session_participants: {
-                   only: %i[id status notes created_at],
-                   include: {
-                     training_session: { only: %i[id title starts_at ends_at location status visibility] }
-                   }
-                 }
-               },
-               methods: DETAIL_METHODS
+        unless @player.visible_to_user?(Current.user)
+          return render json: { error: "Player not found" }, status: :not_found
+        end
+
+        payload = @player.as_json(
+          only: PROFILE_ONLY,
+          include: {
+            person: { only: PERSON_ONLY },
+            created_by: { only: %i[id name] },
+            training_session_participants: {
+              only: %i[id status notes created_at],
+              include: {
+                training_session: { only: %i[id title starts_at ends_at location status visibility] }
+              }
+            }
+          },
+          methods: DETAIL_METHODS
+        )
+        # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
+        # the key always being present (nil = recorded before Phase C).
+        payload["created_by"] = nil unless payload.key?("created_by")
+        render json: payload
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Player not found" }, status: :not_found
       end
@@ -80,6 +104,7 @@ module Api
       # `person` attributes record a new one.
       def create
         profile = PlayerProfile.new(player_params)
+        profile.created_by ||= Current.user
         PersonCreationService.new(created_by: Current.user).apply(profile.person) if profile.person&.new_record?
 
         if profile.save
@@ -97,14 +122,30 @@ module Api
       #
       # The response mirrors show, plus `possible_duplicates`: a correction
       # ("that was Maria, not Ana") is exactly when a duplicate shows up.
+      #
+      # Soft visibility applies to the edit too: a coach may not edit a private
+      # player they cannot see (404, same as show), and the visibility switch
+      # itself may be flipped only by the owner or an admin.
       def update
+        unless @player.visible_to_user?(Current.user)
+          return render json: { error: "Player not found" }, status: :not_found
+        end
+
         if params.require(:player)[:person_id].present? &&
            params.require(:player)[:person_id].to_i != @player.person_id
           return render json: { errors: [ "This profile already belongs to a person; changing it is a merge, not an edit." ] },
                         status: :unprocessable_entity
         end
 
-        if @player.update(player_update_params)
+        update_params = player_update_params
+        requested_visibility = update_params[:visibility] || update_params["visibility"]
+        if requested_visibility.present? && requested_visibility.to_s != @player.visibility.to_s &&
+           !@player.visibility_change_permitted?(Current.user)
+          @player.errors.add(:visibility, "can only be changed by the coach who recorded this player or an admin")
+          return render json: { errors: @player.errors.full_messages }, status: :forbidden
+        end
+
+        if @player.update(update_params)
           render json: serialize(@player).merge("possible_duplicates" => possible_duplicates_for(@player.person))
         else
           render json: { errors: @player.errors.full_messages }, status: :unprocessable_entity
@@ -130,16 +171,23 @@ module Api
 
       def set_player
         @player = PlayerProfile
-                    .includes(:person, training_session_participants: :training_session)
+                    .includes(:person, :created_by, training_session_participants: :training_session)
                     .find(params[:id])
       end
 
       def serialize(profile)
-        profile.as_json(
+        payload = profile.as_json(
           only: PROFILE_ONLY,
-          include: { person: { only: PERSON_ONLY } },
+          include: {
+            person: { only: PERSON_ONLY },
+            created_by: { only: %i[id name] }
+          },
           methods: PROFILE_METHODS
         )
+        # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
+        # the key always being present (nil = recorded before Phase C).
+        payload["created_by"] = nil unless payload.key?("created_by")
+        payload
       end
 
       # People who may already describe this human, matched by email then name.

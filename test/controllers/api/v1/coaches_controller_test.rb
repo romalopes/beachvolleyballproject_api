@@ -269,7 +269,72 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert CoachProfile.exists?(coach.id)
   end
 
+  test "visibility: owned, shared and private rows" do
+    sign_in_as(@admin)
+    private_coach = private_coach_owned_by(users(:three))
+
+    # The other coach neither owns it nor is staff: hidden from the listing.
+    sign_out
+    sign_in_as(users(:six))
+    get api_v1_coaches_path
+    assert_response :success
+    assert_not_includes JSON.parse(response.body)["data"].map { |c| c["id"] }, private_coach.id
+
+    get api_v1_coach_path(private_coach)
+    assert_response :not_found
+
+    # Owner, curator and admin still see it.
+    sign_out
+    sign_in_as(users(:three))
+    get api_v1_coach_path(private_coach)
+    assert_response :success
+
+    sign_out
+    sign_in_as(@curator)
+    get api_v1_coach_path(private_coach)
+    assert_response :success
+
+    sign_out
+    sign_in_as(@admin)
+    get api_v1_coach_path(private_coach)
+    assert_response :success
+
+    # Flipping the switch answers the same 404/403 split as players: a coach
+    # who cannot see the row gets 404; one who can see it but did not record
+    # it gets 403; the owner and the admin succeed.
+    sign_out
+    sign_in_as(users(:six))
+    patch api_v1_coach_path(private_coach),
+          params: { coach: { coach_profile: { visibility: "shared" } } }
+    assert_response :not_found
+
+    private_coach.update!(visibility: "shared")
+    patch api_v1_coach_path(private_coach),
+          params: { coach: { coach_profile: { visibility: "private" } } }
+    assert_response :forbidden
+
+    sign_out
+    sign_in_as(users(:three))
+    patch api_v1_coach_path(private_coach),
+          params: { coach: { coach_profile: { visibility: "private" } } }
+    assert_response :success
+    assert_equal "private", private_coach.reload.visibility
+
+    sign_out
+    sign_in_as(@admin)
+    patch api_v1_coach_path(private_coach),
+          params: { coach: { coach_profile: { visibility: "shared" } } }
+    assert_response :success
+    assert_equal "shared", private_coach.reload.visibility
+  end
+
   private
+
+  def private_coach_owned_by(owner)
+    person = Person.create!(first_name: "Quiet", last_name: "Coach", creation_source: "coach_created",
+                            created_by: owner)
+    person.create_coach_profile!(visibility: "private", created_by: owner)
+  end
 
   def coach_create_params
     { coach: {

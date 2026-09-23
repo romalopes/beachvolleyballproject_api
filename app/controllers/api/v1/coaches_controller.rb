@@ -19,18 +19,22 @@ module Api
 
       # Permitted input.
       PERSON_ATTRS = %i[first_name last_name email phone date_of_birth].freeze
-      PROFILE_ATTRS = %i[coaching_level qualifications status].freeze
+      PROFILE_ATTRS = %i[coaching_level qualifications status visibility].freeze
 
       # Serializable output.
-      PROFILE_ONLY = %i[id person_id coaching_level qualifications status created_at updated_at].freeze
+      PROFILE_ONLY = %i[id person_id coaching_level qualifications status visibility created_at updated_at].freeze
       PERSON_ONLY = %i[id first_name last_name email phone date_of_birth creation_source].freeze
       PROFILE_METHODS = %i[full_name account_status coach_profile_id].freeze
 
       def index
         # See PlayersController: an explicit status filter replaces the active
         # default, so archived coaches stay reachable for restoring.
+        #
+        # Visibility is the soft variant, same as players: other coaches'
+        # private coaches are hidden from the listing; `?include_private=1`
+        # reveals them and `?mine=1` narrows to the ones this user recorded.
         coaches = profile_scope
-                  .includes(:person)
+                  .includes(:person, :created_by)
                   .joins(:person)
                   .order(people: { last_name: :asc, first_name: :asc }, coach_profiles: { id: :asc })
 
@@ -42,6 +46,12 @@ module Api
         if params[:email].present?
           coaches = coaches.where(people: { email: params[:email] })
         end
+        unless params[:include_private].present?
+          coaches = coaches.visible_to(Current.user)
+        end
+        if params[:mine].present?
+          coaches = coaches.owned_by(Current.user)
+        end
 
         records, meta = paginate(coaches)
 
@@ -51,10 +61,16 @@ module Api
         }
       end
 
+      # Soft visibility, same as players: a private coach is 404 to a coach who
+      # neither owns them nor is a curator/admin.
       def show
+        unless @coach.visible_to_user?(Current.user)
+          return render json: { error: "Coach not found" }, status: :not_found
+        end
+
         render json: @coach,
                only: PROFILE_ONLY,
-               include: { person: { only: PERSON_ONLY } },
+               include: { person: { only: PERSON_ONLY }, created_by: { only: %i[id name] } },
                methods: PROFILE_METHODS
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Coach not found" }, status: :not_found
@@ -70,6 +86,7 @@ module Api
       # attributes record a new one.
       def create
         profile = CoachProfile.new(coach_params)
+        profile.created_by ||= Current.user
         PersonCreationService.new(created_by: Current.user).apply(profile.person) if profile.person&.new_record?
 
         if profile.save
@@ -85,13 +102,25 @@ module Api
       # cannot be re-pointed at another person (`person_id`) — that is a merge,
       # not an edit — and the person's provenance is never rewritten.
       def update
+        unless @coach.visible_to_user?(Current.user)
+          return render json: { error: "Coach not found" }, status: :not_found
+        end
+
         if params.require(:coach)[:person_id].present? &&
            params.require(:coach)[:person_id].to_i != @coach.person_id
           return render json: { errors: [ "This profile already belongs to a person; changing it is a merge, not an edit." ] },
                         status: :unprocessable_entity
         end
 
-        if @coach.update(coach_update_params)
+        update_params = coach_update_params
+        requested_visibility = update_params[:visibility] || update_params["visibility"]
+        if requested_visibility.present? && requested_visibility.to_s != @coach.visibility.to_s &&
+           !@coach.visibility_change_permitted?(Current.user)
+          @coach.errors.add(:visibility, "can only be changed by the coach who recorded this profile or an admin")
+          return render json: { errors: @coach.errors.full_messages }, status: :forbidden
+        end
+
+        if @coach.update(update_params)
           render json: serialize(@coach).merge("possible_duplicates" => possible_duplicates_for(@coach.person))
         else
           render json: { errors: @coach.errors.full_messages }, status: :unprocessable_entity
@@ -113,13 +142,16 @@ module Api
       end
 
       def set_coach
-        @coach = CoachProfile.includes(:person).find(params[:id])
+        @coach = CoachProfile.includes(:person, :created_by).find(params[:id])
       end
 
       def serialize(profile)
         profile.as_json(
           only: PROFILE_ONLY,
-          include: { person: { only: PERSON_ONLY } },
+          include: {
+            person: { only: PERSON_ONLY },
+            created_by: { only: %i[id name] }
+          },
           methods: PROFILE_METHODS
         )
       end

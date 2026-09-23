@@ -14,6 +14,10 @@ three_coach:
   user: three
   role: coach
 
+six_coach:
+  user: six
+  role: coach
+
 four_curator:
   user: four
   role: curator

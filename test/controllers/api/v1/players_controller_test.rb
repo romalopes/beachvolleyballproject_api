@@ -4,6 +4,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
   setup do
     @public_user = users(:one)   # player role only
     @trainer = users(:three)     # coach role only
+    @other_coach = users(:six)   # coach role only, owns nothing
     @admin = users(:two)         # coach + admin
     @curator = users(:four)      # curator: manages trainings, not content
   end
@@ -51,6 +52,168 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     meta = JSON.parse(response.body)["meta"]
     assert_equal 20, meta["per_page"]
     assert_equal 1, meta["page"]
+  end
+
+  test "create defaults to shared visibility and records the author as owner" do
+    sign_in_as(@trainer)
+
+    post api_v1_players_path, params: coach_create_params
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_equal "shared", body["visibility"]
+    assert_equal @trainer.id, body["created_by"]["id"]
+  end
+
+  test "create accepts private visibility and answers with it" do
+    sign_in_as(@trainer)
+
+    post api_v1_players_path, params: {
+      player: { person: { first_name: "Quiet", last_name: "Rookie" }, player_profile: { visibility: "private" } }
+    }
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_equal "private", body["visibility"]
+    assert_equal @trainer.id, body["created_by"]["id"]
+  end
+
+  test "index hides other coaches' private players by default" do
+    private_player = private_player_owned_by(@trainer)
+
+    sign_in_as(@other_coach)
+    get api_v1_players_path
+    assert_response :success
+    assert_not_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
+  end
+
+  test "index shows a coach their own private players" do
+    private_player = private_player_owned_by(@trainer)
+
+    sign_in_as(@trainer)
+    get api_v1_players_path
+    assert_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
+  end
+
+  test "index shows private players to curators and admins" do
+    private_player = private_player_owned_by(@trainer)
+
+    sign_in_as(@curator)
+    get api_v1_players_path
+    assert_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
+
+    sign_out
+    sign_in_as(@admin)
+    get api_v1_players_path
+    assert_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
+  end
+
+  test "index reveals everything with include_private and narrows with mine" do
+    private_player = private_player_owned_by(@trainer)
+
+    sign_in_as(@other_coach)
+    get api_v1_players_path, params: { include_private: "1" }
+    assert_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
+
+    sign_out
+    sign_in_as(@trainer)
+    get api_v1_players_path, params: { mine: "1" }
+    mine_ids = JSON.parse(response.body)["data"].map { |p| p["id"] }
+    assert_includes mine_ids, private_player.id
+    assert_not_includes mine_ids, player_profiles(:john_player).id
+  end
+
+  test "show is 404 for a coach who cannot see a private player" do
+    private_player = private_player_owned_by(@trainer)
+
+    sign_in_as(@other_coach)
+    get api_v1_player_path(private_player)
+    assert_response :not_found
+
+    sign_out
+    sign_in_as(@trainer)
+    get api_v1_player_path(private_player)
+    assert_response :success
+    assert_equal private_player.id, JSON.parse(response.body)["id"]
+  end
+
+  test "show answers with visibility and owner" do
+    sign_in_as(@admin)
+    get api_v1_player_path(player_profiles(:pedro_player))
+    body = JSON.parse(response.body)
+    assert_equal "shared", body["visibility"]
+    assert body.key?("created_by")
+  end
+
+  test "only the owner or an admin may flip visibility" do
+    private_player = private_player_owned_by(@trainer)
+
+    # A coach who cannot see a private player gets the same answer as for a
+    # missing one, so the catalogue and the detail can never disagree.
+    sign_in_as(@other_coach)
+    patch api_v1_player_path(private_player),
+          params: { player: { player_profile: { visibility: "shared" } } }
+    assert_response :not_found
+    assert_equal "private", private_player.reload.visibility
+
+    # A coach who *can* see a shared player but did not record it may edit the
+    # profile, yet may not touch the switch — that answers 403, not 404.
+    private_player.update!(visibility: "shared")
+    patch api_v1_player_path(private_player),
+          params: { player: { player_profile: { visibility: "private" } } }
+    assert_response :forbidden
+    assert_equal "shared", private_player.reload.visibility
+
+    sign_out
+    sign_in_as(@trainer)
+    patch api_v1_player_path(private_player),
+          params: { player: { player_profile: { visibility: "private" } } }
+    assert_response :success
+    assert_equal "private", private_player.reload.visibility
+
+    sign_out
+    sign_in_as(@admin)
+    patch api_v1_player_path(private_player),
+          params: { player: { player_profile: { visibility: "shared" } } }
+    assert_response :success
+    assert_equal "shared", private_player.reload.visibility
+  end
+
+  test "a curator may not flip visibility even though they can see the player" do
+    private_player = private_player_owned_by(@trainer)
+
+    sign_in_as(@curator)
+    get api_v1_player_path(private_player)
+    assert_response :success
+
+    patch api_v1_player_path(private_player),
+          params: { player: { player_profile: { visibility: "shared" } } }
+    # Curators cannot edit profiles at all — the content-creator rule fires
+    # before the ownership rule is even reached.
+    assert_response :forbidden
+    assert_equal "private", private_player.reload.visibility
+  end
+
+  test "update keeps visibility when the switch is not sent" do
+    private_player = private_player_owned_by(@trainer)
+
+    sign_in_as(@trainer)
+    patch api_v1_player_path(private_player),
+          params: { player: { player_profile: { level: "advanced" } } }
+    assert_response :success
+    assert_equal "private", private_player.reload.visibility
+    assert_equal "advanced", private_player.level
+  end
+
+  test "soft visibility never blocks scheduling" do
+    private_player = private_player_owned_by(@trainer)
+
+    sign_in_as(@other_coach)
+    session = TrainingSession.create!(title: "Open session", created_by: @other_coach,
+                                      starts_at: 1.day.from_now, ends_at: 1.day.from_now + 1.hour)
+    session.training_session_participants.create!(player_profile: private_player)
+
+    assert_includes private_player.reload.training_session_participants.map(&:training_session_id), session.id
   end
 
   test "index keeps the search when paging" do
@@ -473,6 +636,12 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
   end
 
   private
+
+  def private_player_owned_by(user)
+    person = Person.create!(first_name: "Private", last_name: "Owned#{SecureRandom.hex(3)}",
+                            creation_source: "coach_created", created_by: user)
+    person.create_player_profile!(visibility: "private", created_by: user)
+  end
 
   def player_create_params
     { player: {

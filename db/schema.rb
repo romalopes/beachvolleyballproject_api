@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_22_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -69,12 +69,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000004) do
   create_table "coach_profiles", force: :cascade do |t|
     t.string "coaching_level"
     t.datetime "created_at", null: false
+    t.bigint "created_by_id"
     t.bigint "person_id", null: false
     t.text "qualifications"
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
+    t.string "visibility", default: "shared", null: false
+    t.index ["created_by_id"], name: "index_coach_profiles_on_created_by_id"
     t.index ["person_id"], name: "index_coach_profiles_on_person_id", unique: true
     t.index ["status"], name: "index_coach_profiles_on_status"
+    t.index ["visibility"], name: "index_coach_profiles_on_visibility"
   end
 
   create_table "drill_skills", force: :cascade do |t|
@@ -169,13 +173,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000004) do
 
   create_table "player_profiles", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.bigint "created_by_id"
     t.string "level"
     t.bigint "person_id", null: false
     t.string "preferred_position"
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
+    t.string "visibility", default: "shared", null: false
+    t.index ["created_by_id"], name: "index_player_profiles_on_created_by_id"
     t.index ["person_id"], name: "index_player_profiles_on_person_id", unique: true
     t.index ["status"], name: "index_player_profiles_on_status"
+    t.index ["visibility"], name: "index_player_profiles_on_visibility"
   end
 
   create_table "roles", force: :cascade do |t|
@@ -274,7 +282,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000004) do
     t.index ["status"], name: "index_training_sessions_on_status"
     t.index ["visibility"], name: "index_training_sessions_on_visibility"
     t.check_constraint "ends_at > starts_at", name: "training_sessions_ends_at_after_starts_at"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'scheduled'::character varying, 'cancelled'::character varying, 'completed'::character varying]::text[])", name: "training_sessions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'scheduled'::character varying::text, 'cancelled'::character varying::text, 'completed'::character varying::text])", name: "training_sessions_status"
   end
 
   create_table "user_roles", force: :cascade do |t|
@@ -377,6 +385,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000004) do
   add_foreign_key "accounts", "users"
   add_foreign_key "admin_activities", "users"
   add_foreign_key "coach_profiles", "people"
+  add_foreign_key "coach_profiles", "users", column: "created_by_id"
   add_foreign_key "drill_skills", "drills"
   add_foreign_key "drill_skills", "skills"
   add_foreign_key "drills", "users", column: "created_by_id"
@@ -385,6 +394,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000004) do
   add_foreign_key "people", "users", column: "created_by_id"
   add_foreign_key "person_aliases", "people"
   add_foreign_key "player_profiles", "people"
+  add_foreign_key "player_profiles", "users", column: "created_by_id"
   add_foreign_key "sessions", "users"
   add_foreign_key "sessions", "users", column: "impersonated_user_id"
   add_foreign_key "skills", "categories"
