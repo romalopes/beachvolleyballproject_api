@@ -1,7 +1,8 @@
 # Person / Player / Coach Identity Model
 
 Phases 1–3 are implemented (identity model, training participants, player/coach
-API + SPA).
+API + SPA), including **3.C — private-to-the-coach visibility** and its
+hardening pass (see *Ownership and visibility* below).
 
 ## Core principle
 
@@ -113,12 +114,12 @@ User): a participant is whoever is expected, whether or not they can sign in.
 | Endpoint | Who | Notes |
 | --- | --- | --- |
 | `GET /api/v1/people?q=&email=` | coach, curator, admin | identity search, 25 rows max (flat array) |
-| `GET /api/v1/players?q=&email=&status=&page=&per_page=` | coach, curator, admin | paginated (`{ data, meta }`), 20 per page |
-| `GET /api/v1/players/:id` | coach, curator, admin | adds `training_session_count` and the training history |
-| `POST /api/v1/players` | coach, admin | `person_id` or nested `person`; `player_profile`; returns `possible_duplicates` |
-| `PATCH /api/v1/players/:id` | coach, admin | edits `player_profile` + nested `person` (contact details); `person_id` refused with 422 |
-| `GET /api/v1/coaches?q=&email=&status=&page=&per_page=` | coach, curator, admin | paginated, same shape as players |
-| `GET /api/v1/coaches/:id` | coach, curator, admin | |
+| `GET /api/v1/players?q=&email=&status=&mine=&include_private=&page=&per_page=` | coach, curator, admin | paginated (`{ data, meta }`), 20 per page; private rows are excluded unless `include_private=1`, and `mine=1` narrows to the rows the caller recorded |
+| `GET /api/v1/players/:id` | coach, curator, admin | adds `training_session_count` and the training history; a private player the caller cannot see is 404 |
+| `POST /api/v1/players` | coach, admin | `person_id` or nested `person`; `player_profile` (including `visibility`, which defaults to `shared`); returns `possible_duplicates` |
+| `PATCH /api/v1/players/:id` | coach, admin | edits `player_profile` + nested `person` (contact details); `person_id` refused with 422; flipping `visibility` is refused with 422 unless the caller owns the profile or is an admin |
+| `GET /api/v1/coaches?q=&email=&status=&mine=&include_private=&page=&per_page=` | coach, curator, admin | paginated, same shape and same visibility rules as players |
+| `GET /api/v1/coaches/:id` | coach, curator, admin | same visibility rule as the player detail |
 | `POST /api/v1/coaches` | coach, admin | same shape as players; a CoachProfile grants no permissions |
 | `PATCH /api/v1/coaches/:id` | coach, admin | same as the player edit |
 
@@ -130,10 +131,10 @@ for `per_page=100` because it filters the roster locally while a coach types —
 if a club ever exceeds 100 players, that picker should move to server-side search.
 
 Reads are limited to training managers because the payloads carry contact
-details. The SPA mirrors that: `/players`, `/players/:id` and `/coaches` sit
-behind `ManagerRoute`, and the "New player"/"New coach" buttons only render for
-coaches and admins. Lowercase statuses (`"connected"`, `"profile_only"`) are the
-wire format.
+details. The SPA mirrors that: `/players`, `/players/:id`, `/coaches` and
+`/coaches/:id` sit behind `ManagerRoute`, and the "New player"/"New coach"
+buttons only render for coaches and admins. Lowercase statuses (`"connected"`,
+`"profile_only"`) are the wire format.
 
 ## Editing profiles and renames
 
@@ -184,6 +185,44 @@ Archiving is the only removal path, and it is a flag:
 - The SPA offers this as an explicit mode ("Show archived") with an "Archived"
   tag plus Archive/Restore actions — archiving asks for confirmation and says
   what it does ("training history is kept"), restoring is one click.
+
+## Ownership and visibility (Phase 3.C)
+
+`visibility` is the soft, coach-facing variant of the session flag, on both
+`player_profiles` and `coach_profiles`: `shared` (default) or `private`. It is a
+**presentation convention, not authorization**:
+
+- The catalogues hide another coach's private profiles
+  (`PlayerProfile.visible_to(user)`, `owned_by(user)` behind `?mine=1`), and *the
+  picker relies on it never going further than that*: the training form's player
+  picker asks for `?include_private=1` because visibility never blocks
+  scheduling — any coach may add any player to any session.
+- A hidden profile answers **404, not 403**, on both `show` and `update`:
+  whether a private record exists is itself information. `visible_to_user?` is
+  the single source of truth for that decision.
+- Ownership lives on the profile (`created_by`), not on the Person: with the
+  `person_id` create path the Person's author may be a different coach, and one
+  Person can carry a player profile and a coach profile recorded by different
+  staff. The column is stamped from the authenticated request and is never
+  accepted from the payload, so neither create nor update can set it.
+- The one hard rule is who may flip the switch: only the owner or an admin
+  (`visibility_change_permitted?`). Anyone else gets 422 on the PATCH, so legacy
+  rows without an owner are admin-only; the SPA locks the control for those
+  callers rather than offering it and refusing.
+- Retroactively nothing changes: the column defaults to `shared` and the
+  migration backfills `created_by_id` from the Person's author only for people
+  recorded with `creation_source: "coach_created"`. Older rows stay shared.
+- The SPA mirrors the rules: the create form offers the switch (default
+  *Shared*), the edit form locks it unless the caller is the owner or an admin,
+  lists and details tag private rows, and the filters expose the private and
+  "mine" views.
+
+### Assumptions (ratified, not implicit)
+
+- Visibility applies to `coach_profiles` too — the implementation is shared (one
+  migration, one set of scopes, validations and controller rule).
+- `visibility` defaults to `shared`, and the create form offers the switch
+  rather than defaulting a newly recorded profile to private.
 
 ## Not yet implemented (future phases)
 
