@@ -164,7 +164,7 @@ module Api
           },
           training_session_participants: {
             only: PARTICIPANT_ATTRIBUTES,
-            methods: %i[player_name account_connected?],
+            methods: %i[player_name account_connected],
             include: {
               player_profile: {
                 only: %i[id preferred_position level],
@@ -217,8 +217,9 @@ module Api
       # `player_profile_id`. That is the "coach adds a player who does not
       # have an account yet" workflow: a Person (creation_source:
       # coach_created) + PlayerProfile are created and linked, with no
-      # Account. RecordInvalid bubbles up so persist can render the person's
-      # validation errors.
+      # Account. Provenance is stamped by PersonCreationService, the single
+      # creation path for staff-recorded people; RecordInvalid bubbles up so
+      # persist can render the person's validation errors.
       def resolve_inline_participants!(permitted)
         rows = permitted[:training_session_participants_attributes]
         return if rows.blank?
@@ -227,9 +228,7 @@ module Api
           person_attrs = row.delete("person") || row.delete(:person)
           next if person_attrs.blank? || row[:player_profile_id].present? || row["player_profile_id"].present?
 
-          person = Person.new(person_attrs.to_h)
-          person.creation_source = "coach_created"
-          person.created_by = Current.user
+          person = PersonCreationService.new(created_by: Current.user).build(person_attrs)
           person.build_player_profile
           person.save!
           row[:player_profile_id] = person.player_profile.id

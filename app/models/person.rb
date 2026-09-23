@@ -36,6 +36,12 @@ class Person < ApplicationRecord
   validate :date_of_birth_cannot_be_in_the_future
   validate :cannot_merge_into_self
 
+  # A rename must not lose the previous spelling: coaches search by the name
+  # they know, and a person who changes their name would otherwise stop being
+  # findable. Recorded here (not in the controllers) because a person can be
+  # renamed from the player/coach API *and* from their own account page.
+  after_update :remember_previous_name, if: :saved_change_to_name?
+
   scope :active, -> { where(status: "active") }
   # Records used by identity resolution: merged people are excluded from
   # canonical lookups but remain queryable through `merged_into_id`.
@@ -43,6 +49,36 @@ class Person < ApplicationRecord
 
   def full_name
     [ first_name, last_name ].compact.join(" ")
+  end
+
+  # Whether this person can authenticate ("connected") or exists only as a
+  # staff-recorded profile ("profile_only"). Single source of truth for the
+  # player/coach profiles and for the identity search payload.
+  def account_status
+    account ? "connected" : "profile_only"
+  end
+
+  # Compact identity payload shared by the identity-search endpoint
+  # (/api/v1/people) and the possible-duplicate suggestions returned when a
+  # player or coach is created. Callers should eager load account and the
+  # profiles to avoid N+1 queries.
+  def identity_summary
+    {
+      id: id,
+      first_name: first_name,
+      last_name: last_name,
+      full_name: full_name,
+      email: email,
+      phone: phone,
+      date_of_birth: date_of_birth,
+      creation_source: creation_source,
+      account_status: account_status,
+      player_profile_id: player_profile&.id,
+      coach_profile_id: coach_profile&.id,
+      # Alternate names are not identity evidence, but they are how a coach
+      # recognises someone ("Ah, Pedro — I knew him as Peter").
+      aliases: person_aliases.map(&:full_name)
+    }
   end
 
   def merged?
@@ -66,6 +102,25 @@ class Person < ApplicationRecord
   end
 
   private
+
+  # True when first or last name changed in the update that just happened.
+  def saved_change_to_name?
+    saved_change_to_first_name? || saved_change_to_last_name?
+  end
+
+  # Keeps the name the person was known by. Skips blanks, no-ops, and names
+  # already recorded (so renaming back and forth does not stack duplicates).
+  def remember_previous_name
+    previous = [
+      saved_change_to_first_name? ? saved_change_to_first_name.first : first_name,
+      saved_change_to_last_name? ? saved_change_to_last_name.first : last_name
+    ].compact.join(" ").strip
+
+    return if previous.blank? || previous == full_name
+    return if person_aliases.any? { |alias_record| alias_record.full_name == previous }
+
+    person_aliases.create!(full_name: previous, alias_type: "previous_name")
+  end
 
   def date_of_birth_cannot_be_in_the_future
     return if date_of_birth.blank?

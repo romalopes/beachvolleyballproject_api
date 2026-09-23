@@ -8,6 +8,10 @@ class CoachProfile < ApplicationRecord
 
   belongs_to :person
 
+  # See PlayerProfile: update_only keeps a has_one update from replacing the
+  # person (and creating a second identity) when no id is sent.
+  accepts_nested_attributes_for :person, allow_destroy: false, update_only: true
+
   validates :person_id, uniqueness: true
   validates :status, presence: true, inclusion: { in: STATUSES }
 
@@ -18,13 +22,20 @@ class CoachProfile < ApplicationRecord
   end
 
   def account_status
-    person.account ? "connected" : "profile_only"
+    person.account_status
+  end
+
+  # API-facing alias: callers address a profile by `<resource>_profile_id`
+  # (training session participants already use that shape), so payloads carry
+  # both the generic `id` and this domain-specific key.
+  def coach_profile_id
+    id
   end
 
   def metadata
     {
       id: id,
-      coach_profile_id: id,
+      coach_profile_id: coach_profile_id,
       person_id: person_id,
       coaching_level: coaching_level,
       qualifications: qualifications,

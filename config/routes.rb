@@ -94,8 +94,12 @@ Rails.application.routes.draw do
       end
 
       resources :videos, only: [:index, :create, :show, :update, :destroy]
-      resources :players, only: %i[index show create]
-      resources :coaches, only: %i[index show create]
+
+      # Identity search used by the "create player/coach" flow before a new
+      # Person is created (possible-duplicate lookup). Staff-only.
+      resources :people, only: [ :index ]
+      resources :players, only: %i[index show create update]
+      resources :coaches, only: %i[index show create update]
       resources :training_sessions
 
       # Admin role management

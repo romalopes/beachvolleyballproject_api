@@ -4,7 +4,10 @@
 # Aliases improve duplicate detection during identity resolution; they are
 # never proof of identity by themselves.
 class PersonAlias < ApplicationRecord
-  ALIAS_TYPES = %w[nickname alternate_spelling transliteration other].freeze
+  # `previous_name` is written by Person when a person is renamed, so an old
+  # spelling stays findable (and duplicate detection keeps working across a
+  # rename). The others are entered by hand.
+  ALIAS_TYPES = %w[nickname alternate_spelling transliteration previous_name other].freeze
 
   belongs_to :person
 

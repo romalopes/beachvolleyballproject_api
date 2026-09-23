@@ -72,4 +72,46 @@ class PersonTest < ActiveSupport::TestCase
   test "aliases are available for duplicate detection" do
     assert_equal %w[Johnny\ Smith João\ Smith].sort, people(:one).person_aliases.pluck(:full_name).sort
   end
+
+  test "renaming a person keeps the previous name as an alias" do
+    person = people(:two)
+
+    person.update!(first_name: "Mariana")
+
+    assert_equal "Mariana", person.reload.first_name
+    assert_equal [ "Maria Silva" ], person.person_aliases.pluck(:full_name)
+    assert_equal "previous_name", person.person_aliases.first.alias_type
+  end
+
+  test "renaming keeps the part of the name that did not change" do
+    person = people(:two)
+
+    person.update!(last_name: "Silva-Costa")
+
+    assert_equal [ "Maria Silva" ], person.reload.person_aliases.pluck(:full_name)
+  end
+
+  test "saving without a name change records no alias" do
+    person = people(:two)
+
+    person.update!(phone: "+61400000009")
+
+    assert_empty person.reload.person_aliases
+  end
+
+  test "the same previous name is never recorded twice" do
+    person = people(:two)
+
+    person.update!(first_name: "Mariana")
+    person.update!(first_name: "Maria")
+
+    assert_equal [ "Maria Silva", "Mariana Silva" ].sort,
+                 person.reload.person_aliases.pluck(:full_name).sort
+  end
+
+  test "identity summary carries the aliases" do
+    summary = people(:one).identity_summary
+
+    assert_equal %w[Johnny\ Smith João\ Smith].sort, summary[:aliases].sort
+  end
 end

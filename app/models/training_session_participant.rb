@@ -35,6 +35,12 @@ class TrainingSessionParticipant < ApplicationRecord
     person&.account.present?
   end
 
+  # Same fact without the predicate suffix, so the serialized payload key is
+  # `account_connected` (clients are JavaScript, where `?` keys are awkward).
+  def account_connected
+    account_connected?
+  end
+
   private
 
   # Once a session is cancelled, no new participants can be added; existing
