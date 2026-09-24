@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_24_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -56,6 +56,34 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
     t.datetime "updated_at", null: false
     t.text "value"
     t.index ["key"], name: "index_app_settings_on_key", unique: true
+  end
+
+  create_table "assessments", force: :cascade do |t|
+    t.bigint "coach_profile_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.string "custom_skill"
+    t.text "notes"
+    t.bigint "player_profile_id", null: false
+    t.integer "reported_value"
+    t.string "scale", default: "one_to_ten", null: false
+    t.integer "score"
+    t.bigint "skill_id"
+    t.string "status", default: "draft", null: false
+    t.bigint "training_session_id"
+    t.datetime "updated_at", null: false
+    t.index ["coach_profile_id"], name: "index_assessments_on_coach_profile_id"
+    t.index ["created_by_id"], name: "index_assessments_on_created_by_id"
+    t.index ["player_profile_id", "created_at"], name: "index_assessments_on_player_profile_id_and_created_at"
+    t.index ["player_profile_id"], name: "index_assessments_on_player_profile_id"
+    t.index ["skill_id"], name: "index_assessments_on_skill_id"
+    t.index ["status"], name: "index_assessments_on_status"
+    t.index ["training_session_id"], name: "index_assessments_on_training_session_id"
+    t.check_constraint "(score IS NULL) = (reported_value IS NULL)", name: "assessments_score_pair"
+    t.check_constraint "score IS NULL OR score >= 0 AND score <= 100", name: "assessments_score_range"
+    t.check_constraint "skill_id IS NOT NULL AND custom_skill IS NULL OR skill_id IS NULL AND custom_skill IS NOT NULL", name: "assessments_skill_xor_custom_skill"
+    t.check_constraint "status::text = 'draft'::text OR score IS NOT NULL AND reported_value IS NOT NULL", name: "assessments_published_requires_score"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'active'::character varying, 'withdrawn'::character varying]::text[])", name: "assessments_status"
   end
 
   create_table "categories", force: :cascade do |t|
@@ -282,7 +310,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
     t.index ["status"], name: "index_training_sessions_on_status"
     t.index ["visibility"], name: "index_training_sessions_on_visibility"
     t.check_constraint "ends_at > starts_at", name: "training_sessions_ends_at_after_starts_at"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'scheduled'::character varying::text, 'cancelled'::character varying::text, 'completed'::character varying::text])", name: "training_sessions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'scheduled'::character varying, 'cancelled'::character varying, 'completed'::character varying]::text[])", name: "training_sessions_status"
   end
 
   create_table "user_roles", force: :cascade do |t|
@@ -384,6 +412,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
   add_foreign_key "accounts", "people"
   add_foreign_key "accounts", "users"
   add_foreign_key "admin_activities", "users"
+  add_foreign_key "assessments", "coach_profiles"
+  add_foreign_key "assessments", "player_profiles"
+  add_foreign_key "assessments", "skills"
+  add_foreign_key "assessments", "training_sessions", on_delete: :nullify
+  add_foreign_key "assessments", "users", column: "created_by_id"
   add_foreign_key "coach_profiles", "people"
   add_foreign_key "coach_profiles", "users", column: "created_by_id"
   add_foreign_key "drill_skills", "drills"

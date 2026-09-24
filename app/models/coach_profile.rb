@@ -27,6 +27,11 @@ class CoachProfile < ApplicationRecord
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
 
+  # The assessments this coach recorded. See PlayerProfile#assessments: the rows
+  # are the coach's professional record, so they outlive the profile — which is
+  # archived rather than deleted anyway.
+  has_many :assessments, dependent: :restrict_with_error
+
   scope :active, -> { where(status: "active") }
 
   # See PlayerProfile.visible_to: soft visibility for the catalogue — shared

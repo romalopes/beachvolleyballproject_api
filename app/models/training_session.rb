@@ -41,6 +41,11 @@ class TrainingSession < ApplicationRecord
            dependent: :destroy, inverse_of: :training_session
   has_many :player_profiles, through: :training_session_participants
 
+  # Assessments recorded during this session outlive it: a coach's rating of a
+  # player is not undone by the schedule entry being deleted, which is why the
+  # column's foreign key is ON DELETE SET NULL.
+  has_many :assessments, dependent: :nullify, inverse_of: :training_session
+
   # Media: the polymorphic VideoReference lets a training session carry videos
   # (e.g. a recording of the session) without a dedicated join table.
   has_many :video_references, as: :referenced, dependent: :destroy

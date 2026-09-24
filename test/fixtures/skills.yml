@@ -11,3 +11,13 @@ two:
   slug: mystring-two
   category: two
   description: MyText
+
+# Reserved for assessment fixtures. A rating's rubric is an ordinary Skill, but
+# keeping assessments off `one`/`two` keeps this file's existing delete tests
+# (which target those two) independent of phase 4 — and it belongs to category
+# `two` because category `one`'s skill count is asserted elsewhere.
+assessment_rubric:
+  title: Forearm pass
+  slug: forearm-pass
+  category: two
+  description: Platform angle and control under a float serve.

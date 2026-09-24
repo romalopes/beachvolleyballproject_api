@@ -32,6 +32,13 @@ class PlayerProfile < ApplicationRecord
 
   has_many :training_session_participants, dependent: :destroy, inverse_of: :player_profile
 
+  # Assessments are the player's coaching history, so a profile may never be
+  # destroyed while they exist: the row is the evidence a coach recorded, and
+  # history that can vanish is history nobody can trust. Profiles leave the
+  # catalogue by becoming `archived` instead of being deleted (see the
+  # archive-not-delete rule), so this only guards a mistake.
+  has_many :assessments, dependent: :restrict_with_error
+
   validates :person_id, uniqueness: true
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
