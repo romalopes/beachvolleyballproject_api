@@ -1,5 +1,11 @@
 # Assessment Integration Plan (Phase 4)
 
+> **Status: complete (4.1–4.4).** The model, API and SPA are implemented and the
+> full verification gate is green. This document is retained as the reference for
+> the rating scale, the existence/authority rules and the ratified assumptions.
+> One addition beyond the original scope: the `/assessments` catalogue screen
+> (see "Out of scope" below).
+
 How coach assessments of players are modelled, scored, published and exposed.
 
 This is the contract for Phase 4: the rating scale, the data model, the API and

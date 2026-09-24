@@ -226,7 +226,9 @@ Archiving is the only removal path, and it is a flag:
 
 ## Not yet implemented (future phases)
 
-- Assessments referencing `player_profile` + `coach_profile` (coach-authoritative)
+- ~~Assessments referencing `player_profile` + `coach_profile`~~ — **implemented in
+  Phase 4** (coach-authoritative, canonical 0–100 score). See
+  `docs/ASSESSMENT_INTEGRATION_PLAN.md`.
 - `PlayerCoach` join model, groups
 - `PersonClaim` / invitations (invited person claims their existing Person)
 - `PersonMerge` consolidation service
