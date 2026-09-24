@@ -1,4 +1,9 @@
-# A coach's assessment of a player, against a skill (or a free-text rubric).
+# A coach's assessment of a player, against a category (or a free-text rubric).
+#
+# The rubric is deliberately the *category* — the area of the game the coach
+# observed ("Attack", "Serve") — not a single Skill. A Skill is the vocabulary a
+# training focus or drill names; an assessment describes a player's level in an
+# area, which is the coarser and more stable unit.
 #
 # Both sides are *profiles*, never people or accounts: an assessment is always
 # about a PlayerProfile and always attributed to a CoachProfile — the same
@@ -26,7 +31,7 @@ class Assessment < ApplicationRecord
   belongs_to :player_profile
   belongs_to :coach_profile
   belongs_to :created_by, class_name: "User", optional: true
-  belongs_to :skill, optional: true
+  belongs_to :category, optional: true
   belongs_to :training_session, optional: true
 
   # `value` is the coach's own entry on the named scale — the only rating input
@@ -52,9 +57,9 @@ class Assessment < ApplicationRecord
     self.score = RatingScale.to_score(number, scale: scale)
   end
 
-  # Blank custom text must become NULL, otherwise a skill-based row would carry
-  # an empty string and violate the skill-xor-custom check constraint.
-  normalizes :custom_skill, with: ->(value) { value.strip.presence }
+  # Blank custom text must become NULL, otherwise a category-based row would
+  # carry an empty string and violate the category-xor-custom check constraint.
+  normalizes :custom_category, with: ->(value) { value.strip.presence }
 
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :scale, presence: true, inclusion: { in: SCALES }
@@ -67,7 +72,7 @@ class Assessment < ApplicationRecord
   validate :score_and_reported_value_travel_together
   validate :score_matches_reported_value
   validate :rated_once_it_leaves_draft
-  validate :skill_or_custom_skill
+  validate :category_or_custom_category
   validate :coach_must_not_assess_their_own_player_profile
 
   scope :active, -> { where(status: "active") }
@@ -117,10 +122,10 @@ class Assessment < ApplicationRecord
   # It takes the relation explicitly because a scope cannot return an array, and
   # a class method called on a relation would silently ignore that relation. A
   # player's history is small by construction, so the grouping happens in Ruby
-  # rather than relying on Postgres' DISTINCT ON; `skill_key` keeps two distinct
-  # free-text rubrics from collapsing into one.
-  def self.latest_per_skill(scope = all)
-    scope.ordered.group_by(&:skill_key).values.map(&:first)
+  # rather than relying on Postgres' DISTINCT ON; `category_key` keeps two
+  # distinct free-text rubrics from collapsing into one.
+  def self.latest_per_rubric(scope = all)
+    scope.ordered.group_by(&:rubric_key).values.map(&:first)
   end
 
   # The single source of truth for "may this user see this row?", used by the
@@ -176,18 +181,18 @@ class Assessment < ApplicationRecord
   end
 
   # The rubric, whichever branch it sits on.
-  def skill_label
-    skill&.title.presence || custom_skill
+  def category_label
+    category&.name.presence || custom_category
   end
 
-  def skill_key
-    skill_id ? "skill:#{skill_id}" : "custom:#{custom_skill.to_s.downcase}"
+  def category_key
+    category_id ? "category:#{category_id}" : "custom:#{custom_category.to_s.downcase}"
   end
 
   # PlayerProfile#latest_rated_assessments groups by this name ("per rubric",
   # in the plan's vocabulary); an alias keeps both readers of the same idea
   # from drifting apart.
-  alias_method :rubric_key, :skill_key
+  alias_method :rubric_key, :category_key
 
   # Display values: both scales the club reads, plus the canonical pair. They are
   # nil for an unrated draft, so a caller cannot render a rating of zero.
@@ -209,9 +214,9 @@ class Assessment < ApplicationRecord
       player_profile_id: player_profile_id,
       coach_profile_id: coach_profile_id,
       created_by: created_by ? { id: created_by.id, name: created_by.name } : nil,
-      skill: skill ? { id: skill.id, title: skill.title, slug: skill.slug } : nil,
-      custom_skill: custom_skill,
-      skill_label: skill_label,
+      category: category ? { id: category.id, name: category.name, slug: category.slug } : nil,
+      custom_category: custom_category,
+      category_label: category_label,
       training_session_id: training_session_id,
       score: score,
       reported_value: reported_value,
@@ -270,12 +275,12 @@ class Assessment < ApplicationRecord
     errors.add(:score, "is required once the assessment leaves draft")
   end
 
-  # Exactly one rubric: an existing Skill, or free text.
-  def skill_or_custom_skill
-    if skill_id.present? && custom_skill.present?
-      errors.add(:custom_skill, "must be blank when a skill is selected")
-    elsif skill_id.blank? && custom_skill.blank?
-      errors.add(:base, "Choose a skill or describe what was assessed")
+  # Exactly one rubric: an existing Category, or free text.
+  def category_or_custom_category
+    if category_id.present? && custom_category.present?
+      errors.add(:custom_category, "must be blank when a category is selected")
+    elsif category_id.blank? && custom_category.blank?
+      errors.add(:base, "Choose a category or describe what was assessed")
     end
   end
 

@@ -98,7 +98,7 @@ module Api
         payload["assessments"] = Assessment.visible_to(Current.user)
                                          .where(player_profile_id: @player.id)
                                          .ordered
-                                         .includes(:skill, :created_by, :coach_profile)
+                                         .includes(:category, :created_by, :coach_profile)
                                          .map(&:metadata)
 
         render json: payload

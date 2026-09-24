@@ -69,7 +69,8 @@ class RatingScaleTest < ActiveSupport::TestCase
     assert_not RatingScale.legal_value?(6, scale: "one_to_five")
     assert RatingScale.legal_value?(10, scale: "one_to_ten")
     assert_not RatingScale.legal_value?(11, scale: "one_to_ten")
-    assert_not RatingScale.legal_value?(4, scale: "one_to_hundred")
+    assert RatingScale.legal_value?(4, scale: "one_to_hundred")
+    assert_not RatingScale.legal_value?(101, scale: "one_to_hundred")
     assert_not RatingScale.legal_value?(nil, scale: "one_to_five")
   end
 
@@ -83,6 +84,7 @@ class RatingScaleTest < ActiveSupport::TestCase
     assert_raises(ArgumentError) { RatingScale.to_score(0, scale: "one_to_five") }
     assert_raises(ArgumentError) { RatingScale.to_score(-1, scale: "one_to_ten") }
     assert_raises(ArgumentError) { RatingScale.to_score(nil, scale: "one_to_five") }
-    assert_raises(ArgumentError) { RatingScale.to_score(4, scale: "one_to_hundred") }
+    assert_equal 4, RatingScale.to_score(4, scale: "one_to_hundred")
+    assert_raises(ArgumentError) { RatingScale.to_score(101, scale: "one_to_hundred") }
   end
 end

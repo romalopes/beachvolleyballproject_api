@@ -1,6 +1,6 @@
 module Api
   module V1
-    # RESTful API for Assessments: a coach's rating of a player against a skill.
+    # RESTful API for Assessments: a coach's rating of a player against a category.
     #
     # Existence and authority are separate concerns (see Assessment):
     #   * index/show return only rows that exist for the caller — `active` rows
@@ -38,30 +38,27 @@ module Api
       # `five_scale` let the SPA show the rating on either scale without
       # converting it again.
       ASSESSMENT_ONLY = %i[
-        id player_profile_id coach_profile_id skill_id custom_skill
+        id player_profile_id coach_profile_id category_id custom_category
         training_session_id score reported_value scale notes status
         created_at updated_at
       ].freeze
       ASSESSMENT_METHODS = %i[
-        skill_label ten_scale five_scale score_label status_label
+        category_label ten_scale five_scale score_label status_label
         player_profile_id coach_profile_id
       ].freeze
       ASSESSMENT_INCLUDES = {
         created_by: { only: %i[id name] },
-        skill: {
-          only: %i[id title slug description],
-          include: { category: { only: %i[id name slug] } }
-        }
+        category: { only: %i[id name slug] }
       }.freeze
 
       def index
         rows = Assessment
                  .visible_to(Current.user)
                  .ordered
-                 .includes(:player_profile, :coach_profile, :created_by, skill: :category)
+                 .includes(:player_profile, :coach_profile, :created_by, :category)
         rows = rows.where(player_profile_id: params[:player_id]) if params[:player_id].present?
         rows = rows.where(coach_profile_id: params[:coach_id]) if params[:coach_id].present?
-        rows = rows.where(skill_id: params[:skill_id]) if params[:skill_id].present?
+        rows = rows.where(category_id: params[:category_id]) if params[:category_id].present?
         rows = rows.where(training_session_id: params[:training_session_id]) if params[:training_session_id].present?
         rows = params[:status].present? ? rows.where(status: params[:status]) : rows.active
         if params[:mine].present?
@@ -142,13 +139,13 @@ module Api
 
       def set_assessment
         @assessment = Assessment
-                        .includes(:player_profile, :coach_profile, :created_by, skill: :category)
+                        .includes(:player_profile, :coach_profile, :created_by, :category)
                         .find(params[:id])
       end
 
       def assessment_params
         params.require(:assessment).permit(
-          :player_profile_id, :coach_profile_id, :skill_id, :custom_skill,
+          :player_profile_id, :coach_profile_id, :category_id, :custom_category,
           :training_session_id, :score, :reported_value, :scale, :value,
           :notes, :status
         )
@@ -267,7 +264,7 @@ module Api
         # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
         # the key always being present (nil = recorded before provenance).
         payload["created_by"] = nil unless payload.key?("created_by")
-        payload["skill"] = nil unless payload.key?("skill")
+        payload["category"] = nil unless payload.key?("category")
         payload
       end
     end

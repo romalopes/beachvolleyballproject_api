@@ -15,7 +15,7 @@ class AssessmentTest < ActiveSupport::TestCase
     @coach = coach_profiles(:maria_coach)
   end
 
-  test "a published skill-based assessment is valid" do
+  test "a published category-based assessment is valid" do
     assert assessments(:skill_active).valid?
   end
 
@@ -87,12 +87,12 @@ class AssessmentTest < ActiveSupport::TestCase
     assert_includes without_score.errors.attribute_names, :score
   end
 
-  test "the rubric is a skill or free text, never both and never neither" do
-    both = build_assessment(skill: skills(:assessment_rubric), custom_skill: "Court communication")
+  test "the rubric is a category or free text, never both and never neither" do
+    both = build_assessment(category: categories(:assessment_rubric), custom_category: "Court communication")
     assert_not both.valid?
-    assert_includes both.errors.attribute_names, :custom_skill
+    assert_includes both.errors.attribute_names, :custom_category
 
-    neither = build_assessment(skill: nil, custom_skill: nil)
+    neither = build_assessment(category: nil, custom_category: nil)
     assert_not neither.valid?
     assert_includes neither.errors.attribute_names, :base
   end
@@ -104,7 +104,7 @@ class AssessmentTest < ActiveSupport::TestCase
       player_profile: player_profiles(:john_player),
       coach_profile: own_coach_profile,
       created_by: @coach_user,
-      skill: skills(:assessment_rubric),
+      category: categories(:assessment_rubric),
       score: 70,
       reported_value: 4,
       scale: "one_to_five",
@@ -124,7 +124,7 @@ class AssessmentTest < ActiveSupport::TestCase
       player_profile: player_profiles(:john_player),
       coach_profile: @coach,
       created_by: @coach_user,
-      skill: skills(:assessment_rubric),
+      category: categories(:assessment_rubric),
       score: 70,
       reported_value: 4,
       scale: "one_to_five",
@@ -279,10 +279,10 @@ class AssessmentTest < ActiveSupport::TestCase
   end
 
   test "the rubric is exposed whichever branch it sits on" do
-    assert_equal skills(:assessment_rubric).title, assessments(:skill_active).skill_label
-    assert_equal "Court communication", assessments(:custom_withdrawn).skill_label
-    assert_equal "skill:#{skills(:assessment_rubric).id}", assessments(:skill_active).skill_key
-    assert_equal "custom:court communication", assessments(:custom_withdrawn).skill_key
+    assert_equal categories(:assessment_rubric).name, assessments(:skill_active).category_label
+    assert_equal "Court communication", assessments(:custom_withdrawn).category_label
+    assert_equal "category:#{categories(:assessment_rubric).id}", assessments(:skill_active).category_key
+    assert_equal "custom:court communication", assessments(:custom_withdrawn).category_key
   end
 
   test "metadata carries the row for a nested payload" do
@@ -295,8 +295,8 @@ class AssessmentTest < ActiveSupport::TestCase
     assert_equal 4, payload[:five_scale]
     assert_equal({ id: @coach_user.id, name: @coach_user.name }, payload[:created_by])
     assert_equal(
-      { id: skills(:assessment_rubric).id, title: skills(:assessment_rubric).title, slug: skills(:assessment_rubric).slug },
-      payload[:skill]
+      { id: categories(:assessment_rubric).id, name: categories(:assessment_rubric).name, slug: categories(:assessment_rubric).slug },
+      payload[:category]
     )
     assert_equal "Active", payload[:status_label]
 
@@ -306,26 +306,26 @@ class AssessmentTest < ActiveSupport::TestCase
     assert_nil unrated[:five_scale]
   end
 
-  test "latest_per_skill keeps one row per rubric, newest first" do
+  test "latest_per_rubric keeps one row per rubric, newest first" do
     person = Person.create!(first_name: "Grouping", last_name: "Case", creation_source: "system")
     profile = person.create_player_profile!
 
-    older = build_assessment(player_profile: profile, skill: skills(:assessment_rubric))
+    older = build_assessment(player_profile: profile, category: categories(:assessment_rubric))
     older.save!
     older.update_column(:created_at, 3.days.ago)
 
-    newer = build_assessment(player_profile: profile, skill: skills(:assessment_rubric))
+    newer = build_assessment(player_profile: profile, category: categories(:assessment_rubric))
     newer.save!
     newer.update_column(:created_at, 1.hour.ago)
 
-    custom = build_assessment(player_profile: profile, skill: nil, custom_skill: "Net play")
+    custom = build_assessment(player_profile: profile, category: nil, custom_category: "Net play")
     custom.save!
 
-    latest = Assessment.latest_per_skill(profile.assessments)
-    keys = latest.map(&:skill_key)
+    latest = Assessment.latest_per_rubric(profile.assessments)
+    keys = latest.map(&:category_key)
 
     assert_equal keys.uniq.length, keys.length, "one row per rubric"
-    assert_equal 2, keys.length, "skill two (newest wins) and one custom rubric"
+    assert_equal 2, keys.length, "category (newest wins) and one custom rubric"
     assert_includes latest, newer
     assert_not_includes latest, older
     assert_includes latest, custom
@@ -336,10 +336,10 @@ class AssessmentTest < ActiveSupport::TestCase
   test "a rubric in use cannot be hard-deleted" do
     # The XOR constraint requires a rubric, so the database refuses the delete
     # rather than nulling the column — an assessment without a rubric would be
-    # meaningless, and losing the skill would silently rewrite history. An
-    # in-use skill is therefore retired by editing it, not by deleting it.
+    # meaningless, and losing the category would silently rewrite history. An
+    # in-use category is therefore retired by editing it, not by deleting it.
     assert_raises(ActiveRecord::InvalidForeignKey) do
-      skills(:assessment_rubric).destroy
+      categories(:assessment_rubric).destroy
     end
 
     assert Assessment.exists?(assessments(:skill_active).id)
@@ -365,7 +365,7 @@ class AssessmentTest < ActiveSupport::TestCase
       player_profile: @player,
       coach_profile: @coach,
       created_by: @coach_user,
-      skill: skills(:assessment_rubric),
+      category: categories(:assessment_rubric),
       score: 70,
       reported_value: 4,
       scale: "one_to_five",

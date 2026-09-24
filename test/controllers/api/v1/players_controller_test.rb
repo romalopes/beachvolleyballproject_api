@@ -654,7 +654,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     rows = JSON.parse(response.body)["assessments"]
     assert_includes rows.map { |row| row["id"] }, assessments(:draft_ready).id
-    assert_includes rows.map { |row| row["skill_label"] }, "Forearm pass"
+    assert_includes rows.map { |row| row["category_label"] }, "Attack"
   end
 
   private

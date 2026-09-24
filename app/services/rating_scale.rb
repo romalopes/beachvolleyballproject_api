@@ -13,7 +13,7 @@
 # this lives in docs/ASSESSMENT_INTEGRATION_PLAN.md and in
 # test/services/rating_scale_test.rb.
 module RatingScale
-  SCALES = %w[one_to_five one_to_ten].freeze
+  SCALES = %w[one_to_five one_to_ten one_to_hundred].freeze
   DEFAULT_SCALE = "one_to_ten".freeze
 
   SCORE_MIN = 0
@@ -28,7 +28,8 @@ module RatingScale
   # The 1-10 scale is a straight scale-up, so both scales round-trip.
   ENTRY_VALUES = {
     "one_to_five" => { 1 => 10, 2 => 30, 3 => 50, 4 => 70, 5 => 90 }.freeze,
-    "one_to_ten" => (1..10).to_h { |value| [ value, value * 10 ] }.freeze
+    "one_to_ten" => (1..10).to_h { |value| [ value, value * 10 ] }.freeze,
+    "one_to_hundred" => (1..100).to_h { |value| [ value, value ] }.freeze
   }.freeze
 
   class << self

@@ -1,17 +1,17 @@
 # Fixtures are inserted with SQL, so model validations do not run here — but the
 # database check constraints do, which is exactly what should be pinned: an
 # unrated draft is legal, a rated row outside 0..100 is not, and a rubric is
-# always either a skill or free text.
+# always either a category or free text.
 #
 # `users(:six)` is the only fixture user with a coach profile (maria_coach), so
 # it is both the recorder and the attributed coach — the "stakeholder" case.
 
-# Published club knowledge: skill-based, on a shared player.
+# Published club knowledge: category-based, on a shared player.
 skill_active:
   player_profile: pedro_player
   coach_profile: maria_coach
   created_by: six
-  skill: assessment_rubric
+  category: assessment_rubric
   training_session: one
   score: 70
   reported_value: 4
@@ -24,7 +24,7 @@ custom_withdrawn:
   player_profile: john_player
   coach_profile: maria_coach
   created_by: six
-  custom_skill: "Court communication"
+  custom_category: "Court communication"
   score: 30
   reported_value: 3
   scale: one_to_ten
@@ -37,7 +37,7 @@ draft_ready:
   player_profile: pedro_player
   coach_profile: maria_coach
   created_by: six
-  skill: assessment_rubric
+  category: assessment_rubric
   score: 90
   reported_value: 5
   scale: one_to_five
@@ -49,5 +49,5 @@ draft_assigned:
   player_profile: john_player
   coach_profile: maria_coach
   created_by: six
-  skill: assessment_rubric
+  category: assessment_rubric
   status: draft

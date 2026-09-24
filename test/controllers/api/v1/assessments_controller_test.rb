@@ -55,11 +55,11 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes ids, assessments(:custom_withdrawn).id # john's row
   end
 
-  test "index narrows with coach, skill and session filters" do
+  test "index narrows with coach, category and session filters" do
     sign_in_as(@admin)
     get api_v1_assessments_path, params: {
       coach_id: coach_profiles(:maria_coach).id,
-      skill_id: skills(:assessment_rubric).id,
+      category_id: categories(:assessment_rubric).id,
       training_session_id: training_sessions(:one).id
     }
 
@@ -105,7 +105,7 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 7, row["ten_scale"]
     assert_equal 4, row["five_scale"]
     assert_equal "Coach Six", row["created_by"]["name"]
-    assert_equal "Forearm pass", row["skill"]["title"]
+    assert_equal "Attack", row["category"]["name"]
   end
 
   test "show returns a draft to its stakeholder" do
@@ -137,7 +137,7 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
       post api_v1_assessments_path, params: {
         assessment: {
           player_profile_id: player_profiles(:pedro_player).id,
-          skill_id: skills(:assessment_rubric).id,
+          category_id: categories(:assessment_rubric).id,
           value: 4,
           scale: "one_to_five",
           status: "active",
@@ -159,7 +159,7 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     post api_v1_assessments_path, params: {
       assessment: {
         player_profile_id: player_profiles(:john_player).id,
-        custom_skill: "Blocking calls",
+        custom_category: "Blocking calls",
         value: 3
       }
     }
@@ -168,9 +168,9 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     row = JSON.parse(response.body)
     assert_equal "draft", row["status"]
     assert_equal "one_to_ten", row["scale"] # the default scale
-    # The rubric XOR: a custom row serializes with an explicit nil skill.
-    assert_nil row["skill"]
-    assert_equal "Blocking calls", row["custom_skill"]
+    # The rubric XOR: a custom row serializes with an explicit nil category.
+    assert_nil row["category"]
+    assert_equal "Blocking calls", row["custom_category"]
   end
 
   test "create accepts a canonical score and backfills the reported value" do
@@ -178,7 +178,7 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     post api_v1_assessments_path, params: {
       assessment: {
         player_profile_id: player_profiles(:john_player).id,
-        custom_skill: "Serve placement",
+        custom_category: "Serve placement",
         score: 70,
         scale: "one_to_five"
       }
@@ -195,7 +195,7 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     post api_v1_assessments_path, params: {
       assessment: {
         player_profile_id: player_profiles(:john_player).id,
-        custom_skill: "Serve placement",
+        custom_category: "Serve placement",
         value: 6,
         scale: "one_to_five"
       }
@@ -212,7 +212,7 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     post api_v1_assessments_path, params: {
       assessment: {
         player_profile_id: player_profiles(:john_player).id,
-        custom_skill: "Serve placement",
+        custom_category: "Serve placement",
         value: 3,
         coach_profile_id: other_coach.id
       }
@@ -229,7 +229,7 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     post api_v1_assessments_path, params: {
       assessment: {
         player_profile_id: player_profiles(:john_player).id,
-        custom_skill: "Serve placement",
+        custom_category: "Serve placement",
         value: 3,
         coach_profile_id: other_coach.id
       }
@@ -244,7 +244,7 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     post api_v1_assessments_path, params: {
       assessment: {
         player_profile_id: player_profiles(:john_player).id,
-        custom_skill: "Serve placement",
+        custom_category: "Serve placement",
         value: 3
       }
     }
@@ -259,7 +259,7 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     post api_v1_assessments_path, params: {
       assessment: {
         player_profile_id: dual_player.id,
-        custom_skill: "Serve placement",
+        custom_category: "Serve placement",
         value: 3
       }
     }

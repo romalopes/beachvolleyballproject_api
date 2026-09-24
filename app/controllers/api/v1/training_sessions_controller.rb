@@ -103,7 +103,7 @@ module Api
         assessments_by_player = Assessment.active
                                   .where(training_session_id: @training_session.id)
                                   .ordered
-                                  .includes(:skill, :created_by, :coach_profile)
+                                  .includes(:category, :created_by, :coach_profile)
                                   .group_by(&:player_profile_id)
         Array(payload["training_session_participants"]).each do |participant|
           participant["assessments"] =

@@ -7,3 +7,10 @@ one:
 two:
   name: MyString
   slug: mystring-two
+
+# The rubric an assessment is recorded against. A dedicated fixture keeps the
+# assessment suite from depending on a category another suite may edit, and
+# gives the serialized `category_label` a stable, readable value.
+assessment_rubric:
+  name: Attack
+  slug: attack

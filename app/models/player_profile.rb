@@ -121,12 +121,12 @@ class PlayerProfile < ApplicationRecord
   end
 
   # Latest published rating per rubric, newest first. "Per rubric" means the
-  # skill's id, or — when the rubric is free text — the text itself, so two
-  # `custom_skill` rows never collapse into one entry. Only one assessment
+  # category's id, or — when the rubric is free text — the text itself, so two
+  # `custom_category` rows never collapse into one entry. Only one assessment
   # runs at a time here (the SPA renders a handful of rows), so the grouping
   # stays in Ruby where the reader can see it.
   def latest_rated_assessments
-    assessments.active.ordered.includes(:skill, :created_by, :coach_profile).group_by(&:rubric_key).map do |_, rows|
+    assessments.active.ordered.includes(:category, :created_by, :coach_profile).group_by(&:rubric_key).map do |_, rows|
       rows.max_by(&:created_at)
     end.sort_by(&:created_at).reverse
   end

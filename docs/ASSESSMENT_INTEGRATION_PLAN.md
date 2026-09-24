@@ -5,6 +5,14 @@
 > the rating scale, the existence/authority rules and the ratified assumptions.
 > One addition beyond the original scope: the `/assessments` catalogue screen
 > (see "Out of scope" below).
+>
+> **Post-4.4 revisions (this document is kept in step with them):**
+> the assessment rubric is a **Category** (`category_id` XOR `custom_category`),
+> not a Skill — migration
+> `20260925000001_replace_assessment_skill_with_category.rb` backfills existing
+> rows (a skill-linked row adopts its skill's category; free text becomes
+> `custom_category`); and the offered entry scales are **1–5, 1–10 and 1–100**.
+> D11, D25 and the domain/API/SPA sections below reflect both.
 
 How coach assessments of players are modelled, scored, published and exposed.
 
@@ -26,7 +34,7 @@ Sub-phases:
 The identity model already records *who exists* (Person + PlayerProfile /
 CoachProfile) and the skill/drill stream already records *what is worked on*
 (Skill, Category, TrainingFocus). Assessments are the missing join between the
-two: what a coach observed a player do, against a skill.
+two: what a coach observed a player do, against a category of the game.
 
 `Person`'s own documentation anticipated it — *"volleyball records — training
 participation, assessments, tournament results — always reference a Person
@@ -44,17 +52,17 @@ reader can see what was weighed.
 
 | # | Decision |
 | --- | --- |
-| D1 | The canonical rating is an integer **0–100**, one per assessment, per skill |
-| D2 | The coach states the scale used: **1–5** or **1–10**; the scale is stored on the row |
+| D1 | The canonical rating is an integer **0–100**, one per assessment, per rubric |
+| D2 | The coach states the scale used: **1–5**, **1–10** or **1–100**; the scale is stored on the row |
 | D3 | Canonical → **0–10** display = `floor(score / 10)` |
 | D4 | Canonical → **1–5** display = `min(5, floor(score / 20) + 1)` — equal-width 20-point bands |
-| D5 | Entry → canonical: **1–10** = `n × 10`; **1–5** = the band midpoint `{1→10, 2→30, 3→50, 4→70, 5→90}` |
+| D5 | Entry → canonical: **1–10** = `n × 10`; **1–5** = the band midpoint `{1→10, 2→30, 3→50, 4→70, 5→90}`; **1–100** = `n` |
 | D6 | `reported_value` + `scale` are stored next to `score`; requests carry only `value` + `scale`, the server derives `score` |
 | D7 | `coach_profile_id` is **NOT NULL**: an assessment always names a domain coach |
 | D8 | The assessor is resolved server-side: the request may name one; otherwise it is the caller's own coach profile; if the caller has none the request is refused with **422** — a profile is never minted silently |
 | D9 | Only oversight (curator/admin) may attribute an assessment to another coach; a coach may only attribute to their own profile (**403** otherwise) |
 | D10 | **No self-assessment**: the assessed player and the assessing coach must be different people (**422**) |
-| D11 | The rubric is a `Skill` **XOR** free-text `custom_skill`, mirroring `training_focuses` |
+| D11 | The rubric is a `Category` **XOR** free-text `custom_category` — the area of the game that was assessed (a Skill is the drill/training-focus vocabulary, not an assessment rubric) |
 | D12 | Statuses are `draft`, `active`, `withdrawn`; new rows default to **`draft`** (mirrors training sessions) |
 | D13 | There is **no state machine**: any status change is an ordinary PATCH by someone with authority; the only extra rule is "publishing requires a score" |
 | D14 | **Existence** = a single rule: a row exists for you if it is `active` **and** the player exists for you, **or** you are a stakeholder (recorder or attributed coach — in any status), **or** you are oversight |
@@ -62,13 +70,13 @@ reader can see what was weighed.
 | D16 | **Authority** = recorder ∪ attributed coach ∪ oversight (`manageable_by?`), with `require_content_creator!` for creation |
 | D17 | `withdrawn` joins `draft` in the non-public bucket: visible to stakeholders and oversight, tagged in history, never in aggregates |
 | D18 | Nothing is hard-deleted: there is **no `DELETE` route** (404), and profiles use `dependent: :restrict_with_error` |
-| D19 | Aggregates (`assessment_count`, latest-per-skill) count **`active` rows only** |
+| D19 | Aggregates (`assessment_count`, latest-per-rubric) count **`active` rows only** |
 | D20 | `PUBLICLY_VISIBLE_STATUSES = %w[active]` — a deliberate divergence from `TrainingSession`, where `cancelled` remains public; recorded here so it is not "fixed" back |
 | D21 | A draft may exist **unrated** (the assignment workflow): `score`/`reported_value` are nullable, constrained by status |
 | D22 | Any `coach_profile` may be attributed, including one whose Person has no account; the picker flags those, and the recorder plus oversight manage them |
 | D23 | `player_profiles.level` stays a free-text coach summary and is **never** written by an assessment |
 | D24 | **Oversight is the curator/admin pair, deliberately not `User#content_manager?`.** For the shared schedule a coach counts as a manager (a session created yesterday must stay manageable by the other coaches), but a rating is one named coach's claim about a player: a coach reaches only their own rows, and curators/admins oversee all (the same pair `PlayerProfile#visible_to_user?` treats as unlimited) |
-| D25 | Referential integrity: `training_session_id` is `ON DELETE :nullify` (the rating outlives the schedule entry), while `skill_id` is left restrictive — the XOR constraint requires a rubric, so an **in-use skill cannot be hard-deleted** |
+| D25 | Referential integrity: `training_session_id` is `ON DELETE :nullify` (the rating outlives the schedule entry), while `category_id` is left restrictive — the XOR constraint requires a rubric, so an **in-use category cannot be hard-deleted** |
 
 ## The rating scale
 
@@ -140,11 +148,11 @@ Assessment
   ├── player_profile   (0..1 per row, NOT NULL)  — who was assessed
   ├── coach_profile    (0..1 per row, NOT NULL)  — who assessed  (D7)
   ├── created_by       (User, nullable)          — provenance, stamped from the request
-  ├── skill            (nullable)  XOR  custom_skill (nullable)  — what was assessed (D11)
+  ├── category         (nullable)  XOR  custom_category (nullable)  — what was assessed (D11)
   └── training_session (nullable)                — the session it was observed in
         score           integer 0..100, nullable only while draft (D21)
-        reported_value  integer (1..5 or 1..10 per scale)
-        scale           one_to_five | one_to_ten
+        reported_value  integer (1..5, 1..10 or 1..100 per scale)
+        scale           one_to_five | one_to_ten | one_to_hundred
         status          draft | active | withdrawn (D12)
         notes           free text
 ```
@@ -164,7 +172,7 @@ Shape notes:
   destroys the ratings recorded in it nor is blocked by them (D25).
 - Check constraints: `assessments_status`, `assessments_score_range`,
   `assessments_score_pair` (score and reported_value are both set or both NULL),
-  `assessments_published_requires_score`, `assessments_skill_xor_custom_skill`.
+  `assessments_published_requires_score`, `assessments_category_xor_custom_category`.
   The self-assessment rule cannot be a constraint (it compares across tables) and
   therefore lives as a model validation.
 
@@ -230,7 +238,7 @@ own player profile.
 
 | Endpoint | Who | Contract |
 | --- | --- | --- |
-| `GET /api/v1/assessments?player_id=&coach_id=&skill_id=&training_session_id=&status=&mine=&page=&per_page=` | training manager | always scoped by `visible_to(Current.user)`; `status` defaults to `active` and an explicit value replaces that default; `mine` narrows to rows you recorded or are attributed in; **no `include_private`** |
+| `GET /api/v1/assessments?player_id=&coach_id=&category_id=&training_session_id=&status=&mine=&page=&per_page=` | training manager | always scoped by `visible_to(Current.user)`; `status` defaults to `active` and an explicit value replaces that default; `mine` narrows to rows you recorded or are attributed in; **no `include_private`** |
 | `GET /api/v1/assessments/:id` | training manager | 404 unless the row exists for the caller |
 | `POST /api/v1/assessments` | `require_content_creator!` | `value` + `scale` (server converts), optional `coach_profile_id` (D8/D9), rubric XOR, `status` defaults to `draft` |
 | `PATCH /api/v1/assessments/:id` | `manageable_by?` | edits, status transitions, re-scoring; re-pointing `player_profile_id` is refused with 422 (an edit is not a merge) |
@@ -239,7 +247,7 @@ Request:
 
 ```json
 { "assessment": {
-    "player_profile_id": 5, "coach_profile_id": 3, "skill_id": 7,
+    "player_profile_id": 5, "coach_profile_id": 3, "category_id": 7,
     "training_session_id": 9, "value": 4, "scale": "one_to_five",
     "status": "active", "notes": "Consistent platform; late on short serves." } }
 ```
@@ -249,10 +257,10 @@ Response (`201`):
 ```json
 { "id": 12, "player_profile_id": 5, "coach_profile_id": 3,
   "created_by": { "id": 2, "name": "Coach Ana" },
-  "skill": { "id": 7, "title": "Forearm pass", "slug": "forearm-pass" },
-  "custom_skill": null, "training_session_id": 9,
+  "category": { "id": 7, "name": "Attack", "slug": "attack" },
+  "custom_category": null, "training_session_id": 9,
   "score": 70, "reported_value": 4, "scale": "one_to_five",
-  "reported_score": 4, "ten_scale": 7, "five_scale": 4,
+  "category_label": "Attack", "ten_scale": 7, "five_scale": 4,
   "notes": "…", "status": "active", "created_at": "…", "updated_at": "…" }
 ```
 
@@ -281,8 +289,8 @@ caller's own player profile out of the picker.
 | `src/utils/rating.ts` | mirror of `RatingScale` (live preview, badge rendering) |
 | `src/utils/assessments.ts` | `canManageAssessments`, `ASSESSMENT_STATUSES`, `assessmentStatusLabel` — the shape `utils/training.ts` already uses |
 | `src/components/people/ScoreBadge.tsx` | `70/100 · 7/10 · 4/5`, or "Not rated yet" |
-| `src/components/people/AssessmentList.tsx` | latest per skill + history, Draft/Withdrawn tags, "recorded by …" |
-| `src/components/people/AssessmentForm.tsx` | skill or free-text rubric (the `SkillFocusSelector` pattern), scale toggle with live preview, notes, optional session, coach picker for oversight (accountless coaches flagged from `account_status`), Save draft / Publish / Withdraw |
+| `src/components/people/AssessmentList.tsx` | latest per rubric + history, Draft/Withdrawn tags, "recorded by …" |
+| `src/components/people/AssessmentForm.tsx` | category or free-text rubric (the `SkillFocusSelector` pattern), scale toggle with live preview, notes, optional session, coach picker for oversight (accountless coaches flagged from `account_status`), Save draft / Publish / Withdraw |
 | `PlayerDetail`, `CoachDetail`, `TrainingDetail` | the three read surfaces, all inside `ManagerRoute` |
 
 ## Sub-phase work plan
@@ -299,7 +307,7 @@ caller's own player profile out of the picker.
 | Suite | Pins |
 | --- | --- |
 | `test/services/rating_scale_test.rb` | the 21-row matrix, both round-trips, monotonicity, rejection of illegal input, `describe` (including an unrated draft) |
-| `test/models/assessment_test.rb` | rubric XOR both ways, score bounds, `reported_value` against its scale, the desync guard, publish-requires-score, **self-assessment invalid**, the existence/authority predicates (including that oversight is curator/admin and never a coach), and the referential rules — an **in-use skill cannot be hard-deleted**, a deleted session leaves the rating intact |
+| `test/models/assessment_test.rb` | rubric XOR both ways, score bounds, `reported_value` against its scale, the desync guard, publish-requires-score, **self-assessment invalid**, the existence/authority predicates (including that oversight is curator/admin and never a coach), and the referential rules — an **in-use category cannot be hard-deleted**, a deleted session leaves the rating intact |
 | `test/controllers/api/v1/assessments_controller_test.rb` | the existence and authority matrices, 404-not-403, every 422, the pagination envelope, `status`/`mine` filters, and the pinned `DELETE` 404 |
 | players / coaches controller tests | the new payload keys, and that drafts never leak into them |
 | SPA tests | the rating matrix, badge and list rendering, the form's conversion preview, the three page sections |
@@ -307,8 +315,8 @@ caller's own player profile out of the picker.
 Fixture cast reused from the identity work: `users(:six)` (attributed coach,
 `maria_coach`), `users(:three)` (coach who owns nothing), `users(:two)` (admin),
 `users(:four)` (curator), `users(:one)` (player). Assessments use a dedicated
-`skills(:assessment_rubric)` (in `categories(:two)`) so phase 4 never disturbs
-this file's existing skill/category delete tests. Private players are created
+`categories(:assessment_rubric)` so phase 4 never disturbs the existing
+skill/category delete tests. Private players are created
 inline with the `private_player_owned_by(user)` helper rather than in fixtures,
 and the self-assessment case builds the dual-profile person inline so the
 existing fixture counts are untouched.
