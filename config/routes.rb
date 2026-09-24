@@ -100,6 +100,10 @@ Rails.application.routes.draw do
       resources :people, only: [ :index ]
       resources :players, only: %i[index show create update]
       resources :coaches, only: %i[index show create update]
+      # A coach's assessment of a player. There is deliberately no `destroy`:
+      # a rating is retracted with `PATCH status: "withdrawn"`, never deleted,
+      # so `DELETE /api/v1/assessments/:id` is a 404 (phase 4, D18).
+      resources :assessments, only: %i[index show create update]
       resources :training_sessions
 
       # Admin role management

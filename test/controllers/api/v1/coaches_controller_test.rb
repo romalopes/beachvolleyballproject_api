@@ -328,6 +328,19 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "shared", private_coach.reload.visibility
   end
 
+  test "show exposes the coach's assessment attribution" do
+    sign_in_as(@admin)
+    get api_v1_coach_path(coach_profiles(:maria_coach))
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal 1, body["assessments_recorded_count"] # published rows only
+    rows = body["recent_assessments"]
+    assert_equal [ assessments(:skill_active).id ], rows.map { |row| row["id"] }
+    assert_equal 70, rows.first["score"]
+    assert_equal 4, rows.first["reported_value"]
+  end
+
   private
 
   def private_coach_owned_by(owner)

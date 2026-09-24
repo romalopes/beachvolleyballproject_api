@@ -29,6 +29,29 @@ class Assessment < ApplicationRecord
   belongs_to :skill, optional: true
   belongs_to :training_session, optional: true
 
+  # `value` is the coach's own entry on the named scale — the only rating input
+  # the API accepts besides a canonical `score`. It is virtual: assigning it
+  # sets `reported_value` + `scale` and derives `score` through RatingScale, so
+  # the conversion runs identically whether the row is built by a controller or
+  # in the console.
+  attr_writer :value
+
+  def value
+    reported_value
+  end
+
+  def value=(entry)
+    return if entry.blank?
+
+    @value = entry
+    self.scale = scale.presence || RatingScale::DEFAULT_SCALE
+    number = Integer(entry, exception: false)
+    return unless RatingScale.legal_value?(number, scale: scale)
+
+    self.reported_value = number
+    self.score = RatingScale.to_score(number, scale: scale)
+  end
+
   # Blank custom text must become NULL, otherwise a skill-based row would carry
   # an empty string and violate the skill-xor-custom check constraint.
   normalizes :custom_skill, with: ->(value) { value.strip.presence }
@@ -160,6 +183,11 @@ class Assessment < ApplicationRecord
   def skill_key
     skill_id ? "skill:#{skill_id}" : "custom:#{custom_skill.to_s.downcase}"
   end
+
+  # PlayerProfile#latest_rated_assessments groups by this name ("per rubric",
+  # in the plan's vocabulary); an alias keeps both readers of the same idea
+  # from drifting apart.
+  alias_method :rubric_key, :skill_key
 
   # Display values: both scales the club reads, plus the canonical pair. They are
   # nil for an unrated draft, so a caller cannot render a rating of zero.

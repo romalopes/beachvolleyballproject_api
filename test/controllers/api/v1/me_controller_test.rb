@@ -39,4 +39,14 @@ class Api::V1::MeControllerTest < ActionDispatch::IntegrationTest
     get "/api/v1/me"
     assert_response :unauthorized
   end
+
+  test "exposes the profile ids the SPA defaults the assessor from" do
+    sign_in_as(users(:six)) # account two -> person two -> coach profile maria_coach
+    get "/api/v1/me"
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal people(:two).id, body["person_id"]
+    assert_equal coach_profiles(:maria_coach).id, body["coach_profile_id"]
+    assert_nil body["player_profile_id"]
+  end
 end

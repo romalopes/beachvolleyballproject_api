@@ -14,6 +14,10 @@
 # test/services/rating_scale_test.rb.
 module RatingScale
   SCALES = %w[one_to_five one_to_ten].freeze
+  DEFAULT_SCALE = "one_to_ten".freeze
+
+  SCORE_MIN = 0
+  SCORE_MAX = 100
 
   # The 1-5 scale maps to the midpoint of each equal-width 20-point band:
   # 0-19, 20-39, 40-59, 60-79, 80-100. Midpoints are unbiased, symmetric and
@@ -63,6 +67,17 @@ module RatingScale
       return nil if score.nil?
 
       [ (score.to_i / 20) + 1, 5 ].min
+    end
+
+    # Canonical -> back onto the scale the coach entered it on, so a direct
+    # `score` submission still records what was typed beside it. Picks the
+    # band's representative value — the one this score would have come from.
+    def reported_for(score, scale:)
+      values = ENTRY_VALUES.fetch(scale.to_s) do
+        raise ArgumentError, "unknown scale: #{scale.inspect}"
+      end
+
+      values.min_by { |_reported, canonical| (canonical - score.to_i).abs }.first
     end
 
     # Every scale at once, for badges and labels.

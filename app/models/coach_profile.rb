@@ -86,6 +86,23 @@ class CoachProfile < ApplicationRecord
     id
   end
 
+  # Published rows attributed to this coach: the number every training manager
+  # may see on GET /coaches/:id. Drafts and withdrawn rows are working notes,
+  # not club knowledge, so they leave the counter alone (see
+  # PlayerProfile#active_assessment_count for the same reasoning).
+  def assessments_recorded_count
+    assessments.active.count
+  end
+
+  # The most recent published ratings this coach recorded, newest first — the
+  # "recent slice" of the coach-detail payload. Rows carry Assessment#metadata,
+  # the same shape the assessments endpoints serialize.
+  def recent_assessments
+    assessments.active.ordered
+               .includes(:skill, :created_by, :coach_profile, player_profile: :person)
+               .limit(5)
+  end
+
   def metadata
     {
       id: id,

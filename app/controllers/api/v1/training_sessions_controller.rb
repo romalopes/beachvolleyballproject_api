@@ -39,10 +39,7 @@ module Api
       end
 
       def show
-        render json: @training_session,
-               only: DETAIL_ATTRIBUTES,
-               methods: %i[status_label duration_minutes],
-               include: detail_includes
+        render_session_payload
       end
 
       def create
@@ -68,11 +65,7 @@ module Api
           # set_training_session are stale after save, so re-read them in
           # their stored order.
           @training_session.reload
-          render json: @training_session,
-                 status: action_name == "create" ? :created : :ok,
-                 only: DETAIL_ATTRIBUTES,
-                 methods: %i[status_label duration_minutes],
-                 include: detail_includes
+          render_session_payload status: action_name == "create" ? :created : :ok
         else
           render json: { errors: @training_session.errors.full_messages }, status: :unprocessable_entity
         end
@@ -92,6 +85,32 @@ module Api
         # Database-level backstop; the model validations normally catch these.
         render json: { errors: [ "The training contains invalid focus or drill data" ] },
                status: :unprocessable_entity
+      end
+
+      # Builds the detail payload explicitly so each participant can carry the
+      # assessments recorded in this session (plan 4.2): `as_json(include:)`
+      # can only render associations, and a participant's in-session ratings
+      # are a pair of foreign keys (session + player), not an association.
+      # Only published rows appear here — drafts and withdrawn rows are
+      # working notes, reachable through the assessments endpoints.
+      def render_session_payload(status: :ok)
+        payload = @training_session.as_json(
+          only: DETAIL_ATTRIBUTES,
+          methods: %i[status_label duration_minutes],
+          include: detail_includes
+        )
+
+        assessments_by_player = Assessment.active
+                                  .where(training_session_id: @training_session.id)
+                                  .ordered
+                                  .includes(:skill, :created_by, :coach_profile)
+                                  .group_by(&:player_profile_id)
+        Array(payload["training_session_participants"]).each do |participant|
+          participant["assessments"] =
+            Array(assessments_by_player[participant["player_profile_id"]]).map(&:metadata)
+        end
+
+        render json: payload, status: status
       end
 
       def filtered_training_sessions

@@ -635,6 +635,28 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal "archived", player.reload.status
   end
 
+  test "show exposes the player's assessment count and history" do
+    sign_in_as(@trainer)
+    get api_v1_player_path(player_profiles(:pedro_player))
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal 1, body["assessment_count"] # only the published fixture row
+    ids = body["assessments"].map { |row| row["id"] }
+    assert_includes ids, assessments(:skill_active).id
+    assert_not_includes ids, assessments(:draft_ready).id # a stranger's draft
+  end
+
+  test "show gives an assessment's stakeholder their draft in the history" do
+    sign_in_as(users(:six)) # recorded draft_ready for pedro
+    get api_v1_player_path(player_profiles(:pedro_player))
+
+    assert_response :success
+    rows = JSON.parse(response.body)["assessments"]
+    assert_includes rows.map { |row| row["id"] }, assessments(:draft_ready).id
+    assert_includes rows.map { |row| row["skill_label"] }, "Forearm pass"
+  end
+
   private
 
   def private_player_owned_by(user)

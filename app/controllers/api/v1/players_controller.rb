@@ -89,6 +89,18 @@ module Api
         # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
+
+        # Coaching history (plan 4.2): the count is published rows only, and
+        # the history is whatever exists for this caller — drafts and
+        # withdrawn rows reach their stakeholders through Assessment.visible_to
+        # and never leak to anybody else.
+        payload["assessment_count"] = @player.active_assessment_count
+        payload["assessments"] = Assessment.visible_to(Current.user)
+                                         .where(player_profile_id: @player.id)
+                                         .ordered
+                                         .includes(:skill, :created_by, :coach_profile)
+                                         .map(&:metadata)
+
         render json: payload
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Player not found" }, status: :not_found

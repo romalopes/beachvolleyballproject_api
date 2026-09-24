@@ -109,6 +109,28 @@ class PlayerProfile < ApplicationRecord
     training_session_participants.size
   end
 
+  # Published coaching history only: `assessment_count` and the `assessments`
+  # slice on GET /players/:id count what every training manager may see.
+  # Drafts and withdrawn rows are someone's working notes, not club knowledge,
+  # and they leave these counters alone. Callers who feed them into a user
+  # payload should still apply `visible_to(user)` first — the public status
+  # is necessary but not sufficient, because the assessed player may be
+  # private to the caller.
+  def active_assessment_count
+    assessments.active.count
+  end
+
+  # Latest published rating per rubric, newest first. "Per rubric" means the
+  # skill's id, or — when the rubric is free text — the text itself, so two
+  # `custom_skill` rows never collapse into one entry. Only one assessment
+  # runs at a time here (the SPA renders a handful of rows), so the grouping
+  # stays in Ruby where the reader can see it.
+  def latest_rated_assessments
+    assessments.active.ordered.includes(:skill, :created_by, :coach_profile).group_by(&:rubric_key).map do |_, rows|
+      rows.max_by(&:created_at)
+    end.sort_by(&:created_at).reverse
+  end
+
   def metadata
     {
       id: id,

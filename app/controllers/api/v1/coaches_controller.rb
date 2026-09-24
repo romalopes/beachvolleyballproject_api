@@ -68,10 +68,23 @@ module Api
           return render json: { error: "Coach not found" }, status: :not_found
         end
 
-        render json: @coach,
-               only: PROFILE_ONLY,
-               include: { person: { only: PERSON_ONLY }, created_by: { only: %i[id name] } },
-               methods: PROFILE_METHODS
+        payload = @coach.as_json(
+          only: PROFILE_ONLY,
+          include: { person: { only: PERSON_ONLY }, created_by: { only: %i[id name] } },
+          methods: PROFILE_METHODS
+        )
+        # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
+        # the key always being present (nil = recorded before Phase C).
+        payload["created_by"] = nil unless payload.key?("created_by")
+
+        # Attribution history (plan 4.2): the count and a recent slice of the
+        # published rows attributed to this coach. Drafts and withdrawn rows
+        # are working notes, so they never appear here — the assessments
+        # endpoints are where stakeholders reach them.
+        payload["assessments_recorded_count"] = @coach.assessments_recorded_count
+        payload["recent_assessments"] = @coach.recent_assessments.map(&:metadata)
+
+        render json: payload
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Coach not found" }, status: :not_found
       end

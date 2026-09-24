@@ -655,4 +655,23 @@ class Api::V1::TrainingSessionsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :not_found
   end
+
+  test "show attaches the session's published assessments to their participants" do
+    sign_in_as(@admin)
+    get api_v1_training_session_path(training_sessions(:one))
+
+    assert_response :success
+    participants = JSON.parse(response.body)["training_session_participants"]
+    pedro = participants.find do |participant|
+      participant["player_profile_id"] == player_profiles(:pedro_player).id
+    end
+    assert pedro.present?
+    # Only the published row: pedro's draft and the withdrawn row never leak.
+    assert_equal [ assessments(:skill_active).id ], pedro["assessments"].map { |row| row["id"] }
+
+    john = participants.find do |participant|
+      participant["player_profile_id"] == player_profiles(:john_player).id
+    end
+    assert_equal [], john["assessments"]
+  end
 end
