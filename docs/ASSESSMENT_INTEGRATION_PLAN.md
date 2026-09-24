@@ -327,8 +327,9 @@ existing fixture counts are untouched.
 - `PlayerCoach` join model and groups.
 - `PersonClaim` / invitations, and `PersonMerge`.
 - Deriving `player_profiles.level` from assessments (D23).
-- A standalone assessments catalogue screen: Phase 4 is *integration*, so
-  assessments surface on the player, coach and session pages.
+- The assessment catalogue screen (`/assessments`) was added during 4.3: it
+  lists the rows the signed-in viewer may see, with status and "mine" filters.
+  Recording and editing still live on the player, coach and session pages.
 
 ## Related documents
 
