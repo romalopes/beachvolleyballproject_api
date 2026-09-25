@@ -17,6 +17,13 @@ class AssessmentCategory < ApplicationRecord
   # under the results that already quote it.
   has_many :assessment_category_scores, dependent: :restrict_with_error
 
+  # The optional finer grain inside this area (plan S5). Created but not yet
+  # scored — every score row keeps `criterion_id` NULL — so this catalogue is
+  # empty in practice today. Destroying the configuration takes its criteria
+  # with it, exactly as a definition takes its own children.
+  has_many :criteria, -> { order(:position, :id) },
+           dependent: :destroy, inverse_of: :assessment_category
+
   validates :weight, presence: true,
                      numericality: { only_integer: true, greater_than: 0 }
   validates :position, presence: true,

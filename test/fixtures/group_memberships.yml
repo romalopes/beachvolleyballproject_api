@@ -1,0 +1,9 @@
+# Phase 6 (Assessment Sessions), plan §2: roster rows.
+#
+# The shared squad carries one member so the read-back and the uniqueness rule
+# have something to work from; the private squad is left empty on purpose,
+# because adding a member is what the tests do.
+
+u19_squad_pedro:
+  group: u19_squad
+  player_profile: pedro_player

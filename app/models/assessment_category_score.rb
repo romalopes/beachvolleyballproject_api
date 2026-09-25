@@ -11,6 +11,13 @@ class AssessmentCategoryScore < ApplicationRecord
   belongs_to :assessment
   belongs_to :assessment_category
 
+  # The criterion inside the area this row scores, when a criteria layer is in
+  # use (plan S5). NULL — every row today — means "this row is the whole area",
+  # which is what keeps a category carrying exactly one number and normalisation
+  # an identity (D11). The column exists ahead of its use so a later phase fills
+  # it in without another migration to this table.
+  belongs_to :criterion, optional: true
+
   # Same virtual-input contract as Assessment#value: the coach's own entry on a
   # named scale, converted through RatingScale by the controller so an illegal
   # value is a 422 the coach can act on instead of a row saved without a rating.
@@ -19,7 +26,14 @@ class AssessmentCategoryScore < ApplicationRecord
   after_save :recalculate_parent_score
   after_destroy :recalculate_parent_score
 
-  validates :assessment_category_id, uniqueness: { scope: :assessment_id }
+  # One row per category while criteria are not in use (every row today has
+  # `criterion_id` NULL); one row per criterion once they are. The two partial
+  # unique indexes in `AddCriterionToAssessmentCategoryScores` say the same
+  # thing in the database, which is what actually guarantees it.
+  validates :assessment_category_id, uniqueness: { scope: :assessment_id },
+                                     if: -> { criterion_id.nil? }
+  validates :criterion_id, uniqueness: { scope: %i[assessment_id assessment_category_id] },
+                           allow_nil: true
 
   validates :scale, presence: true, inclusion: { in: RatingScale::SCALES }
   validates :score, allow_nil: true, numericality: {
@@ -29,6 +43,7 @@ class AssessmentCategoryScore < ApplicationRecord
 
   validate :reported_value_exists_on_its_scale
   validate :score_matches_reported_value
+  validate :criterion_belongs_to_its_category
 
   def value
     reported_value
@@ -65,6 +80,8 @@ class AssessmentCategoryScore < ApplicationRecord
     {
       id: id,
       assessment_category_id: assessment_category_id,
+      criterion_id: criterion_id,
+      criterion: criterion ? criterion.metadata : nil,
       label: assessment_category.label,
       source_type: assessment_category.source_type,
       weight: assessment_category.weight,
@@ -101,5 +118,15 @@ class AssessmentCategoryScore < ApplicationRecord
     return if score == RatingScale.to_score(reported_value, scale: scale)
 
     errors.add(:score, "does not match the reported value and scale")
+  end
+
+  # A criterion may only score the area it was configured under. This is a
+  # cross-row rule that nothing else enforces, so it is checked from the moment
+  # the column exists rather than when a criteria UI first gets it wrong.
+  def criterion_belongs_to_its_category
+    return if criterion_id.nil?
+    return if criterion&.assessment_category_id == assessment_category_id
+
+    errors.add(:criterion, "must belong to the category it scores")
   end
 end

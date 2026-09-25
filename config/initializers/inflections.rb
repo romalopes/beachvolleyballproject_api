@@ -21,6 +21,12 @@ ActiveSupport::Inflector.inflections(:en) do |inflect|
   # reflection (e.g. TrainingSession#training_focuses, inverse_of lookups).
   inflect.irregular "focus", "focuses"
 
+  # The scored line items inside a configured assessment category (plan S5).
+  # Without this rule the inflector pluralizes "criterion" to "criterions",
+  # which would neither match the `criteria` table nor the domain vocabulary
+  # used throughout ASSESSMENT_SESSIONS_PLAN.md.
+  inflect.irregular "criterion", "criteria"
+
   # Brand casing for the video providers. Without these rules Zeitwerk inflects
   # youtube.rb -> Youtube / tiktok.rb -> Tiktok, which never matches the
   # VideoProviders::YouTube / ::TikTok class names.

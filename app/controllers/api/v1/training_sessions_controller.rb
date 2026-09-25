@@ -25,7 +25,9 @@ module Api
       FOCUS_ATTRIBUTES = %i[id skill_id custom_focus description position].freeze
       SESSION_DRILL_ATTRIBUTES = %i[id drill_id position duration_minutes notes].freeze
       PARTICIPANT_ATTRIBUTES = %i[id player_profile_id status notes].freeze
-      INLINE_PERSON_ATTRIBUTES = %i[first_name last_name email phone date_of_birth].freeze
+      # Single source of truth: the inline-person allow-list belongs to the
+      # resolver that consumes it, so the two cannot drift apart.
+      INLINE_PERSON_ATTRIBUTES = InlineParticipantResolver::PERSON_ATTRIBUTES
 
       before_action :set_training_session, only: %i[show update destroy]
       before_action :require_training_manager!, only: %i[create update destroy]
@@ -226,32 +228,15 @@ module Api
           ]
         )
 
-        resolve_inline_participants!(permitted)
+        # A participant row may carry inline `person:` attributes instead of a
+        # `player_profile_id` — the "coach adds a player who does not have an
+        # account yet" workflow. The sequence lives in InlineParticipantResolver
+        # because the assessment-session form needs exactly the same one.
+        InlineParticipantResolver.new(created_by: Current.user)
+                                .call(permitted[:training_session_participants_attributes])
         fill_missing_positions!(permitted, :training_focuses_attributes)
         fill_missing_positions!(permitted, :training_session_drills_attributes)
         permitted
-      end
-
-      # A participant row may carry inline `person:` attributes instead of a
-      # `player_profile_id`. That is the "coach adds a player who does not
-      # have an account yet" workflow: a Person (creation_source:
-      # coach_created) + PlayerProfile are created and linked, with no
-      # Account. Provenance is stamped by PersonCreationService, the single
-      # creation path for staff-recorded people; RecordInvalid bubbles up so
-      # persist can render the person's validation errors.
-      def resolve_inline_participants!(permitted)
-        rows = permitted[:training_session_participants_attributes]
-        return if rows.blank?
-
-        rows.each do |row|
-          person_attrs = row.delete("person") || row.delete(:person)
-          next if person_attrs.blank? || row[:player_profile_id].present? || row["player_profile_id"].present?
-
-          person = PersonCreationService.new(created_by: Current.user).build(person_attrs)
-          person.build_player_profile
-          person.save!
-          row[:player_profile_id] = person.player_profile.id
-        end
       end
 
       # The submitted array order is the intended order. Explicit positions are

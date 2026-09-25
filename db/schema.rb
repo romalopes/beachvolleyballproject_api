@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_25_000007) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_26_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -80,14 +80,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000007) do
     t.bigint "assessment_category_id", null: false
     t.bigint "assessment_id", null: false
     t.datetime "created_at", null: false
+    t.bigint "criterion_id"
     t.text "notes"
     t.integer "reported_value"
     t.string "scale", default: "one_to_ten", null: false
     t.integer "score"
     t.datetime "updated_at", null: false
     t.index ["assessment_category_id"], name: "index_assessment_category_scores_on_assessment_category_id"
-    t.index ["assessment_id", "assessment_category_id"], name: "index_assessment_category_scores_on_assessment_and_category", unique: true
+    t.index ["assessment_id", "assessment_category_id", "criterion_id"], name: "index_assessment_category_scores_on_category_and_criterion", unique: true, where: "(criterion_id IS NOT NULL)"
+    t.index ["assessment_id", "assessment_category_id"], name: "index_assessment_category_scores_on_assessment_and_category", unique: true, where: "(criterion_id IS NULL)"
     t.index ["assessment_id"], name: "index_assessment_category_scores_on_assessment_id"
+    t.index ["criterion_id"], name: "index_assessment_category_scores_on_criterion_id"
     t.check_constraint "(score IS NULL) = (reported_value IS NULL)", name: "assessment_category_scores_score_pair"
     t.check_constraint "scale::text = ANY (ARRAY['one_to_five'::character varying, 'one_to_ten'::character varying, 'one_to_hundred'::character varying]::text[])", name: "assessment_category_scores_scale"
     t.check_constraint "score IS NULL OR score >= 0 AND score <= 100", name: "assessment_category_scores_score_range"
@@ -172,6 +175,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000007) do
     t.index ["visibility"], name: "index_coach_profiles_on_visibility"
   end
 
+  create_table "criteria", force: :cascade do |t|
+    t.bigint "assessment_category_id", null: false
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_category_id", "name"], name: "index_criteria_on_assessment_category_id_and_name", unique: true
+    t.index ["assessment_category_id", "position"], name: "index_criteria_on_assessment_category_id_and_position"
+    t.index ["assessment_category_id"], name: "index_criteria_on_assessment_category_id"
+    t.check_constraint "\"position\" >= 0", name: "criteria_position_non_negative"
+  end
+
   create_table "drill_skills", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "drill_id", null: false
@@ -201,6 +216,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000007) do
     t.check_constraint "ideal_num_players IS NULL OR min_players IS NULL OR max_players IS NULL OR ideal_num_players >= min_players AND ideal_num_players <= max_players", name: "drills_ideal_players_check"
     t.check_constraint "min_players IS NULL OR max_players IS NULL OR min_players <= max_players", name: "drills_player_range_check"
     t.check_constraint "training_stage IS NULL OR (training_stage::text = ANY (ARRAY['warmup'::character varying::text, 'beginning'::character varying::text, 'middle'::character varying::text, 'end'::character varying::text]))", name: "drills_training_stage_check"
+  end
+
+  create_table "group_memberships", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "group_id", null: false
+    t.bigint "player_profile_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["group_id", "player_profile_id"], name: "index_group_memberships_on_group_and_player", unique: true
+    t.index ["group_id"], name: "index_group_memberships_on_group_id"
+    t.index ["player_profile_id"], name: "index_group_memberships_on_player_profile_id"
+  end
+
+  create_table "groups", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.text "description"
+    t.string "name", null: false
+    t.string "slug", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.string "visibility", default: "shared", null: false
+    t.index "lower((name)::text)", name: "index_groups_on_lower_name", unique: true
+    t.index ["created_by_id"], name: "index_groups_on_created_by_id"
+    t.index ["name"], name: "index_groups_on_name"
+    t.index ["slug"], name: "index_groups_on_slug", unique: true
+    t.index ["status"], name: "index_groups_on_status"
+    t.index ["visibility"], name: "index_groups_on_visibility"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'archived'::character varying]::text[])", name: "groups_status"
+    t.check_constraint "visibility::text = ANY (ARRAY['shared'::character varying, 'private'::character varying]::text[])", name: "groups_visibility"
   end
 
   create_table "log_objects", force: :cascade do |t|
@@ -480,6 +524,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000007) do
   add_foreign_key "assessment_categories", "category_customs"
   add_foreign_key "assessment_category_scores", "assessment_categories"
   add_foreign_key "assessment_category_scores", "assessments"
+  add_foreign_key "assessment_category_scores", "criteria"
   add_foreign_key "assessment_definitions", "users", column: "created_by_id"
   add_foreign_key "assessments", "assessment_definitions"
   add_foreign_key "assessments", "categories"
@@ -490,9 +535,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000007) do
   add_foreign_key "category_customs", "users", column: "created_by_id"
   add_foreign_key "coach_profiles", "people"
   add_foreign_key "coach_profiles", "users", column: "created_by_id"
+  add_foreign_key "criteria", "assessment_categories"
   add_foreign_key "drill_skills", "drills"
   add_foreign_key "drill_skills", "skills"
   add_foreign_key "drills", "users", column: "created_by_id"
+  add_foreign_key "group_memberships", "groups"
+  add_foreign_key "group_memberships", "player_profiles"
+  add_foreign_key "groups", "users", column: "created_by_id"
   add_foreign_key "log_objects", "logs"
   add_foreign_key "people", "people", column: "merged_into_id"
   add_foreign_key "people", "users", column: "created_by_id"

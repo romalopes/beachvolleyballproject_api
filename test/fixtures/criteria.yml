@@ -1,0 +1,27 @@
+# Phase 6 (Assessment Sessions), plan S5: the optional finer grain inside a
+# configured category — "Attack" is the weighted area, "Approach footwork" a
+# criterion inside it.
+#
+# Scoring does not read these yet: every `assessment_category_scores` row keeps
+# `criterion_id` NULL, so a category still carries exactly one number and
+# normalisation remains an identity (D11). The fixtures exist to pin the model's
+# rules — ordering, per-area uniqueness, and the cross-area integrity that stops
+# a score quoting another category's criterion — not to shape a result.
+#
+# Two criteria live under `balanced_attack` and one under `balanced_defense`, so
+# a test can prove the cross-area rule is actually enforced.
+
+balanced_attack_approach:
+  assessment_category: balanced_attack
+  name: Approach footwork
+  position: 0
+
+balanced_attack_swing:
+  assessment_category: balanced_attack
+  name: Arm swing
+  position: 1
+
+balanced_defense_reading:
+  assessment_category: balanced_defense
+  name: Reading
+  position: 0
