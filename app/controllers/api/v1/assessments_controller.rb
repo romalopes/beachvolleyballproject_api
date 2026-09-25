@@ -44,11 +44,12 @@ module Api
       ].freeze
       ASSESSMENT_METHODS = %i[
         category_label ten_scale five_scale score_label status_label
-        player_profile_id coach_profile_id
+        player_profile_id coach_profile_id category_scores
       ].freeze
       ASSESSMENT_INCLUDES = {
         created_by: { only: %i[id name] },
-        category: { only: %i[id name slug] }
+        category: { only: %i[id name slug] },
+        assessment_definition: { only: %i[id name status] }
       }.freeze
 
       def index
@@ -95,7 +96,13 @@ module Api
         resolve_assessor!
         return if performed?
 
+        reject_single_rating_for_definition!
+        return if performed?
+
         apply_value!
+        return if performed?
+
+        apply_category_values!
         return if performed?
 
         resolve_score!
@@ -122,7 +129,13 @@ module Api
         end
 
         @assessment.assign_attributes(assessment_params.except(:value))
+        reject_single_rating_for_definition!
+        return if performed?
+
         apply_value!
+        return if performed?
+
+        apply_category_values!
         return if performed?
 
         resolve_score!
@@ -139,16 +152,65 @@ module Api
 
       def set_assessment
         @assessment = Assessment
-                        .includes(:player_profile, :coach_profile, :created_by, :category)
+                        .includes(:player_profile, :coach_profile, :created_by, :category,
+                                  :assessment_definition, assessment_category_scores: { assessment_category: {} })
                         .find(params[:id])
       end
 
       def assessment_params
         params.require(:assessment).permit(
           :player_profile_id, :coach_profile_id, :category_id, :custom_category,
+          :assessment_definition_id,
           :training_session_id, :score, :reported_value, :scale, :value,
-          :notes, :status
+          :notes, :status,
+          # Definition-based rows score each configured category; the virtual
+          # `value` is the coach's own entry, converted through RatingScale.
+          assessment_category_scores_attributes: %i[
+            id assessment_category_id score reported_value scale value notes
+          ]
         )
+      end
+
+      # A weighted result carries no single typed rating: each configured
+      # category has its own. Sending `value`/`score` alongside a definition
+      # would be two answers to the same question, so it is refused rather than
+      # silently ignored (plan D9/D10).
+      def reject_single_rating_for_definition!
+        return unless @assessment.definition_based?
+
+        sent = %i[value score reported_value].select { |key| assessment_params[key].present? }
+        return if sent.empty?
+
+        @assessment.errors.add(
+          :base,
+          "A weighted assessment scores each category; remove the single rating fields"
+        )
+        render json: { errors: @assessment.errors.full_messages }, status: :unprocessable_entity
+      end
+
+      # The children carry their own typed entries, so the conversion the parent
+      # performs for a legacy row happens per child here. An entry that does not
+      # exist on the named scale is a 422 the coach can act on — never a row
+      # saved without a rating.
+      def apply_category_values!
+        rows = assessment_params[:assessment_category_scores_attributes]
+        return if rows.blank?
+
+        list = rows.is_a?(Array) ? rows : rows.values
+        list.each do |attrs|
+          next if attrs[:value].blank?
+
+          scale = attrs[:scale].presence || RatingScale::DEFAULT_SCALE
+          number = Integer(attrs[:value].to_s, exception: false)
+          next if RatingScale.legal_value?(number, scale: scale)
+
+          @assessment.errors.add(
+            :value,
+            number.nil? ? "must be a number" : "is not a value on the #{scale} scale"
+          )
+          return render json: { errors: @assessment.errors.full_messages },
+                        status: :unprocessable_entity
+        end
       end
 
       # A coach speaks for themselves; only oversight speaks for another coach.
@@ -265,6 +327,7 @@ module Api
         # the key always being present (nil = recorded before provenance).
         payload["created_by"] = nil unless payload.key?("created_by")
         payload["category"] = nil unless payload.key?("category")
+        payload["assessment_definition"] = nil unless payload.key?("assessment_definition")
         payload
       end
     end

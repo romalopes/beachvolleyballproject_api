@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_25_000007) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -58,7 +58,56 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.index ["key"], name: "index_app_settings_on_key", unique: true
   end
 
+  create_table "assessment_categories", force: :cascade do |t|
+    t.bigint "assessment_definition_id", null: false
+    t.bigint "category_custom_id"
+    t.bigint "category_id"
+    t.datetime "created_at", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.integer "weight", null: false
+    t.index ["assessment_definition_id", "category_custom_id"], name: "index_assessment_categories_on_definition_and_custom", unique: true, where: "(category_custom_id IS NOT NULL)"
+    t.index ["assessment_definition_id", "category_id"], name: "index_assessment_categories_on_definition_and_category", unique: true, where: "(category_id IS NOT NULL)"
+    t.index ["assessment_definition_id"], name: "index_assessment_categories_on_assessment_definition_id"
+    t.index ["category_custom_id"], name: "index_assessment_categories_on_category_custom_id"
+    t.index ["category_id"], name: "index_assessment_categories_on_category_id"
+    t.check_constraint "\"position\" >= 0", name: "assessment_categories_position_non_negative"
+    t.check_constraint "category_id IS NOT NULL AND category_custom_id IS NULL OR category_id IS NULL AND category_custom_id IS NOT NULL", name: "assessment_categories_source_xor"
+    t.check_constraint "weight > 0", name: "assessment_categories_weight_positive"
+  end
+
+  create_table "assessment_category_scores", force: :cascade do |t|
+    t.bigint "assessment_category_id", null: false
+    t.bigint "assessment_id", null: false
+    t.datetime "created_at", null: false
+    t.text "notes"
+    t.integer "reported_value"
+    t.string "scale", default: "one_to_ten", null: false
+    t.integer "score"
+    t.datetime "updated_at", null: false
+    t.index ["assessment_category_id"], name: "index_assessment_category_scores_on_assessment_category_id"
+    t.index ["assessment_id", "assessment_category_id"], name: "index_assessment_category_scores_on_assessment_and_category", unique: true
+    t.index ["assessment_id"], name: "index_assessment_category_scores_on_assessment_id"
+    t.check_constraint "(score IS NULL) = (reported_value IS NULL)", name: "assessment_category_scores_score_pair"
+    t.check_constraint "scale::text = ANY (ARRAY['one_to_five'::character varying, 'one_to_ten'::character varying, 'one_to_hundred'::character varying]::text[])", name: "assessment_category_scores_scale"
+    t.check_constraint "score IS NULL OR score >= 0 AND score <= 100", name: "assessment_category_scores_score_range"
+  end
+
+  create_table "assessment_definitions", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.text "description"
+    t.string "name", null: false
+    t.string "status", default: "draft", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_assessment_definitions_on_created_by_id"
+    t.index ["name"], name: "index_assessment_definitions_on_name"
+    t.index ["status"], name: "index_assessment_definitions_on_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'active'::character varying, 'archived'::character varying]::text[])", name: "assessment_definitions_status"
+  end
+
   create_table "assessments", force: :cascade do |t|
+    t.bigint "assessment_definition_id"
     t.bigint "category_id"
     t.bigint "coach_profile_id", null: false
     t.datetime "created_at", null: false
@@ -67,11 +116,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.text "notes"
     t.bigint "player_profile_id", null: false
     t.integer "reported_value"
-    t.string "scale", default: "one_to_ten", null: false
+    t.string "scale", default: "one_to_ten"
     t.integer "score"
     t.string "status", default: "draft", null: false
     t.bigint "training_session_id"
     t.datetime "updated_at", null: false
+    t.index ["assessment_definition_id"], name: "index_assessments_on_assessment_definition_id"
     t.index ["category_id"], name: "index_assessments_on_category_id"
     t.index ["coach_profile_id"], name: "index_assessments_on_coach_profile_id"
     t.index ["created_by_id"], name: "index_assessments_on_created_by_id"
@@ -79,11 +129,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.index ["player_profile_id"], name: "index_assessments_on_player_profile_id"
     t.index ["status"], name: "index_assessments_on_status"
     t.index ["training_session_id"], name: "index_assessments_on_training_session_id"
-    t.check_constraint "(score IS NULL) = (reported_value IS NULL)", name: "assessments_score_pair"
-    t.check_constraint "category_id IS NOT NULL AND custom_category IS NULL OR category_id IS NULL AND custom_category IS NOT NULL", name: "assessments_category_xor_custom_category"
+    t.check_constraint "assessment_definition_id IS NOT NULL OR (score IS NULL) = (reported_value IS NULL)", name: "assessments_score_pair"
+    t.check_constraint "assessment_definition_id IS NOT NULL OR category_id IS NOT NULL AND custom_category IS NULL OR category_id IS NULL AND custom_category IS NOT NULL", name: "assessments_category_xor_custom_category"
+    t.check_constraint "assessment_definition_id IS NULL OR category_id IS NULL AND custom_category IS NULL", name: "assessment_definition_xor_rubric"
     t.check_constraint "score IS NULL OR score >= 0 AND score <= 100", name: "assessments_score_range"
-    t.check_constraint "status::text = 'draft'::text OR score IS NOT NULL AND reported_value IS NOT NULL", name: "assessments_published_requires_score"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'active'::character varying::text, 'withdrawn'::character varying::text])", name: "assessments_status"
+    t.check_constraint "status::text = 'draft'::text OR score IS NOT NULL AND (assessment_definition_id IS NOT NULL OR reported_value IS NOT NULL)", name: "assessments_published_requires_score"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'active'::character varying, 'withdrawn'::character varying]::text[])", name: "assessments_status"
   end
 
   create_table "categories", force: :cascade do |t|
@@ -92,6 +143,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.string "slug"
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_categories_on_slug", unique: true
+  end
+
+  create_table "category_customs", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.string "name", null: false
+    t.datetime "updated_at", null: false
+    t.string "visibility", default: "shared", null: false
+    t.index ["created_by_id", "name"], name: "index_category_customs_on_creator_and_name", unique: true
+    t.index ["created_by_id"], name: "index_category_customs_on_created_by_id"
+    t.index ["visibility"], name: "index_category_customs_on_visibility"
+    t.check_constraint "visibility::text = ANY (ARRAY['shared'::character varying, 'private'::character varying]::text[])", name: "category_customs_visibility"
   end
 
   create_table "coach_profiles", force: :cascade do |t|
@@ -310,7 +373,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.index ["status"], name: "index_training_sessions_on_status"
     t.index ["visibility"], name: "index_training_sessions_on_visibility"
     t.check_constraint "ends_at > starts_at", name: "training_sessions_ends_at_after_starts_at"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'scheduled'::character varying::text, 'cancelled'::character varying::text, 'completed'::character varying::text])", name: "training_sessions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'scheduled'::character varying, 'cancelled'::character varying, 'completed'::character varying]::text[])", name: "training_sessions_status"
   end
 
   create_table "user_roles", force: :cascade do |t|
@@ -412,11 +475,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
   add_foreign_key "accounts", "people"
   add_foreign_key "accounts", "users"
   add_foreign_key "admin_activities", "users"
+  add_foreign_key "assessment_categories", "assessment_definitions"
+  add_foreign_key "assessment_categories", "categories"
+  add_foreign_key "assessment_categories", "category_customs"
+  add_foreign_key "assessment_category_scores", "assessment_categories"
+  add_foreign_key "assessment_category_scores", "assessments"
+  add_foreign_key "assessment_definitions", "users", column: "created_by_id"
+  add_foreign_key "assessments", "assessment_definitions"
   add_foreign_key "assessments", "categories"
   add_foreign_key "assessments", "coach_profiles"
   add_foreign_key "assessments", "player_profiles"
   add_foreign_key "assessments", "training_sessions", on_delete: :nullify
   add_foreign_key "assessments", "users", column: "created_by_id"
+  add_foreign_key "category_customs", "users", column: "created_by_id"
   add_foreign_key "coach_profiles", "people"
   add_foreign_key "coach_profiles", "users", column: "created_by_id"
   add_foreign_key "drill_skills", "drills"

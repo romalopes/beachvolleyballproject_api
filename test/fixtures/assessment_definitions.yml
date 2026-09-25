@@ -1,0 +1,18 @@
+# Two reusable weighted configurations.
+#
+# `balanced` is active and totals exactly 100 (see assessment_categories.yml),
+# so it is the one a test may apply to a player. `pre_season` is a draft on
+# purpose: a draft may be unbalanced while it is being built — 50 + 30 = 80 —
+# which is the state the "15% remaining" indicator exists for.
+
+balanced:
+  name: A-Level Assessment
+  description: The club's full-court weighting.
+  status: active
+  created_by: six
+
+pre_season:
+  name: Pre-season Screening
+  description: Built up over a few sessions, not yet endorsed.
+  status: draft
+  created_by: six

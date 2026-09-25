@@ -1,0 +1,16 @@
+# Coach-authored rubrics that are not part of the club catalogue. Fixtures are
+# inserted with SQL, so the model's per-creator uniqueness validation does not
+# run — the database's partial behaviour does not either (there is no unique
+# constraint beyond [created_by_id, name], and these two rows differ on both).
+
+# Shared: any content creator may select it (CategoryCustom.usable_by?).
+mental_game:
+  name: Mental game
+  created_by: six
+  visibility: shared
+
+# Private: only its own creator may select it.
+private_rubric:
+  name: Private rubric
+  created_by: three
+  visibility: private

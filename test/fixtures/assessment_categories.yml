@@ -1,0 +1,38 @@
+# The weighted configuration of each definition (plan D2: these rows belong to
+# the *definition*, not to an assessment).
+#
+# Positions are 0-based, matching the `fill_missing_positions!` idiom the
+# controller uses when a submission omits them. Order never affects the maths.
+
+# A-Level Assessment — active and balanced: 40 + 30 + 30 = 100.
+balanced_attack:
+  assessment_definition: balanced
+  category: assessment_rubric
+  weight: 40
+  position: 0
+
+balanced_defense:
+  assessment_definition: balanced
+  category: defense
+  weight: 30
+  position: 1
+
+balanced_serve:
+  assessment_definition: balanced
+  category: serve
+  weight: 30
+  position: 2
+
+# Pre-season Screening — a draft on 80%, mixing a standard category with a
+# coach-authored one: 50 + 30.
+pre_season_attack:
+  assessment_definition: pre_season
+  category: assessment_rubric
+  weight: 50
+  position: 0
+
+pre_season_mental:
+  assessment_definition: pre_season
+  category_custom: mental_game
+  weight: 30
+  position: 1

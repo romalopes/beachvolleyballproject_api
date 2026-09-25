@@ -14,3 +14,14 @@ two:
 assessment_rubric:
   name: Attack
   slug: attack
+
+# Categories used by the weighted-definition fixtures (Phase 5). `Attack` above
+# already serves as the definition's Attack row — one name, one slug, no
+# duplicate — so only the other two are added here.
+defense:
+  name: Defense
+  slug: defense
+
+serve:
+  name: Serve
+  slug: serve

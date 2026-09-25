@@ -343,7 +343,159 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     assert_predicate assessments(:skill_active).reload, :present?
   end
 
+  # --- definition-based (phase 5) --------------------------------------------
+
+  test "create applies an active definition and starts as an unscored draft" do
+    sign_in_as(@assessor)
+    assert_difference -> { Assessment.count }, 1 do
+      post api_v1_assessments_path, params: {
+        assessment: {
+          player_profile_id: player_profiles(:pedro_player).id,
+          assessment_definition_id: assessment_definitions(:balanced).id
+        }
+      }, as: :json
+    end
+
+    assert_response :created
+    row = JSON.parse(response.body)
+    assert_equal "A-Level Assessment", row["assessment_definition"]["name"]
+    assert_equal "active", row["assessment_definition"]["status"]
+    assert_equal [], row["category_scores"], "no category has been scored yet"
+    assert_nil row["score"], "an incomplete set never reads as a partial total"
+    assert_nil row["category"], "a definition-based row carries no legacy rubric"
+    assert_nil row["scale"], "the typed scale belongs to each category now"
+  end
+
+  test "create refuses a definition that is still a draft" do
+    sign_in_as(@assessor)
+    post api_v1_assessments_path, params: {
+      assessment: {
+        player_profile_id: player_profiles(:pedro_player).id,
+        assessment_definition_id: assessment_definitions(:pre_season).id
+      }
+    }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["errors"].join(" "), "must be active"
+  end
+
+  test "create refuses a single rating beside a definition" do
+    sign_in_as(@assessor)
+    post api_v1_assessments_path, params: {
+      assessment: {
+        player_profile_id: player_profiles(:pedro_player).id,
+        assessment_definition_id: assessment_definitions(:balanced).id,
+        value: 4, scale: "one_to_five"
+      }
+    }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["errors"].join(" "), "scores each category"
+  end
+
+  test "create rejects a category entry that does not exist on its scale" do
+    sign_in_as(@assessor)
+    post api_v1_assessments_path, params: {
+      assessment: {
+        player_profile_id: player_profiles(:pedro_player).id,
+        assessment_definition_id: assessment_definitions(:balanced).id,
+        assessment_category_scores_attributes: [
+          { assessment_category_id: assessment_categories(:balanced_attack).id,
+            scale: "one_to_five", value: 9 }
+        ]
+      }
+    }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["errors"].join(" "), "one_to_five"
+    assert_not Assessment.where(status: "active").where(assessment_definition_id: assessment_definitions(:balanced).id).exists?
+  end
+
+  test "scoring every category computes the weighted aggregate and allows publishing" do
+    sign_in_as(@assessor)
+    assessment_id = create_definition_draft
+
+    patch api_v1_assessment_path(assessment_id), params: {
+      assessment: {
+        assessment_category_scores_attributes: weighted_entries(values: [ 8, 7, 9 ])
+      }
+    }, as: :json
+
+    assert_response :success
+    row = JSON.parse(response.body)
+    assert_equal 3, row["category_scores"].length
+    assert_equal [40, 30, 30], row["category_scores"].map { |score| score["weight"] }
+    assert_equal [80, 70, 90], row["category_scores"].map { |score| score["score"] }
+    # 80*40 + 70*30 + 90*30 = 8000 -> 80
+    assert_equal 80, row["score"]
+    assert_nil row["reported_value"], "the aggregate has no typed counterpart"
+
+    patch api_v1_assessment_path(assessment_id), params: {
+      assessment: { status: "active" }
+    }, as: :json
+
+    assert_response :success
+    assert_equal "active", JSON.parse(response.body)["status"]
+    assert_equal 80, JSON.parse(response.body)["score"]
+  end
+
+  test "publishing a partially scored definition is refused" do
+    sign_in_as(@assessor)
+    assessment_id = create_definition_draft
+
+    patch api_v1_assessment_path(assessment_id), params: {
+      assessment: {
+        assessment_category_scores_attributes: [
+          weighted_entries(values: [ 8 ]).first
+        ]
+      }
+    }, as: :json
+    assert_response :success
+
+    patch api_v1_assessment_path(assessment_id), params: {
+      assessment: { status: "active" }
+    }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["errors"].join(" "), "Score every category"
+    assert_equal "draft", Assessment.find(assessment_id).status
+    assert_nil Assessment.find(assessment_id).score
+  end
+
+  test "a definition result is the only row that can be a weighted aggregate" do
+    sign_in_as(@trainer)
+    get api_v1_assessment_path(assessments(:skill_active))
+
+    assert_response :success
+    row = JSON.parse(response.body)
+    assert_nil row["assessment_definition"], "legacy rows keep their single rubric"
+    assert_equal [], row["category_scores"]
+    assert row["category"].present?
+    assert_equal "one_to_five", row["scale"]
+  end
+
   private
+
+  # A draft that applies the balanced definition but has not been scored yet —
+  # the state every definition-based workflow starts in.
+  def create_definition_draft
+    post api_v1_assessments_path, params: {
+      assessment: {
+        player_profile_id: player_profiles(:pedro_player).id,
+        assessment_definition_id: assessment_definitions(:balanced).id
+      }
+    }, as: :json
+    assert_response :created, "the draft must be created before it can be scored"
+    JSON.parse(response.body)["id"]
+  end
+
+  # One entry per configured category, in definition order, entered on the
+  # 1-10 scale (value 8 -> canonical 80).
+  def weighted_entries(values:)
+    assessment_definitions(:balanced).assessment_categories.ordered.map.with_index do |category_row, index|
+      { assessment_category_id: category_row.id, scale: "one_to_ten", value: values[index] }
+    end
+  end
 
   # A second coach profile for the attribution tests, built inline so the
   # fixture cast stays exactly as the plan pins it.

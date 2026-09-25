@@ -32,7 +32,15 @@ class Assessment < ApplicationRecord
   belongs_to :coach_profile
   belongs_to :created_by, class_name: "User", optional: true
   belongs_to :category, optional: true
+  belongs_to :assessment_definition, optional: true
   belongs_to :training_session, optional: true
+
+  # Definition-based rows score each configured category; legacy rows have no
+  # children (plan D12: their rubric and score stay exactly where they are).
+  # Restrict, never destroy — a historical score keeps its inputs.
+  has_many :assessment_category_scores, dependent: :restrict_with_error,
+                                        inverse_of: :assessment
+  accepts_nested_attributes_for :assessment_category_scores
 
   # `value` is the coach's own entry on the named scale — the only rating input
   # the API accepts besides a canonical `score`. It is virtual: assigning it
@@ -61,8 +69,14 @@ class Assessment < ApplicationRecord
   # carry an empty string and violate the category-xor-custom check constraint.
   normalizes :custom_category, with: ->(value) { value.strip.presence }
 
+  # A weighted result has no typed counterpart: `score` is derived from the
+  # children, so the legacy `reported_value`/`scale` pair belongs to each child
+  # (plan D10). Clearing them here keeps the parent's columns honest instead of
+  # leaving a default `one_to_ten` on a row that was never typed on any scale.
+  before_validation :clear_legacy_rating_fields, if: :definition_based?
+
   validates :status, presence: true, inclusion: { in: STATUSES }
-  validates :scale, presence: true, inclusion: { in: SCALES }
+  validates :scale, presence: true, inclusion: { in: SCALES }, unless: :definition_based?
   validates :score, allow_nil: true, numericality: {
     only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100
   }
@@ -72,7 +86,9 @@ class Assessment < ApplicationRecord
   validate :score_and_reported_value_travel_together
   validate :score_matches_reported_value
   validate :rated_once_it_leaves_draft
-  validate :category_or_custom_category
+  validate :definition_or_legacy_rubric
+  validate :definition_must_be_active_to_attach
+  validate :definition_fully_scored_when_active
   validate :coach_must_not_assess_their_own_player_profile
 
   scope :active, -> { where(status: "active") }
@@ -180,13 +196,57 @@ class Assessment < ApplicationRecord
     status.to_s.capitalize
   end
 
-  # The rubric, whichever branch it sits on.
+  # The rubric, whichever branch it sits on. A definition-based row is labelled
+  # by its definition; a legacy row by its category or its free text.
   def category_label
+    return assessment_definition.name if definition_based?
+
     category&.name.presence || custom_category
   end
 
   def category_key
+    return "definition:#{assessment_definition_id}" if definition_based?
+
     category_id ? "category:#{category_id}" : "custom:#{custom_category.to_s.downcase}"
+  end
+
+  # Does this row apply a weighted definition rather than carry a single rubric?
+  def definition_based?
+    assessment_definition_id.present?
+  end
+
+  # Every configured category carries a score, and there is at least one.
+  # Read from the association target rather than the database so a nested
+  # submission is judged on what was submitted, not on what is stored yet.
+  def definition_fully_scored?
+    return false unless definition_based?
+    return false if assessment_definition.nil?
+
+    expected = assessment_definition.assessment_categories.count
+    return false if expected.zero?
+
+    rows = assessment_category_scores.to_a
+    rows.size == expected && rows.all?(&:rated?)
+  end
+
+  # Every configured category, in the order the definition declares. Exposed as
+  # a serialized payload so the API can carry a result's breakdown without the
+  # SPA needing a second round-trip per assessment.
+  def category_scores
+    ordered_category_scores.map(&:metadata)
+  end
+
+  # Recompute the canonical aggregate from the children. An incomplete set
+  # computes to *nil*, never to a partial total: a half-scored assessment must
+  # not read as a finished one. `update_column` keeps this out of the callback
+  # loop — the children's after_save calls it, and it must not re-save them.
+  def recalculate_weighted_score!
+    return unless definition_based?
+    return unless persisted?
+
+    rows = assessment_category_scores.reload
+    update_column(:score, definition_fully_scored? ? weighted_total(rows) : nil)
+    score
   end
 
   # PlayerProfile#latest_rated_assessments groups by this name ("per rubric",
@@ -217,6 +277,13 @@ class Assessment < ApplicationRecord
       category: category ? { id: category.id, name: category.name, slug: category.slug } : nil,
       custom_category: custom_category,
       category_label: category_label,
+      assessment_definition: assessment_definition ? {
+        id: assessment_definition.id,
+        name: assessment_definition.name,
+        status: assessment_definition.status,
+        total_weight: assessment_definition.total_weight
+      } : nil,
+      category_scores: category_scores,
       training_session_id: training_session_id,
       score: score,
       reported_value: reported_value,
@@ -234,8 +301,23 @@ class Assessment < ApplicationRecord
 
   private
 
-  # A rating is only meaningful on the scale it was entered on.
+  # The order the coach configured, not insertion order: position is the
+  # presentation order the definition carries into every list and report.
+  def ordered_category_scores
+    assessment_category_scores.sort_by { |row| [ row.assessment_category&.position || 0, row.id || 0 ] }
+  end
+
+  # Σ(category_score × weight) / 100, rounded to the canonical integer. The
+  # children are already on the 0..100 scale, so this is a plain weighted mean.
+  def weighted_total(rows)
+    sum = rows.sum { |row| row.score * row.assessment_category.weight }
+    (sum / 100.0).round
+  end
+
+  # A rating is only meaningful on the scale it was entered on. A weighted
+  # result has no typed entry of its own — each child carries one.
   def reported_value_exists_on_its_scale
+    return if definition_based?
     return if reported_value.nil?
     return if RatingScale.legal_value?(reported_value, scale: scale)
 
@@ -245,7 +327,11 @@ class Assessment < ApplicationRecord
   # The canonical score and the typed value are a pair — the same rule the
   # database enforces — so neither may appear without the other. Mirroring it
   # here turns a constraint violation into a message the coach can act on.
+  # A weighted result deliberately breaks the pair (its score is derived), which
+  # is exactly what the relaxed constraint allows.
   def score_and_reported_value_travel_together
+    return if definition_based?
+
     if score.present? && reported_value.blank?
       errors.add(:reported_value, "is required when a score is given")
     elsif reported_value.present? && score.blank?
@@ -257,6 +343,7 @@ class Assessment < ApplicationRecord
   # canonical score does not follow from `reported_value` would quietly disagree
   # with the band table every other row is measured by.
   def score_matches_reported_value
+    return if definition_based?
     return if score.nil? || reported_value.nil? || scale.blank?
     # An illegal value is reported by reported_value_exists_on_its_scale; asking
     # RatingScale for its score here would raise instead of adding an error.
@@ -275,13 +362,48 @@ class Assessment < ApplicationRecord
     errors.add(:score, "is required once the assessment leaves draft")
   end
 
-  # Exactly one rubric: an existing Category, or free text.
-  def category_or_custom_category
+  # Exactly one rubric *kind*: a weighted definition (whose categories live on
+  # the definition's own rows) or the Phase 4 pair of category/free text — never
+  # both, and never neither.
+  def definition_or_legacy_rubric
+    if definition_based?
+      if category_id.present? || custom_category.present?
+        errors.add(:category, "must be blank when an assessment definition is used")
+      end
+      return
+    end
+
     if category_id.present? && custom_category.present?
       errors.add(:custom_category, "must be blank when a category is selected")
     elsif category_id.blank? && custom_category.blank?
       errors.add(:base, "Choose a category or describe what was assessed")
     end
+  end
+
+  # Only an *active* definition may be attached: a draft configuration is not
+  # yet endorsed by the club (its weights may not total 100), and an archived
+  # one is history. Re-saving a row that already points at a now-archived
+  # definition is fine — that is how old results stay readable.
+  def definition_must_be_active_to_attach
+    return unless will_save_change_to_assessment_definition_id?
+    return if assessment_definition.nil?
+    return if assessment_definition.active?
+
+    errors.add(:assessment_definition, "must be active before it can be applied")
+  end
+
+  # Publishing means endorsing every configured category, not just some of them.
+  # A draft may be partial (the same rule that lets a legacy draft be unrated).
+  def definition_fully_scored_when_active
+    return unless definition_based? && active?
+    return if definition_fully_scored?
+
+    errors.add(:base, "Score every category of the definition before publishing")
+  end
+
+  def clear_legacy_rating_fields
+    self.reported_value = nil
+    self.scale = nil
   end
 
   # A person may hold both profiles. Nobody rates themselves, whoever records it:

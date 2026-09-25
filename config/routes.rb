@@ -104,6 +104,22 @@ Rails.application.routes.draw do
       # a rating is retracted with `PATCH status: "withdrawn"`, never deleted,
       # so `DELETE /api/v1/assessments/:id` is a 404 (phase 4, D18).
       resources :assessments, only: %i[index show create update]
+
+      # Reusable weighted configurations (phase 5): authored once, applied to
+      # many players. Deliberately no `destroy` — a definition is `archived`
+      # once results quote it, never deleted (ASSESSMENT_DEFINITIONS_PLAN.md).
+      # A member route, not a collection: the ids being reordered always belong
+      # to one definition, so the definition is part of the URL and `set_definition`
+      # (which `reorder` shares with show/update) can resolve it.
+      resources :assessment_definitions, only: %i[index show create update] do
+        member { patch :reorder }
+      end
+
+      # Coach-authored rubrics outside the club catalogue. `PATCH` only: an
+      # in-use custom category may not be deleted, and configuration rows are
+      # not offered a delete route at all.
+      resources :category_customs, only: %i[index show create update]
+
       resources :training_sessions
 
       # Admin role management
