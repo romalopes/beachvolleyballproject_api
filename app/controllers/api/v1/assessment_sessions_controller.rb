@@ -27,7 +27,7 @@ class Api::V1::AssessmentSessionsController < ApplicationController
     session_record = AssessmentSession.new(session_params)
     session_record.created_by = Current.user
 
-    unless authorized_to_create?(session_record)
+    unless oversight_or_coach_of_record?(session_record.coach_profile)
       return render json: { error: "Forbidden" }, status: :forbidden
     end
 
@@ -39,10 +39,7 @@ class Api::V1::AssessmentSessionsController < ApplicationController
   end
 
   def update
-    return refuse_edits unless authorized_to_manage?(@assessment_session)
-
-    refuse_if_not_draft
-    return if performed?
+    return unless authorize_draft_edit!(@assessment_session)
 
     if @assessment_session.update(session_params)
       render json: { assessment_session: serialize(@assessment_session) }
@@ -57,10 +54,7 @@ class Api::V1::AssessmentSessionsController < ApplicationController
   # shared with training sessions (InlineParticipantResolver) so the identity
   # rules cannot drift between the two flows.
   def add_players
-    return refuse_edits unless authorized_to_manage?(@assessment_session)
-
-    refuse_if_not_draft
-    return if performed?
+    return unless authorize_draft_edit!(@assessment_session)
 
     rows = Array(
       params.permit(players: [
@@ -70,46 +64,23 @@ class Api::V1::AssessmentSessionsController < ApplicationController
     )
     return render json: { error: "No players supplied" }, status: :unprocessable_entity if rows.empty?
 
-    created = []
-    failed = []
+    result = AssessmentSessionRoster.new(
+      session: @assessment_session,
+      current_user: Current.user
+    ).call(rows)
 
-    AssessmentSession.transaction do
-      InlineParticipantResolver.new(created_by: Current.user).call(rows)
-
-      rows.each do |row|
-        participant = @assessment_session.participants.build(
-          player_profile_id: row[:player_profile_id],
-          inclusion: row[:inclusion] || "included",
-          missing_reason: row[:missing_reason]
-        )
-
-        if participant.save
-          created << participant
-        else
-          failed << { player_profile_id: row[:player_profile_id],
-                      errors: participant.errors.full_messages }
-        end
-      end
-
-      # All-or-nothing: a rejected row must not leave a half-built roster.
-      raise ActiveRecord::Rollback if failed.any?
-    end
-
-    if failed.any?
-      render json: { errors: failed }, status: :unprocessable_entity
+    if result.failed.any?
+      render json: { errors: result.failed }, status: :unprocessable_entity
     else
       render json: {
         assessment_session: serialize(@assessment_session.reload),
-        added: created.size
+        added: result.created.size
       }, status: :created
     end
   end
 
   def remove_players
-    return refuse_edits unless authorized_to_manage?(@assessment_session)
-
-    refuse_if_not_draft
-    return if performed?
+    return unless authorize_draft_edit!(@assessment_session)
 
     ids = Array(params[:player_profile_ids]).map(&:to_i)
     removed = @assessment_session.participants.where(player_profile_id: ids).destroy_all.size
@@ -120,10 +91,7 @@ class Api::V1::AssessmentSessionsController < ApplicationController
   # Save a whole score grid atomically. The request carries stable player and
   # category ids; totals and ranks are never accepted from the client.
   def scores
-    return refuse_edits unless authorized_to_manage?(@assessment_session)
-
-    refuse_if_not_draft
-    return if performed?
+    return unless authorize_draft_edit!(@assessment_session)
 
     rows = Array(params[:scores])
     if rows.empty?
@@ -145,10 +113,7 @@ class Api::V1::AssessmentSessionsController < ApplicationController
   # rows in one transaction (S2). An incomplete roster is a 422, never a
   # partial publish.
   def publish
-    return refuse_edits unless authorized_to_manage?(@assessment_session)
-
-    refuse_if_not_draft
-    return if performed?
+    return unless authorize_draft_edit!(@assessment_session)
 
     ranking = AssessmentSessionRanking.new(@assessment_session).call
     if ranking[:incomplete].any?
@@ -189,45 +154,28 @@ class Api::V1::AssessmentSessionsController < ApplicationController
     @assessment_session = AssessmentSession.find(params[:id])
   end
 
-  # A coach may create a session only for the coach account represented by the
-  # selected domain profile. Curators/admins may create sessions for any coach.
-  def authorized_to_create?(session_record)
-    return true if Current.user&.admin? || Current.user&.curator?
+  # Writes are the union of two roles — oversight (curator/admin) or the coach
+  # of record — and only while the session is a draft. Content management alone
+  # is NOT enough: publishing ratings about a named player is a judgement, not
+  # a catalogue edit. A published session is archival, so correcting it is a
+  # withdrawal, not a silent edit.
+  #
+  # Returns true when the action may proceed; renders 403/422 and returns false
+  # otherwise, so each action is a single `return unless ...` line instead of
+  # the old guard-plus-`performed?` dance.
+  def authorize_draft_edit!(session_record)
+    unless oversight_or_coach_of_record?(session_record.coach_profile)
+      render json: { error: "Forbidden" }, status: :forbidden
+      return false
+    end
 
-    account = session_record.coach_profile&.person&.account
-    account.present? && account.user == Current.user
-  end
+    unless session_record.draft?
+      render json: { error: "Only draft sessions can be modified" },
+             status: :unprocessable_entity
+      return false
+    end
 
-  # Writes are the union of two roles, and content management alone is NOT one
-  # of them: publishing ratings about a named player is a judgement, not a
-  # catalogue edit, so a manager who is not the coach of record cannot rewrite
-  # someone else's numbers.
-  def authorized_to_manage?(session_record)
-    return true if Current.user&.admin? || Current.user&.curator?
-    return true if coach_of_record?(session_record)
-
-    false
-  end
-
-  # The coach of record is the domain coach's linked account, not the creating
-  # user: the coach may sign in from a different account than the one that
-  # first created the session, and the rating belongs to the coach.
-  def coach_of_record?(session_record)
-    account = session_record.coach_profile.person&.account
-    account.present? && account.user == Current.user
-  end
-
-  def refuse_edits
-    render json: { error: "Forbidden" }, status: :forbidden
-  end
-
-  # The roster is only editable while the session is a draft. A published
-  # session is archival: correcting it is a withdrawal, not a silent edit.
-  def refuse_if_not_draft
-    return if @assessment_session.draft?
-
-    render json: { error: "Only draft sessions can be modified" },
-           status: :unprocessable_entity
+    true
   end
 
   def session_params
