@@ -439,6 +439,19 @@ class Api::V1::AssessmentSessionsControllerTest < ActionDispatch::IntegrationTes
     result = json["assessment_session"]["participants"].first["result"]
     assert_equal "complete", result["status"]
     assert_equal 80, result["overall_score"]
+
+    # A published session is read-only, so the per-category entries behind that
+    # total must be in the payload: a client cannot otherwise show how the score
+    # was reached, and the grid would render permanently blank cells.
+    cells = result["category_scores"].index_by { |c| c["assessment_category_id"] }
+    expected = category_cells([ 8, 7, 9 ])
+    assert_equal [ 8, 7, 9 ],
+                 expected.map { |c| cells.fetch(c[:assessment_category_id])["reported_value"] }
+    assert_equal 3, cells.size
+    cells.each_value do |cell|
+      assert_equal "one_to_ten", cell["scale"]
+      assert_not_nil cell["score"]
+    end
   end
 
   test "a published session refuses roster and score edits" do

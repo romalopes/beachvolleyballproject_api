@@ -106,8 +106,30 @@ class AssessmentSessionRanking
       assessment_id: assessment&.id,
       overall_score: nil,
       rank: nil,
-      missing_category_ids: missing
+      missing_category_ids: missing,
+      category_scores: category_scores(assessment)
     }
+  end
+
+  # The coach's own typed entry per category, so a client can render the grid it
+  # would have shown at entry time. The weighted total alone cannot explain how a
+  # result was reached, and a published session is read-only.
+  #
+  # Only criterion-less rows are reported: the criteria layer is scaffolded but
+  # not in use (D11), so a category still carries exactly one number.
+  def category_scores(assessment)
+    return [] if assessment.nil?
+
+    assessment.assessment_category_scores
+              .select { |row| row.criterion_id.nil? }
+              .map do |row|
+                {
+                  assessment_category_id: row.assessment_category_id,
+                  reported_value: row.reported_value,
+                  scale: row.scale,
+                  score: row.score
+                }
+              end
   end
 
   def player_name(participant)
