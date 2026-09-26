@@ -125,6 +125,10 @@ Rails.application.routes.draw do
         end
       end
 
+      # Immutable club-level ranking snapshots over published sessions
+      # (phase 4): list, view, create. No update/destroy by design.
+      resources :ranking_consolidations, only: %i[index show create]
+
       # Coach-authored rubrics outside the club catalogue. `PATCH` only: an
       # in-use custom category may not be deleted, and configuration rows are
       # not offered a delete route at all.
