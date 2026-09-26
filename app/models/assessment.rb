@@ -34,6 +34,7 @@ class Assessment < ApplicationRecord
   belongs_to :category, optional: true
   belongs_to :assessment_definition, optional: true
   belongs_to :training_session, optional: true
+  belongs_to :assessment_session, optional: true
 
   # Definition-based rows score each configured category; legacy rows have no
   # children (plan D12: their rubric and score stay exactly where they are).

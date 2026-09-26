@@ -18,6 +18,7 @@ class CoachProfile < ApplicationRecord
   # at creation, never accepted from client params).
   belongs_to :created_by, class_name: "User", optional: true
   belongs_to :person
+  has_many :assessment_sessions, dependent: :restrict_with_error
 
   # See PlayerProfile: update_only keeps a has_one update from replacing the
   # person (and creating a second identity) when no id is sent.

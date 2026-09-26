@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_26_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_26_000007) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -109,8 +109,44 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_000004) do
     t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'active'::character varying, 'archived'::character varying]::text[])", name: "assessment_definitions_status"
   end
 
+  create_table "assessment_session_participants", force: :cascade do |t|
+    t.bigint "assessment_session_id", null: false
+    t.datetime "created_at", null: false
+    t.string "inclusion", default: "included", null: false
+    t.string "missing_reason"
+    t.bigint "player_profile_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_session_id", "player_profile_id"], name: "index_session_participants_on_session_and_player", unique: true
+    t.index ["assessment_session_id"], name: "index_assessment_session_participants_on_assessment_session_id"
+    t.index ["player_profile_id"], name: "index_assessment_session_participants_on_player_profile_id"
+    t.check_constraint "inclusion::text = ANY (ARRAY['included'::character varying, 'excluded'::character varying]::text[])", name: "assessment_session_participants_inclusion"
+  end
+
+  create_table "assessment_sessions", force: :cascade do |t|
+    t.bigint "assessment_definition_id", null: false
+    t.bigint "coach_profile_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.bigint "group_id"
+    t.string "name"
+    t.text "notes"
+    t.datetime "published_at"
+    t.date "scheduled_on"
+    t.string "status", default: "draft", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_definition_id"], name: "index_assessment_sessions_on_assessment_definition_id"
+    t.index ["coach_profile_id"], name: "index_assessment_sessions_on_coach_profile_id"
+    t.index ["created_by_id"], name: "index_assessment_sessions_on_created_by_id"
+    t.index ["group_id"], name: "index_assessment_sessions_on_group_id"
+    t.index ["scheduled_on"], name: "index_assessment_sessions_on_scheduled_on"
+    t.index ["status"], name: "index_assessment_sessions_on_status"
+    t.check_constraint "status::text <> 'published'::text OR published_at IS NOT NULL", name: "assessment_sessions_published_requires_timestamp"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'withdrawn'::character varying]::text[])", name: "assessment_sessions_status"
+  end
+
   create_table "assessments", force: :cascade do |t|
     t.bigint "assessment_definition_id"
+    t.bigint "assessment_session_id"
     t.bigint "category_id"
     t.bigint "coach_profile_id", null: false
     t.datetime "created_at", null: false
@@ -125,6 +161,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_000004) do
     t.bigint "training_session_id"
     t.datetime "updated_at", null: false
     t.index ["assessment_definition_id"], name: "index_assessments_on_assessment_definition_id"
+    t.index ["assessment_session_id"], name: "index_assessments_on_assessment_session_id"
     t.index ["category_id"], name: "index_assessments_on_category_id"
     t.index ["coach_profile_id"], name: "index_assessments_on_coach_profile_id"
     t.index ["created_by_id"], name: "index_assessments_on_created_by_id"
@@ -526,7 +563,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_000004) do
   add_foreign_key "assessment_category_scores", "assessments"
   add_foreign_key "assessment_category_scores", "criteria"
   add_foreign_key "assessment_definitions", "users", column: "created_by_id"
+  add_foreign_key "assessment_session_participants", "assessment_sessions"
+  add_foreign_key "assessment_session_participants", "player_profiles"
+  add_foreign_key "assessment_sessions", "assessment_definitions"
+  add_foreign_key "assessment_sessions", "coach_profiles"
+  add_foreign_key "assessment_sessions", "groups"
+  add_foreign_key "assessment_sessions", "users", column: "created_by_id"
   add_foreign_key "assessments", "assessment_definitions"
+  add_foreign_key "assessments", "assessment_sessions", on_delete: :nullify
   add_foreign_key "assessments", "categories"
   add_foreign_key "assessments", "coach_profiles"
   add_foreign_key "assessments", "player_profiles"

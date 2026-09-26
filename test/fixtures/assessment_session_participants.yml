@@ -1,0 +1,23 @@
+# The roster of a session, which is NOT the same thing as its results.
+#
+# `draft_expected` is on the roster and expected to be rated.
+# `draft_absent` is on the roster but explicitly excluded, with a reason. That
+# distinction is the whole point of `inclusion`: an absent player is recorded as
+# absent, never as a zero, so consolidation can count missing coaches honestly
+# instead of averaging over a denominator nobody agreed to.
+
+draft_expected:
+  assessment_session: draft_squad
+  player_profile: john_player
+  inclusion: included
+
+draft_absent:
+  assessment_session: draft_squad
+  player_profile: pedro_player
+  inclusion: excluded
+  missing_reason: Injured knee, not observed this session.
+
+published_expected:
+  assessment_session: published_squad
+  player_profile: john_player
+  inclusion: included

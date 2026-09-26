@@ -1,0 +1,28 @@
+# Rostered sessions for Phase 2.
+#
+# `draft_squad` is the editable one: its roster is still being assembled, which
+# is the only state in which a coach may add or drop a player.
+#
+# `published_squad` exists to pin the archival rule. It is `published` WITH a
+# `published_at` (the schema check constraint refuses the other combination) and
+# its roster is frozen — a retracted rating about a player is corrected by
+# withdrawing the session, never by silently editing the published numbers.
+
+draft_squad:
+  name: Tuesday squad screening
+  assessment_definition: balanced
+  coach_profile: maria_coach
+  created_by: six
+  status: draft
+  scheduled_on: <%= 1.week.from_now.to_date %>
+  notes: First pass with the U19 squad, no prior ratings to compare against.
+
+published_squad:
+  name: Spring evaluation
+  assessment_definition: balanced
+  coach_profile: maria_coach
+  created_by: six
+  status: published
+  published_at: <%= 2.days.ago %>
+  scheduled_on: <%= 2.days.ago.to_date %>
+  notes: End of season, used as the baseline for the club ranking.

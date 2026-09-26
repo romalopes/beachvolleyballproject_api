@@ -115,6 +115,16 @@ Rails.application.routes.draw do
         member { patch :reorder }
       end
 
+      resources :assessment_sessions, only: %i[index show create update] do
+        member do
+          post :add_players
+          patch :remove_players
+          put :scores
+          post :publish
+          get :ranking
+        end
+      end
+
       # Coach-authored rubrics outside the club catalogue. `PATCH` only: an
       # in-use custom category may not be deleted, and configuration rows are
       # not offered a delete route at all.
