@@ -60,12 +60,19 @@ class Api::V1::RankingConsolidationsController < ApplicationController
   end
 
   def serialize(consolidation)
+    # D21: per-session reasons a source session contributed fewer ranked rows.
+    # Keyed by session id so the table can badge exactly the sessions at fault.
+    warnings_by_session = consolidation.source_warnings.index_by { |w| w["assessment_session_id"] }
+
     sessions = consolidation.consolidation_sessions.sort_by(&:id).map do |join|
       session = join.assessment_session
+      warning = warnings_by_session[join.assessment_session_id]
       {
         assessment_session_id: join.assessment_session_id,
         name: session&.name,
         coach_name: session&.coach_profile&.full_name,
+        incomplete_count: warning ? warning["incomplete_count"] : 0,
+        incomplete_players: warning ? warning["incomplete_players"] : [],
         ranking_snapshot: join.ranking_snapshot
       }
     end
@@ -92,6 +99,7 @@ class Api::V1::RankingConsolidationsController < ApplicationController
       },
       session_count: sessions.size,
       player_count: rows.size,
+      source_warnings: consolidation.source_warnings,
       assessment_sessions: sessions,
       rows: rows
     }

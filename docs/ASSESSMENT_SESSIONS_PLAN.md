@@ -282,23 +282,74 @@ A later criteria phase may add definition-level criterion authoring, category-cr
 | D17 | Future criteria belong to a category or custom category, exactly one source. |
 | D18 | The score grid is one column per category and does not send `criterion_id`. |
 | D19 | Score-grid writes are validated and recalculated server-side in one transaction. |
-| D20 | Consolidations validate definition, scale, publication status, and roster compatibility. |
-| D21 | A player missing from one coach is reported explicitly and never assigned zero. |
-| D22 | Consolidation stores coach scores, coverage, average, rank, and division as an immutable snapshot. |
+| D20 | Consolidations validate definition, publication status, and session existence; roster gaps are reported, never refused. |
+| D21 | A consolidation never blocks over missing or incomplete players. It always merges, always averages over the sessions that scored the player, exposes `coverage` per row, and stores a per-session `source_warnings` list. Nothing is ever assigned zero. |
+| D22 | Consolidation stores coach scores, coverage, average, and rank as an immutable snapshot. Division was considered and explicitly deferred (see §14). |
 | D23 | Groups are reusable roster containers and have no scoring semantics. |
 | D24 | Published sessions and consolidations are archival; corrections create new records. |
 | D25 | Weight percentages remain positive integers and published definitions total exactly 100. |
 
 ## 12. Final acceptance checklist
 
-- [ ] No assessment creation workflow remains on the player page.
-- [ ] Definitions are reusable weighted templates and publish only at 100%.
-- [ ] A coach can create one session and add many existing or inline-created players.
-- [ ] Score saving is transactional and calculates weighted totals server-side.
-- [ ] Rankings exclude incomplete rows and handle ties deterministically.
-- [ ] Sessions and consolidations enforce authorization server-side.
-- [ ] Consolidations are compatible-session snapshots and never mutate source sessions.
-- [ ] Criterion tables/model/nullable score column exist, but criterion scoring is absent.
-- [ ] Existing historical assessments remain readable and unchanged.
-- [ ] Backend and frontend tests, build, lint, and migration checks pass.
+Verified 2026-09-27 (backend `971 runs / 3681 assertions / 0 failures`, frontend
+`690 tests`, `npm run build`, `eslint src` clean, `rubocop` clean on touched files,
+`db:migrate` status `up`).
+
+- [x] No assessment creation workflow remains on the player page.
+      `PlayerDetail` renders the read-only `AssessmentList`; `api.createAssessment` is
+      declared in `src/api.ts` but has no caller anywhere.
+- [x] Definitions are reusable weighted templates and publish only at 100%.
+      `assessment_definitions_controller_test.rb` — "create refuses to activate an
+      unbalanced definition, naming the total"; `remaining_weight` returned on read.
+- [x] A coach can create one session and add many existing or inline-created players.
+      Roster controller tests plus `AssessmentSessionRoster.test.tsx` (add, dedupe,
+      inline creation, published lock).
+- [x] Score saving is transactional and calculates weighted totals server-side.
+      D19; `SpreadsheetScoreGrid.test.tsx` (save payloads, invalid values, server
+      errors) and the scores controller tests.
+- [x] Rankings exclude incomplete rows and handle ties deterministically.
+      D14/D15; `SessionRankingTable.test.tsx` (ranks, ties, missing categories,
+      exclusions).
+- [x] Sessions and consolidations enforce authorization server-side.
+      Controller tests refuse guest, player and curator roles on both resources.
+- [x] Consolidations are compatible-session snapshots and never mutate source sessions.
+      "withdrawing a source session leaves the consolidation unchanged", plus the
+      builder's "warnings are stored on the row rather than recomputed from the source".
+- [x] Criterion tables/model/nullable score column exist, but criterion scoring is absent.
+      `assessment_category_scores.criterion_id` is nullable with a partial unique index
+      (`where: criterion_id IS NOT NULL`); D16 defers the scoring side.
+- [x] Existing historical assessments remain readable and unchanged.
+      `assessment_session_test.rb` asserts "the historical result must survive";
+      `assessments_controller_test.rb` asserts legacy rows keep their single rubric.
+- [x] Backend and frontend tests, build, lint, and migration checks pass.
+      See the summary line above.
+
+## 13. Implementation notes and deviations (Phase 4.3.3.6)
+
+- **API surface.** §8 specified `PATCH /ranking_consolidations/:id`, `POST /:id/sessions`,
+  `POST /:id/generate` and `GET /:id/results`. Only `index`, `show` and `create` are
+  implemented, deliberately: consolidation rows are an immutable snapshot (D22, D24), so an
+  update, a session-mutation or a regenerate endpoint would let a snapshot change after the
+  fact. `show` already returns every row with its per-session scores, so a separate `results`
+  endpoint would be redundant.
+- **Scale validation.** D20 listed `scale` as a validated attribute, but no scale column
+  exists on `assessment_definitions` — a definition's categories carry their scale
+  implicitly. Comparing `assessment_definition_id` therefore implies equal scale, so no
+  separate check is made.
+- **Missing players (D21).** The builder originally raised when a source session had
+  incomplete players. Under the ratified policy it no longer blocks: an incomplete player is
+  simply absent from that session's ranking snapshot, so their row's `coverage` falls below
+  `session_count`, the session is recorded in `source_warnings`, and the UI badges both.
+  A session with *no* scored players contributes a warning but still merges — no player is
+  ever assigned zero.
+
+## 14. Deferred work
+
+- **Divisions (AAA / AA / A).** Originally part of D22 and now explicitly out of scope.
+  No thresholds exist anywhere in the product, and inventing cut-offs would silently encode
+  policy into real athlete rankings. Deferred until the club defines the bands. When picked
+  up: a `division` column on `ranking_consolidation_rows`, a `RatingDivision` value object,
+  computation inside `RankingConsolidationBuilder`, and a column in the ranking table.
+- **Criterion scoring** (D16) and the **Groups UI** (D23) remain deferred as previously
+  decided. `AssessmentSession#group_id` currently has no UI counterpart.
 

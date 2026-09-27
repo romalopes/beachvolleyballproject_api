@@ -210,11 +210,12 @@ class Api::V1::RankingConsolidationsControllerTest < ActionDispatch::Integration
   end
 
   # `publish` already refuses an incomplete roster, so a normally-produced
-  # published session is always complete. This guard defends the merge against
-  # data that drifts *after* publish (an out-of-band edit, an import, a future
-  # scoring change): rather than averaging a partial score into the club ranking,
-  # the builder refuses and names the players affected.
-  test "create refuses a published session whose scores drifted incomplete" do
+  # published session is always complete. This guard covers data that drifts
+  # *after* publish (an out-of-band edit, an import, a future scoring change).
+  # D21 is a never-block policy: rather than refusing, the consolidation records
+  # the affected session and players in `source_warnings`, and the incomplete
+  # player is absent from the ranking rather than scored zero.
+  test "create merges a published session whose scores drifted incomplete, and records why" do
     sign_in_as(@owner)
     session_id = create_draft_session(name: "Drifted after publish")
     add_players!(session_id, [ { player_profile_id: @john.id }, { player_profile_id: @pedro.id } ])
@@ -231,12 +232,32 @@ class Api::V1::RankingConsolidationsControllerTest < ActionDispatch::Integration
                            .delete
 
     create_consolidation(session_ids: [ session_id ])
-    assert_response :unprocessable_entity
-    assert_match(/incomplete/, json["errors"].join(" "))
-    assert_equal 0, RankingConsolidation.count
+    assert_response :created
+    assert_equal 1, RankingConsolidation.count
+
+    consolidation = json["ranking_consolidation"]
+
+    # The reason the merge proceeded is stored on the snapshot itself...
+    warnings = consolidation["source_warnings"]
+    assert_equal 1, warnings.size
+    assert_equal session_id, warnings.first["assessment_session_id"]
+    assert_equal "Drifted after publish", warnings.first["name"]
+    assert_equal 1, warnings.first["incomplete_count"]
+    assert_includes warnings.first["incomplete_players"], @pedro.full_name
+
+    # ...and mirrored onto the source column so the table can badge it.
+    source = consolidation["assessment_sessions"].first
+    assert_equal 1, source["incomplete_count"]
+    assert_includes source["incomplete_players"], @pedro.full_name
+
+    # pedro is absent from the ranking entirely, never filled in with zero (D14).
+    ranked_ids = consolidation["rows"].map { |row| row["player_profile_id"] }
+    assert_includes ranked_ids, @john.id
+    refute_includes ranked_ids, @pedro.id
+    assert_equal 1, consolidation["player_count"]
   end
 
-  test "a draft session is refused before coverage is considered" do
+  test "a draft session is refused regardless of how well it is scored" do
     sign_in_as(@owner)
     session_id = create_draft_session(name: "Still a draft")
     add_players!(session_id, [ { player_profile_id: @john.id } ])

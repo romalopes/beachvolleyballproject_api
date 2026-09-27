@@ -5,11 +5,17 @@
 # runs in one transaction: every source session must be published and share
 # the consolidation's definition. Each session's complete ranking is frozen
 # into a snapshot; per-player rows then merge the snapshots by averaging over
-# covered sessions only. A player missing from any source session is listed in
-# `missing_players`, never assigned zero (D21).
+# the sessions that actually scored the player.
 #
-# Raises `Error` (carrying `errors`) when the sessions are incompatible; the
-# caller renders 422. Returns the persisted `RankingConsolidation`.
+# D21 (ratified) is a *never-block* policy: a missing or incomplete player never
+# stops a consolidation and is never assigned zero. Incomplete players are
+# absent from their session's snapshot, so their row's `coverage` falls below
+# `session_count`, and each affected session is recorded on the consolidation as
+# `source_warnings` so the reason survives even if the source changes later.
+#
+# Raises `Error` (carrying `errors`) only for genuinely invalid input — an empty
+# selection, an unknown session id, a draft session, or a mismatched definition
+# — so the caller can render 422. Returns the persisted `RankingConsolidation`.
 class RankingConsolidationBuilder
   class Error < StandardError
     attr_reader :errors
@@ -32,10 +38,7 @@ class RankingConsolidationBuilder
     sessions = load_sessions
     validate_sessions!(sessions)
 
-    snapshots = sessions.to_h do |session|
-      [ session.id, AssessmentSessionRanking.new(session).call[:ranking] ]
-    end
-    validate_coverage!(sessions, snapshots)
+    snapshots, warnings = snapshot_sessions(sessions)
 
     consolidation = nil
     RankingConsolidation.transaction do
@@ -43,6 +46,7 @@ class RankingConsolidationBuilder
         assessment_definition: assessment_definition,
         name: name,
         notes: notes,
+        source_warnings: warnings,
         created_by: current_user
       )
       sessions.each do |session|
@@ -91,20 +95,32 @@ class RankingConsolidationBuilder
     raise Error, failures if failures.any?
   end
 
-  # Every source session must have complete coverage for a merge to be honest:
-  # a session that left players incomplete cannot contribute a trustworthy
-  # average, so the consolidation is refused instead of silently dropping them.
-  def validate_coverage!(sessions, snapshots)
-    failures = []
+  # D21 (ratified): never block. Snapshot whatever complete rows each session has
+  # and record the sessions that left players incomplete, instead of refusing the
+  # build. An incomplete player is absent from their session's ranking — never
+  # zeroed — so their merged row simply reports lower coverage.
+  #
+  # Returns [snapshots, warnings]; warnings are persisted as `source_warnings`.
+  def snapshot_sessions(sessions)
+    snapshots = {}
+    warnings = []
+
     sessions.each do |session|
       ranking = AssessmentSessionRanking.new(session).call
-      incomplete_names = ranking[:incomplete].map { |row| row[:player_name] }
-      if incomplete_names.any?
-        failures << "Session \"#{session.name}\" has incomplete players: #{incomplete_names.join(", ")}"
-      end
       snapshots[session.id] = ranking[:ranking]
+
+      incomplete_names = ranking[:incomplete].map { |row| row[:player_name] }
+      next if incomplete_names.empty?
+
+      warnings << {
+        assessment_session_id: session.id,
+        name: session.name,
+        incomplete_count: incomplete_names.size,
+        incomplete_players: incomplete_names
+      }
     end
-    raise Error, failures if failures.any?
+
+    [ snapshots, warnings ]
   end
 
   # Average over covered sessions only; standard competition ranking
@@ -136,9 +152,9 @@ class RankingConsolidationBuilder
          .each_with_index do |row, index|
       row[:rank] = if row[:average_score] == previous_score
                      previous_rank
-                   else
+      else
                      index + 1
-                   end
+      end
       previous_score = row[:average_score]
       previous_rank = row[:rank]
       consolidation.rows.create!(row)
@@ -146,5 +162,6 @@ class RankingConsolidationBuilder
   end
 
   # Players ranked by some sessions but not all: reported explicitly (D21) via
-  # `coverage < sessions.size` on their row — no zero-filling, no exclusion.
+  # `coverage < session_count` on their row, with the contributing sessions
+  # listed in `source_warnings` — no zero-filling, no exclusion, no refusal.
 end

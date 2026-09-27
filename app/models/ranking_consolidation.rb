@@ -4,6 +4,11 @@
 # Once created a consolidation never changes (D24): source sessions are
 # snapshotted, not referenced live, so withdrawing a source later leaves this
 # record exactly as it was.
+#
+# `source_warnings` is why this record stays honest without re-reading the
+# sources: under D21 a merge never blocks over missing or incomplete players,
+# so the consolidation instead carries the per-session reasons it merged
+# anyway. Set once by `RankingConsolidationBuilder`, never recomputed.
 class RankingConsolidation < ApplicationRecord
   belongs_to :assessment_definition
   belongs_to :created_by, class_name: "User", optional: true
