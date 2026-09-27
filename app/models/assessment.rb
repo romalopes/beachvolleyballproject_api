@@ -219,15 +219,45 @@ class Assessment < ApplicationRecord
   # Every configured category carries a score, and there is at least one.
   # Read from the association target rather than the database so a nested
   # submission is judged on what was submitted, not on what is stored yet.
+  #
+  # "Scored" is decided per category through CategoryScoreRollup, so a category
+  # with criteria counts once when all of its criteria are rated — not once per
+  # criterion row.
   def definition_fully_scored?
     return false unless definition_based?
     return false if assessment_definition.nil?
 
-    expected = assessment_definition.assessment_categories.count
-    return false if expected.zero?
+    categories = assessment_definition.assessment_categories.to_a
+    return false if categories.empty?
 
     rows = assessment_category_scores.to_a
-    rows.size == expected && rows.all?(&:rated?)
+    categories.all? { |category| category_rollup(category, rows).rated? }
+  end
+
+  # The one number this category contributes, or nil when it is not fully rated.
+  # Single source of truth for the weighted total, the publish gate and the
+  # session ranking, so those three cannot disagree about what "scored" means.
+  #
+  # Which shape applies is decided by what the *rows* say, never by whether the
+  # category happens to have criteria configured. A category can carry criteria
+  # as a template and still be scored as a whole area — configuring criteria is
+  # not a commitment to use them, and inferring otherwise would silently
+  # invalidate every existing result the moment a coach added one.
+  def category_rollup(category, rows = nil)
+    source = rows || assessment_category_scores.to_a
+    scoped = source.select { |row| row.assessment_category_id == category.id }
+
+    return CategoryScoreRollup.for(scoped, criteria: category.criteria.to_a) if scored_by_criterion?(scoped)
+
+    CategoryScoreRollup.category_level(scoped)
+  end
+
+  # Criterion rows present => this category was scored through its criteria.
+  # Absent => the whole-area row carries the score, exactly as before criteria
+  # existed. A category can only be in one of these states, and the database's
+  # partial unique indexes keep it that way.
+  def scored_by_criterion?(rows)
+    rows.any? { |row| row.criterion_id.present? }
   end
 
   # Every configured category, in the order the definition declares. Exposed as
@@ -310,8 +340,14 @@ class Assessment < ApplicationRecord
 
   # Σ(category_score × weight) / 100, rounded to the canonical integer. The
   # children are already on the 0..100 scale, so this is a plain weighted mean.
+  #
+  # Each category is reduced through `category_rollup` first, so a category
+  # scored on several criteria contributes one weighted number rather than one
+  # per criterion row. This is only ever called once every category is rated, so
+  # no rollup is nil here.
   def weighted_total(rows)
-    sum = rows.sum { |row| row.score * row.assessment_category.weight }
+    categories = assessment_definition.assessment_categories.to_a
+    sum = categories.sum { |category| category_rollup(category, rows).score * category.weight }
     (sum / 100.0).round
   end
 

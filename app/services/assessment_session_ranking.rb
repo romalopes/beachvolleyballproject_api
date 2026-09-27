@@ -75,13 +75,16 @@ class AssessmentSessionRanking
       session.assessment_definition.assessment_categories.order(:position, :id).pluck(:id)
   end
 
+  # A category is missing when its rollup has no number. Delegating to the model
+  # rather than re-reading `criterion_id.nil?` here is the point: the publish
+  # gate, the weighted total and this ranking all asked "is this category
+  # scored?" and must not be able to answer differently.
   def missing_category_ids(assessment)
     return expected_category_ids if assessment.nil?
 
-    rated = assessment.assessment_category_scores
-                      .select { |row| row.criterion_id.nil? && row.rated? }
-                      .map(&:assessment_category_id)
-    expected_category_ids - rated
+    missing = session.assessment_definition.assessment_categories
+                 .reject { |category| assessment.category_rollup(category).rated? }
+    missing.map(&:id)
   end
 
   def complete_result?(assessment, missing)

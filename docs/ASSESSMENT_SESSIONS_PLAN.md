@@ -1,7 +1,8 @@
 # Beach Volleyball Project — Assessment System Refactor
 
 **Status:** Implemented. Definitions, sessions, scoring, ranking, consolidation and
-groups (Phase A) all ship; criterion scoring (D16) and divisions remain deferred.
+groups (Phase A) all ship. Criterion aggregation (Phase B, D16) is in; criterion
+authoring/grid UX and divisions remain deferred.
 
 ## Objective
 
@@ -351,7 +352,8 @@ Verified 2026-09-27 (backend `971 runs / 3681 assertions / 0 failures`, frontend
   policy into real athlete rankings. Deferred until the club defines the bands. When picked
   up: a `division` column on `ranking_consolidation_rows`, a `RatingDivision` value object,
   computation inside `RankingConsolidationBuilder`, and a column in the ranking table.
-- **Criterion scoring** (D16) remains deferred as previously decided.
+- **Criterion scoring** (D16) — the aggregation half is implemented; the authoring
+  and grid-UX half remains. See §16.
 - ~~**Groups UI** (D23)~~ — **implemented in Phase A.** See §15.
 
 ## 15. Groups (Phase A, D23)
@@ -421,4 +423,78 @@ Verified with the Phase A gate: backend `995 runs / 3769 assertions / 0 failures
 (of which 22 are the new `groups_controller_test.rb` and 2 the new model tests),
 frontend `73 files / 703 tests`, `npm run build`, `eslint src` clean, and
 `rubocop` clean on every touched file.
+
+## 16. Criterion scoring — aggregation (Phase B, D16)
+
+The `criterion_id` column, the `Criterion` model, the partial unique indexes and
+the cross-area validation have existed since 4.3.3.1, with nothing reading
+them. This phase wires the *aggregation* so a category scored on several
+criteria produces one number, and leaves the authoring/grid UX for the next
+step.
+
+### Why this could not be additive
+
+Three places independently asked "is this category scored?" and each answered
+from the raw rows:
+
+- `Assessment#definition_fully_scored?` — `rows.size == expected`
+- `Assessment#weighted_total` — summed `row.score * row.assessment_category.weight`
+- `AssessmentSessionRanking#missing_category_ids` — filtered `criterion_id.nil?`
+
+All three are correct only while a category is exactly one row. The moment a
+category carries three criterion rows, the count check breaks, the weighted sum
+multiplies that category's weight three times, and the ranking reports a scored
+category as missing. So the roll-up had to become one shared object before any
+UI could be written against it.
+
+`CategoryScoreRollup` is that object. `Assessment#category_rollup` is the single
+entry point, and the weighted total, the publish gate and the ranking all call
+it. They can no longer disagree about what "scored" means.
+
+### The shape is decided by the rows, not by the configuration
+
+The subtle part: **a category having criteria configured does not mean it was
+scored through them.** `balanced_attack` carries two criteria in the fixtures
+purely to pin the model's rules, yet the results that quote it are whole-area
+rows. Inferring the shape from configuration would have silently invalidated
+every existing result the moment a coach added a criterion to a template.
+
+So `scored_by_criterion?` looks at the rows. Criterion rows present means
+criterion scoring; absent means the whole-area row carries the score, exactly as
+before criteria existed. The database's partial unique indexes keep a category
+in exactly one of those two states.
+
+This was found by the existing suite, not by inspection: the first
+implementation inferred from configuration and broke 16 tests. A regression
+test now pins it — *"configuring criteria does not invalidate a whole-area
+score"*.
+
+### Rules
+
+- A criterion-level roll-up is the **unweighted mean** of its rated criteria,
+  rounded to the canonical integer. Criteria are ordered presentation, not
+  weight — a weighted scheme would need a weight column the plan never asked for.
+- Completeness is checked by **identity, not count**: two rows both naming
+  criterion 1 is incomplete, not complete. Matching counts alone would let a
+  duplicated row masquerade as a scored category.
+- Incomplete is never partial. An unrated criterion leaves the category
+  contributing nothing, so the assessment computes to `nil` rather than a mean of
+  whatever happened to be typed (D14).
+- A criterion scored `0` is rated, not missing. `present?` is the test
+  everywhere, so a genuine zero is never confused with a blank cell.
+- One criterion is the identity, so switching a single-criterion category over
+  changes no result.
+
+### Still deferred
+
+No criterion is authored, submitted, displayed or backfilled yet. The score grid
+still writes one row per category and does not send `criterion_id`; the
+definition editor does not create criteria. Those are the next step, and they are
+now safe to build on this contract. No existing score has been assigned a
+fabricated criterion, and no migration has been needed.
+
+Verified: `1008 runs / 3802 assertions / 0 failures` (13 new: 10 unit tests for
+the roll-up, 3 integration tests proving the aggregate and the completeness gate
+consume criterion scores), `rubocop` clean on every touched file.
+
 

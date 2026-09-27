@@ -100,6 +100,66 @@ class AssessmentCategoryScoreTest < ActiveSupport::TestCase
     assert_nil @assessment.reload.score
   end
 
+  test "a category scored through its criteria rolls up into the aggregate" do
+    @assessment.save!
+    # balanced_attack carries two criteria (weight 40). The other categories are
+    # scored as whole areas, which is the shape every existing result uses.
+    attack = assessment_categories(:balanced_attack)
+    others = categories_assessment_categories - [ attack ]
+
+    @assessment.assessment_category_scores.create!(
+      assessment_category: attack, criterion: criteria(:balanced_attack_approach),
+      scale: "one_to_ten", reported_value: 6, score: 60
+    )
+    @assessment.assessment_category_scores.create!(
+      assessment_category: attack, criterion: criteria(:balanced_attack_swing),
+      scale: "one_to_ten", reported_value: 8, score: 80
+    )
+    others.each do |category|
+      row = @assessment.assessment_category_scores.build(assessment_category: category)
+      row.scale = "one_to_ten"
+      row.value = 8
+      row.save!
+    end
+
+    # Attack contributes its criterion mean of 70, not 60 and not 140.
+    assert_predicate @assessment.reload, :definition_fully_scored?
+    expected = (70 * attack.weight + 80 * others.sum(&:weight)) / 100.0
+    assert_equal expected.round, @assessment.score
+  end
+
+  test "one unrated criterion leaves the whole assessment incomplete" do
+    @assessment.save!
+    attack = assessment_categories(:balanced_attack)
+    others = categories_assessment_categories - [ attack ]
+
+    @assessment.assessment_category_scores.create!(
+      assessment_category: attack, criterion: criteria(:balanced_attack_approach),
+      scale: "one_to_ten", reported_value: 6, score: 60
+    )
+    others.each do |category|
+      row = @assessment.assessment_category_scores.build(assessment_category: category)
+      row.scale = "one_to_ten"
+      row.value = 8
+      row.save!
+    end
+
+    # The second criterion was never rated, so no total — not a mean of one.
+    assert_not_predicate @assessment.reload, :definition_fully_scored?
+    assert_nil @assessment.score
+  end
+
+  test "configuring criteria does not invalidate a whole-area score" do
+    @assessment.save!
+    # balanced_attack already has two criteria in the fixtures, yet a coach may
+    # still score the area as a whole. If the presence of criteria implied
+    # criterion scoring, this existing shape would silently stop counting.
+    score_into(@assessment, categories_assessment_categories, [ 8, 7, 9 ])
+
+    assert_predicate @assessment.reload, :definition_fully_scored?
+    assert_equal 80, @assessment.score
+  end
+
   test "the same category may not be scored twice for one assessment" do
     @assessment.save!
     first = categories_assessment_categories.first
