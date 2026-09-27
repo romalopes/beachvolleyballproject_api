@@ -32,7 +32,15 @@ class Api::V1::AssessmentSessionsController < ApplicationController
     end
 
     if session_record.save
-      render json: { assessment_session: serialize(session_record) }, status: :created
+      if session_record.group.present?
+        session_record.group.player_profiles.each do |profile|
+          session_record.assessment_session_participants.create!(
+            player_profile: profile,
+            inclusion: "included"
+          )
+        end
+      end
+      render json: { assessment_session: serialize(session_record.reload) }, status: :created
     else
       render json: { errors: session_record.errors.full_messages }, status: :unprocessable_entity
     end

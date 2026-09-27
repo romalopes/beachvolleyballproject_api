@@ -107,4 +107,27 @@ class GroupTest < ActiveSupport::TestCase
     assert_equal "shared", payload[:visibility]
     assert_equal "Coach Six", payload[:created_by][:name]
   end
+
+  test "visible_to_user? allows owner, admin, curator and any coach for shared groups" do
+    shared = groups(:u19_squad)
+    private_group = groups(:private_squad)
+
+    assert shared.visible_to_user?(@other_coach)
+    assert shared.visible_to_user?(@owner)
+    assert shared.visible_to_user?(@curator)
+
+    assert private_group.visible_to_user?(@other_coach) # other_coach is creator of private_squad in fixtures
+    assert private_group.visible_to_user?(@curator)
+    assert_not private_group.visible_to_user?(@owner)
+  end
+
+  test "destroying a group is restricted when referenced by assessment sessions" do
+    session = assessment_sessions(:draft_squad)
+    session.update!(group: @squad)
+
+    assert_no_difference "Group.count" do
+      assert_not @squad.destroy
+    end
+    assert @squad.errors[:base].any?
+  end
 end

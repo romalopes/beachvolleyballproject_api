@@ -28,6 +28,10 @@ class Group < ApplicationRecord
   has_many :group_memberships, dependent: :destroy, inverse_of: :group
   has_many :player_profiles, through: :group_memberships
 
+  # A group that has run sessions is history; deleting it is restricted so it
+  # must be archived instead of leaving orphaned references.
+  has_many :assessment_sessions, dependent: :restrict_with_error
+
   normalizes :name, with: ->(value) { value.strip.presence }
 
   validates :name, presence: true, uniqueness: { case_sensitive: false }
@@ -36,6 +40,7 @@ class Group < ApplicationRecord
 
   scope :active, -> { where(status: "active") }
   scope :ordered, -> { order(:name, :id) }
+  scope :owned_by, ->(user) { where(created_by_id: user&.id) }
 
   # The catalogue lists active groups; a private group is visible to the person
   # who recorded it, and curators/admins see everything — the same pair
@@ -46,6 +51,18 @@ class Group < ApplicationRecord
 
     where(visibility: "shared").or(where(created_by_id: user.id))
   }
+
+  def visible_to_user?(user)
+    return true if shared?
+    return true if user.nil?
+    return true if user.admin? || user.curator?
+
+    created_by_id.present? && created_by_id == user.id
+  end
+
+  def owner?(user)
+    user.present? && created_by_id.present? && created_by_id == user.id
+  end
 
   def archived?
     status == "archived"

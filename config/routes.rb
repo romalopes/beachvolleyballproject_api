@@ -134,6 +134,15 @@ Rails.application.routes.draw do
       # not offered a delete route at all.
       resources :category_customs, only: %i[index show create update]
 
+      # Named rosters (squads/groups) used as reusable participant selections
+      # for sessions. Archive-on-delete if used in sessions.
+      resources :groups, except: %i[new edit] do
+        member do
+          post :members, to: "groups#add_members"
+          delete "members/:player_profile_id", to: "groups#remove_member"
+        end
+      end
+
       resources :training_sessions
 
       # Admin role management

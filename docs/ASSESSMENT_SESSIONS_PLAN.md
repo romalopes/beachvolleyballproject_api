@@ -1,6 +1,7 @@
 # Beach Volleyball Project — Assessment System Refactor
 
-**Status:** Phase 6 plan; weighted definitions and schema groundwork exist, while the session workflow remains to be implemented.
+**Status:** Implemented. Definitions, sessions, scoring, ranking, consolidation and
+groups (Phase A) all ship; criterion scoring (D16) and divisions remain deferred.
 
 ## Objective
 
@@ -350,6 +351,74 @@ Verified 2026-09-27 (backend `971 runs / 3681 assertions / 0 failures`, frontend
   policy into real athlete rankings. Deferred until the club defines the bands. When picked
   up: a `division` column on `ranking_consolidation_rows`, a `RatingDivision` value object,
   computation inside `RankingConsolidationBuilder`, and a column in the ranking table.
-- **Criterion scoring** (D16) and the **Groups UI** (D23) remain deferred as previously
-  decided. `AssessmentSession#group_id` currently has no UI counterpart.
+- **Criterion scoring** (D16) remains deferred as previously decided.
+- ~~**Groups UI** (D23)~~ — **implemented in Phase A.** See §15.
+
+## 15. Groups (Phase A, D23)
+
+Groups are now a real, end-to-end feature rather than schema groundwork. The rule
+from §3 is unchanged and still the reason for every decision below: **a group is
+a reusable roster only. Membership is not attendance, and confers no access.**
+
+### Model
+
+`Group` gained the pieces the catalogue needed and nothing it did not:
+
+- `has_many :assessment_sessions, dependent: :restrict_with_error` — the
+  archive-not-delete rule stated in the model comment is now enforced by the
+  database layer, so a group that has run sessions cannot be destroyed at all.
+- `scope :owned_by` and `#owner?` for the ownership checks.
+- `#visible_to_user?` as the single source of truth for the soft-visibility
+  decision, mirroring `PlayerProfile#visible_to_user?`. A hidden group answers
+  **404, not 403**: whether a private squad exists is itself information.
+
+No status column was added to `GroupMembership`, and no scoring field to `Group`.
+Anything more transient than "is in this squad" belongs to the session that
+observed it.
+
+### API
+
+`Api::V1::GroupsController`, routed as `resources :groups, except: %i[new edit]`
+plus `POST /groups/:id/members` and `DELETE /groups/:id/members/:player_profile_id`.
+
+Authorization follows the three gates the rest of the catalogue uses: read is
+`require_training_manager!` (coach/curator/admin); create, update, destroy and
+membership changes are `require_content_creator!` (coach/admin); and update or
+destroy additionally requires owner-or-admin, so one coach's roster cannot be
+rewritten by another. The curators who may *see* every group are deliberately not
+allowed to *mint* one, matching `RankingConsolidationsController`.
+
+`index` supports `q`, `status` (`active` default, `archived`, `all`), `mine` and
+`include_private`, and returns the standard `{ data, meta }` envelope. `show`
+resolves an id **or** a slug and adds the roster rows. Destroying a group that
+has already run sessions is refused with 422 naming archive as the alternative,
+rather than 404ing the route.
+
+### Session integration
+
+`AssessmentSessionsController#create` seeds the roster from the chosen group:
+every member becomes an `included` participant. This is the whole point of a
+group, and it is safe precisely because membership is not attendance — the coach
+still removes anyone who did not show up, and the roster remains editable while
+the session is a draft. The wizard's group picker is optional and defaults to
+none, and the hint under it says membership is not attendance rather than
+leaving a coach to wonder whether the roster is now fixed.
+
+### Frontend
+
+- `Groups` page: catalogue with search, a "Show archived" toggle, and
+  per-row Edit / Archive / Delete. The editor holds a bounded checkbox roster
+  picker that reuses the consolidation session-picker styles.
+- `api.groups` / `api.group` / `api.createGroup` / `api.updateGroup` /
+  `api.deleteGroup` / `api.addGroupMembers` / `api.removeGroupMember`.
+  `updateGroup` omits the roster entirely when no ids are passed and sends `[]`
+  to clear it, so "I only renamed this" cannot silently wipe a squad.
+- The roster picker requests `include_private`, because visibility is
+  presentation and never blocks scheduling — the same rule the training form's
+  player picker already follows.
+
+Verified with the Phase A gate: backend `995 runs / 3769 assertions / 0 failures`
+(of which 22 are the new `groups_controller_test.rb` and 2 the new model tests),
+frontend `73 files / 703 tests`, `npm run build`, `eslint src` clean, and
+`rubocop` clean on every touched file.
 
