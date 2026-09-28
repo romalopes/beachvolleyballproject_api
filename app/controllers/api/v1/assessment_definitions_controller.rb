@@ -8,9 +8,14 @@ module Api
     # AssessmentsController uses (plan D13), because a definition is club
     # configuration a coach owns rather than a row about a particular player.
     #
-    # There is no destroy: a definition is archived. The model refuses to
+    # There is no destroy for a *referenced* definition: the model refuses to
     # reconfigure one that results already quote (D7), so that failure surfaces
     # here as a 422 carrying the model's own message.
+    #
+    # Retirement is admin-only in both directions. Archiving is the reversible soft
+    # delete; `destroy` is the hard one, refused while anything still points at the
+    # definition, so a historical score can never lose the configuration that gives
+    # it meaning.
     class AssessmentDefinitionsController < ApplicationController
       include ContentAuthorization
       include Pagination
@@ -18,7 +23,9 @@ module Api
       before_action :require_authentication
       before_action :require_training_manager!
       before_action :require_content_creator!, only: :create
-      before_action :set_definition, only: %i[show update reorder]
+      before_action :set_definition,
+                    only: %i[show update reorder archive restore destroy]
+      before_action :require_admin_for_retirement!, only: %i[archive restore destroy]
 
       def index
         rows = AssessmentDefinition
@@ -96,7 +103,66 @@ module Api
         render json: @definition.metadata
       end
 
+      # Soft delete. Archiving takes a definition out of circulation without
+      # destroying it, and is never blocked by usage: a configuration people are
+      # still scoring against is exactly the one an admin may want hidden. It comes
+      # back through `restore`, which is why this is not `destroy`.
+      def archive
+        unless @definition.archivable?
+          return render json: { errors: [ "This assessment definition is already archived" ] },
+                        status: :unprocessable_entity
+        end
+
+        @definition.update!(status: "archived")
+
+        render json: @definition.metadata
+      end
+
+      # Undo an archive. Restored to `draft` rather than to whatever it was before:
+      # weights may have drifted, and `active` demands a balanced total, so coming
+      # back as a draft is the state that cannot be wrong.
+      def restore
+        unless @definition.restorable?
+          return render json: { errors: [ "This assessment definition is not archived" ] },
+                        status: :unprocessable_entity
+        end
+
+        @definition.update!(status: "draft")
+
+        render json: @definition.metadata
+      end
+
+      # Hard delete, for a definition nothing points at. The usage check is
+      # deliberately explicit and names the blockers: the alternative is a foreign
+      # key violation surfacing as a 500, or — worse — a definition being removed
+      # while a published ranking still claims to be built on it.
+      def destroy
+        unless @definition.deletable?
+          return render json: {
+            errors: [
+              "This assessment definition is in use by #{@definition.usage_summary}, " \
+              "so it cannot be deleted. Archive it instead."
+            ]
+          }, status: :unprocessable_entity
+        end
+
+        @definition.destroy!
+
+        render json: { message: "Assessment definition deleted", id: params[:id] }
+      end
+
       private
+
+      # Retirement is admin-only, curator included: a curator oversees content but
+      # is not a content creator, and removing a shared configuration is a bigger
+      # claim than reading or editing one.
+      def require_admin_for_retirement!
+        return true if Current.user&.admin?
+
+        render json: { error: "Only an admin can archive or delete an assessment definition" },
+               status: :forbidden
+        false
+      end
 
       def set_definition
         @definition = AssessmentDefinition

@@ -12,8 +12,14 @@
 #     status rather than on every save;
 #   * a definition that results point at is frozen (plan D7): edit it by
 #     duplicating it, never in place, so a historical score keeps meaning what
-#     it meant. Nothing here is ever hard-deleted — an old configuration is
-#     `archived`, not removed.
+#     it meant.
+#
+# Retirement is two-tier, because "unused" and "no longer wanted" are different
+# requests. `archived` is the soft delete: reversible, and the ordinary way to
+# retire a configuration, since a coach must be able to bring it back. A hard
+# delete is admin-only and only for a definition nothing points at — see
+# `usage_counts`, which exists because four tables reference this one and a
+# delete that only checked the obvious one would fail as a raw FK error.
 class AssessmentDefinition < ApplicationRecord
   STATUSES = %w[draft active archived].freeze
   TARGET_WEIGHT = 100
@@ -22,6 +28,10 @@ class AssessmentDefinition < ApplicationRecord
   has_many :assessment_categories, -> { order(:position, :id) },
            dependent: :destroy, inverse_of: :assessment_definition
   has_many :assessments, dependent: :restrict_with_error
+  # Declared explicitly so deleting is refused in a way a controller can explain,
+  # rather than by a foreign-key violation escaping as a 500.
+  has_many :assessment_sessions, dependent: :restrict_with_error, inverse_of: :assessment_definition
+  has_many :ranking_consolidations, dependent: :restrict_with_error, inverse_of: :assessment_definition
 
   accepts_nested_attributes_for :assessment_categories, allow_destroy: true, reject_if: :all_blank
 
@@ -70,6 +80,58 @@ class AssessmentDefinition < ApplicationRecord
     assessments.exists?
   end
 
+  # What points at this definition, by table. Deliberately wider than `referenced?`:
+  # that one asks "is this configuration frozen" (D7, which is about scores already
+  # recorded), while this one asks "may this row be deleted at all". A session may
+  # quote a definition with no results yet and still make a hard delete wrong.
+  #
+  # `assessment_categories` is omitted: those are owned by the definition and are
+  # destroyed with it, which is the point of deleting one.
+  def usage_counts
+    {
+      assessments: assessments.count,
+      assessment_sessions: assessment_sessions.count,
+      ranking_consolidations: ranking_consolidations.count
+    }
+  end
+
+  def in_use?
+    usage_counts.values.any?(&:positive?)
+  end
+
+  # Human labels for the blockers, so the refusal names what is in the way instead
+  # of saying "Invalid".
+  USAGE_LABELS = {
+    assessments: "recorded assessment(s)",
+    assessment_sessions: "assessment session(s)",
+    ranking_consolidations: "ranking consolidation(s)"
+  }.freeze
+
+  def usage_summary
+    usage_counts.filter_map do |key, count|
+      next if count.zero?
+
+      "#{count} #{USAGE_LABELS.fetch(key)}"
+    end.join(", ")
+  end
+
+  # Archiving is the reversible retirement, so it is available from either live
+  # state and never blocked by usage — hiding a configuration that is still in use
+  # is exactly the wrong response to wanting it out of the picker.
+  def archivable?
+    !archived?
+  end
+
+  def restorable?
+    archived?
+  end
+
+  # A hard delete is only honest when nothing references the row, and only an
+  # admin may do it (the controller enforces that half).
+  def deletable?
+    !in_use?
+  end
+
   def metadata
     {
       id: id,
@@ -81,6 +143,14 @@ class AssessmentDefinition < ApplicationRecord
       remaining_weight: remaining_weight,
       weights_balanced: weights_balanced?,
       referenced: referenced?,
+      # What blocks a hard delete, so the UI can say why an admin cannot remove
+      # this rather than offering a button that fails.
+      usage_counts: usage_counts,
+      in_use: in_use?,
+      deletable: deletable?,
+      usage_summary: usage_summary,
+      archivable: archivable?,
+      restorable: restorable?,
       created_by: created_by ? { id: created_by.id, name: created_by.name } : nil,
       assessment_categories: assessment_categories.map(&:metadata),
       created_at: created_at,

@@ -246,6 +246,158 @@ class Api::V1::AssessmentDefinitionsControllerTest < ActionDispatch::Integration
     assert_response :forbidden
   end
 
+  # --- retirement: archive (soft) and destroy (hard) ---------------------------
+  #
+  # Two tiers, because "no longer wanted" and "never existed" are different
+  # requests. Archiving is reversible and never blocked by usage; a hard delete is
+  # admin-only and refused while anything points at the definition.
+
+  test "an admin archives a definition without destroying it" do
+    sign_in_as(@admin)
+
+    post archive_api_v1_assessment_definition_path(@pre_season)
+
+    assert_response :success
+    assert_equal "archived", JSON.parse(response.body)["status"]
+    # Soft delete: the row is still there, and so are its categories.
+    assert_predicate AssessmentDefinition.find(@pre_season.id), :archived?
+    assert_equal @pre_season.assessment_categories.count,
+                 @pre_season.reload.assessment_categories.count
+  end
+
+  test "an admin restores an archived definition to draft" do
+    sign_in_as(@admin)
+    @pre_season.update!(status: "archived")
+
+    post restore_api_v1_assessment_definition_path(@pre_season)
+
+    assert_response :success
+    # Draft, not `active`: weights may have drifted, and `active` demands a
+    # balanced total, so draft is the state that cannot be wrong.
+    assert_equal "draft", JSON.parse(response.body)["status"]
+  end
+
+  test "archiving is refused when already archived, and restoring a live one" do
+    sign_in_as(@admin)
+    @pre_season.update!(status: "archived")
+
+    post archive_api_v1_assessment_definition_path(@pre_season)
+    assert_response :unprocessable_entity
+    assert_match(/already archived/, JSON.parse(response.body)["errors"].join(" "))
+
+    @pre_season.update!(status: "draft")
+    post restore_api_v1_assessment_definition_path(@pre_season)
+    assert_response :unprocessable_entity
+    assert_match(/not archived/, JSON.parse(response.body)["errors"].join(" "))
+  end
+
+  test "a definition in use may be archived but not deleted" do
+    sign_in_as(@admin)
+    freeze_with_result
+
+    # Archiving stays available: hiding a configuration people still score against
+    # is a legitimate request, and unlike deleting it loses nothing.
+    post archive_api_v1_assessment_definition_path(@balanced)
+    assert_response :success
+
+    delete api_v1_assessment_definition_path(@balanced)
+
+    assert_response :unprocessable_entity
+    assert_match(/in use by .*assessment/, JSON.parse(response.body)["errors"].join(" "))
+    assert_match(/archive it instead/i, JSON.parse(response.body)["errors"].join(" "))
+    assert_predicate AssessmentDefinition.find(@balanced.id), :archived?
+  end
+
+  test "a session alone is enough to block a hard delete" do
+    # No results recorded, but a session quotes the definition — deleting it would
+    # leave a session pointing at a configuration that no longer exists. `@balanced`
+    # is already active and balanced, so a session may legitimately be built on it.
+    sign_in_as(@admin)
+    AssessmentSession.create!(
+      name: "Uses it", assessment_definition: @balanced,
+      coach_profile: coach_profiles(:maria_coach), created_by: @admin,
+      status: "published", published_at: Time.current, scheduled_on: Date.current
+    )
+
+    delete api_v1_assessment_definition_path(@balanced)
+
+    assert_response :unprocessable_entity
+    assert_match(/assessment session/, JSON.parse(response.body)["errors"].join(" "))
+    assert_predicate AssessmentDefinition.find(@balanced.id), :persisted?
+  end
+
+  test "a published ranking alone is enough to block a hard delete" do
+    sign_in_as(@admin)
+    used = AssessmentDefinition.create!(name: "Ranking-only", status: "draft", created_by: @admin)
+    RankingConsolidation.create!(assessment_definition: used, created_by: @admin)
+
+    delete api_v1_assessment_definition_path(used)
+
+    assert_response :unprocessable_entity
+    assert_match(/ranking consolidation/, JSON.parse(response.body)["errors"].join(" "))
+  end
+
+  test "an admin hard deletes an unused definition and its categories" do
+    sign_in_as(@admin)
+    category = @pre_season.assessment_categories.first
+    assert category.present?
+
+    delete api_v1_assessment_definition_path(@pre_season)
+
+    assert_response :success
+    assert_not AssessmentDefinition.exists?(@pre_season.id)
+    # Categories are owned by the definition, so they go with it — that is the
+    # difference between deleting an unused definition and archiving a used one.
+    assert_nil AssessmentCategory.find_by(id: category.id)
+  end
+
+  test "the definition author may not archive or delete it" do
+    sign_in_as(@owner)
+
+    post archive_api_v1_assessment_definition_path(@pre_season)
+    assert_response :forbidden
+
+    delete api_v1_assessment_definition_path(@pre_season)
+    assert_response :forbidden
+    assert_predicate AssessmentDefinition.find(@pre_season.id), :draft?
+  end
+
+  test "a curator may not archive or delete, being oversight but not an admin" do
+    sign_in_as(@curator)
+
+    post archive_api_v1_assessment_definition_path(@pre_season)
+    assert_response :forbidden
+
+    delete api_v1_assessment_definition_path(@pre_season)
+    assert_response :forbidden
+  end
+
+  test "a coach and a guest may not archive or delete" do
+    sign_in_as(@trainer)
+    post archive_api_v1_assessment_definition_path(@pre_season)
+    assert_response :forbidden
+
+    sign_out
+    delete api_v1_assessment_definition_path(@pre_season)
+    assert_response :unauthorized
+  end
+
+  test "the payload says what blocks a delete instead of only offering the button" do
+    sign_in_as(@trainer)
+    freeze_with_result
+
+    get api_v1_assessment_definition_path(@balanced)
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["in_use"]
+    assert_not body["deletable"]
+    assert body["usage_counts"]["assessments"].positive?
+    assert_match(/assessment/, body["usage_summary"])
+    # Archiving is offered even though the delete is not.
+    assert body["archivable"]
+  end
+
   private
 
   # Quote the definition with a result, which is what freezes it. Built inline

@@ -111,8 +111,16 @@ Rails.application.routes.draw do
       # A member route, not a collection: the ids being reordered always belong
       # to one definition, so the definition is part of the URL and `set_definition`
       # (which `reorder` shares with show/update) can resolve it.
-      resources :assessment_definitions, only: %i[index show create update] do
-        member { patch :reorder }
+      resources :assessment_definitions, only: %i[index show create update destroy] do
+        member do
+          patch :reorder
+          # Retirement is two-tier: archiving hides a configuration reversibly, and
+          # is the ordinary action; destroy removes an unused one outright and is
+          # admin-only. Both are separate routes so the reversible one is never
+          # mistaken for the irreversible one.
+          post :archive
+          post :restore
+        end
       end
 
       # `destroy` is scoped to drafts only (a published session is archival, and
