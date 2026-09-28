@@ -61,7 +61,14 @@ class PlayerProfile < ApplicationRecord
     return all if user.nil?
     return all if user.admin? || user.curator?
 
-    where(visibility: "shared").or(where(created_by_id: user.id))
+    base = where(visibility: "shared").or(where(created_by_id: user.id))
+    # §15: belonging to the same club as a player is itself a reason to see them.
+    # This is what a membership is *for* — otherwise a club's roster would have to
+    # be restated as a list of coach-player grants and would drift out of date.
+    peer_ids = user.person&.organisation_peer_ids
+    return base if peer_ids.blank?
+
+    base.or(where(person_id: peer_ids))
   }
   scope :owned_by, ->(user) { where(created_by_id: user.id) }
 
@@ -80,8 +87,12 @@ class PlayerProfile < ApplicationRecord
     return true if shared?
     return true if user.nil?
     return true if user.admin? || user.curator?
+    return true if created_by_id.present? && created_by_id == user.id
+    # §15, the single-row counterpart of the `visible_to` scope. Both must agree,
+    # or a list and an item can disagree about who may see what.
+    return false if person.nil? || user.person.nil?
 
-    created_by_id.present? && created_by_id == user.id
+    user.person.shares_organisation_with?(person)
   end
 
   def owner?(user)

@@ -274,6 +274,60 @@ puts "Seeded #{Organisation.count} organisations " \
      "(#{Organisation.roots.count} root(s), deepest tree " \
      "#{Organisation.ordered.map(&:depth).max} tiers)"
 
+# ---------------------------------------------------------------------------
+# Organisation membership
+# ---------------------------------------------------------------------------
+#
+# Without these the tree is a set of names, and nothing about it is testable by
+# hand: every membership rule in development needs somebody who is an officer and
+# somebody who is merely on the roster, because the interesting cases are the
+# refusals.
+#
+# Keyed on Person, and the coach here is deliberately *not* a User — a club has to
+# be able to record the volunteers and committee members who never signed up.
+#
+# Idempotent: the pair is unique, so re-seeding updates rather than duplicating.
+
+club = Organisation.find_by(name: "Sydney Beach Volleyball Club")
+academy = Organisation.find_by(name: "Sydney Beach Academy")
+northern = Organisation.find_by(name: "Northern Beaches Volleyball Club")
+australia = Organisation.find_by(name: "Volleyball Australia")
+
+def seed_member(organisation, full_name, role:, status: "active")
+  return if organisation.nil?
+
+  first_name, last_name = full_name.split(" ", 2)
+  person = Person.find_or_create_by!(first_name: first_name, last_name: last_name) do |candidate|
+    candidate.creation_source = "system"
+  end
+  membership = OrganisationMembership.find_or_initialize_by(organisation: organisation, person: person)
+  membership.role = role
+  membership.status = status
+  membership.save!
+  membership
+end
+
+if club
+  seed_member(club, "Alex Clubhouse", role: "owner")
+  seed_member(club, "Priya Raman", role: "administrator")
+  # A coach with no account, which is the case a User-keyed membership could not
+  # represent at all.
+  seed_member(club, "Tomas Silva", role: "coach")
+  # A plain member, so the "on the roster is not authority over it" rule has
+  # somebody it applies to.
+  seed_member(club, "Jordan Member", role: "member")
+  # Invited but not yet accepted: grants nothing until it is.
+  seed_member(academy, "Casey Prospective", role: "member", status: "pending")
+  # Left the club, still on the record.
+  seed_member(northern, "Robin Former", role: "member", status: "ended")
+  # In the national body only. Nobody at the club is their peer, which is the
+  # point: the hierarchy is not a grant.
+  seed_member(australia, "Hana Watanabe", role: "member")
+end
+
+puts "Seeded #{OrganisationMembership.count} organisation memberships " \
+     "(#{OrganisationMembership.active.count} active)"
+
 # A logo on one club, so the upload path and the display are exercised in
 # development rather than only in tests. Uses the same 1x1 fixture the tests use;
 # swap in a real asset when there is one to point at.

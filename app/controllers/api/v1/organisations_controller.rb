@@ -20,7 +20,14 @@ module Api
       before_action :require_organisation_admin!,
                     only: %i[create update archive restore logo]
       before_action :set_organisation,
-                    only: %i[show update archive restore logo]
+                    only: %i[show update archive restore logo
+                             members create_member update_member end_member]
+      # Membership is delegated rather than admin-only, so it is gated separately
+      # from the organisation itself. `set_organisation` runs first, so
+      # `@organisation` is available; no `with:` lambda, which would pass the
+      # organisation in as an argument the method does not take.
+      before_action :require_organisation_membership_manager!,
+                    only: %i[create_member update_member end_member]
 
       def index
         organisations = Organisation
@@ -108,7 +115,106 @@ module Api
         render json: serialize(@organisation)
       end
 
+      # --- membership ---------------------------------------------------------
+      #
+      # Reading the roster is open to any training manager; changing it is delegated
+      # to the organisation's own owner and administrators. Unlike the organisation
+      # itself, which is a site-level claim, a club's roster is something its own
+      # officers should be able to run.
+
+      def members
+        render json: {
+          organisation: { id: @organisation.id, name: @organisation.name },
+          data: visible_memberships.map(&:metadata)
+        }
+      end
+
+      def create_member
+        person = Person.canonical.find_by(id: member_params[:person_id])
+        return render json: { errors: [ "Person not found" ] }, status: :not_found if person.nil?
+
+        existing = @organisation.organisation_memberships.find_by(person: person)
+
+        # Already on the roster: nothing was created, so a 201 here would be a lie.
+        # 409 rather than 422, because the request was well-formed — the state is
+        # what conflicts.
+        if existing && !existing.ended?
+          return render json: {
+            error: "#{person.full_name} is already a member of this organisation",
+            membership: existing.metadata
+          }, status: :conflict
+        end
+
+        # Defaulting to `pending`, not `active`: adding someone to a roster is an
+        # invitation, and an invitation is not a grant.
+        membership = existing || @organisation.organisation_memberships.build(person: person)
+        membership.role = member_params[:role].presence || (existing ? membership.role : "member")
+        membership.status = member_params[:status].presence || (existing ? "active" : "pending")
+
+        if membership.save
+          render json: membership.metadata, status: :created
+        else
+          render json: { errors: membership.errors.full_messages },
+                 status: :unprocessable_entity
+        end
+      end
+
+      def update_member
+        membership = find_membership
+        return if membership.nil?
+
+        membership.role = member_params[:role] if member_params[:role].present?
+        membership.status = member_params[:status] if member_params[:status].present?
+
+        if membership.save
+          render json: membership.metadata
+        else
+          render json: { errors: membership.errors.full_messages },
+                 status: :unprocessable_entity
+        end
+      end
+
+      # Leaving is an `ended` status, never a delete: a historical assessment must
+      # still be explicable by the membership that existed when it was recorded.
+      def end_member
+        membership = find_membership
+        return if membership.nil?
+
+        membership.end!
+
+        render json: membership.metadata
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { errors: e.record.errors.full_messages },
+               status: :unprocessable_entity
+      end
+
       private
+
+      # A `pending` invitation is visible only to the people who can act on it. An
+      # ended membership is visible to anyone who can see the organisation, because
+      # hiding it would erase the very history this feature exists to keep.
+      def visible_memberships
+        scope = @organisation.organisation_memberships.includes(:person).ordered
+        return scope if manageable_membership?
+        return scope.ended if Current.user&.person.nil?
+
+        scope.where(person_id: Current.user.person.id)
+      end
+
+      def manageable_membership?
+        Current.user&.admin? || @organisation.manageable_by?(Current.user&.person)
+      end
+
+      def find_membership
+        membership = @organisation.organisation_memberships
+                                         .includes(:person)
+                                         .find_by(person_id: params[:person_id])
+        return membership if membership
+
+        render json: { errors: [ "That person is not a member of this organisation" ] },
+               status: :not_found
+        nil
+      end
 
       # The host has to be threaded in explicitly: a JSON payload cannot rely on
       # the view helper `url_for` that a server-rendered app would use to build a
@@ -132,6 +238,10 @@ module Api
         params.require(:organisation).permit(
           :name, :description, :organisation_type, :status, :parent_organisation_id
         )
+      end
+
+      def member_params
+        params.require(:membership).permit(:person_id, :role, :status)
       end
     end
   end

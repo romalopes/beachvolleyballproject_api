@@ -126,6 +126,18 @@ Rails.application.routes.draw do
           # Multipart: a file upload rather than JSON. Kept on its own route so
           # `update` keeps a single content-type contract.
           post :logo
+          # Membership as a sub-resource of the organisation it belongs to: the
+          # person id is in the URL because one person may belong to many
+          # organisations, so a person's memberships are never a single record.
+          get :members
+          # `action:` is required, not decorative: `post :members` would otherwise
+          # route to the same `members` action as the GET above and silently
+          # answer every write with a 200 and a roster.
+          post :members, action: :create_member
+          # Distinct `as:` names: two routes cannot share one helper name, and both
+          # verbs address the same person.
+          patch "members/:person_id", action: :update_member, as: :update_member
+          delete "members/:person_id", action: :end_member, as: :end_member
         end
       end
 

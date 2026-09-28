@@ -1,0 +1,77 @@
+# --- Organisations: role, status, and the lifecycle --------------------------
+#
+# Mirrors what the API enforces, so a rule that only holds in tests is impossible.
+# `ended` always carries `left_at`, and an `active` member always has `joined_at`.
+
+owner_of_sydney_club:
+  organisation: sydney_club
+  person: two
+  role: owner
+  status: active
+  joined_at: <%= 1.year.ago.to_fs(:db) %>
+
+club_administrator:
+  organisation: sydney_club
+  person: club_officer
+  role: administrator
+  status: active
+  joined_at: <%= 6.months.ago.to_fs(:db) %>
+
+# A coach who belongs to the club. This is what grants her visibility of the
+# club's players in the ordinary case — no PlayerCoach row required.
+club_coach:
+  organisation: sydney_club
+  person: club_coach
+  role: coach
+  status: active
+  joined_at: <%= 3.months.ago.to_fs(:db) %>
+
+club_player:
+  organisation: sydney_club
+  person: one
+  role: member
+  status: active
+  joined_at: <%= 2.months.ago.to_fs(:db) %>
+
+# An accountless person who is genuinely part of the club. A club must be able to
+# record its committee without everyone needing a login.
+accountless_club_member:
+  organisation: sydney_club
+  person: accountless_player
+  role: member
+  status: active
+  joined_at: <%= 1.month.ago.to_fs(:db) %>
+
+# Invited, not yet accepted: a pending membership is deliberately not active, so it
+# grants nothing until it is.
+pending_academy_member:
+  organisation: sydney_academy
+  person: two
+  role: member
+  status: pending
+
+suspended_nsw_coach:
+  organisation: volleyball_nsw
+  person: club_coach
+  role: coach
+  status: suspended
+  joined_at: <%= 9.months.ago.to_fs(:db) %>
+
+# Left the club, and still on the record. Historical integrity depends on this row
+# surviving rather than being deleted.
+former_northern_member:
+  organisation: northern_club
+  person: one
+  role: member
+  status: ended
+  joined_at: <%= 2.years.ago.to_fs(:db) %>
+  left_at: <%= 5.months.ago.to_fs(:db) %>
+
+# A national-level membership. Used to prove the hierarchy grants nothing by
+# itself: being in the national body must not expose a club's private records.
+national_member:
+  organisation: volleyball_australia
+  person: national_official
+  role: member
+  status: active
+  joined_at: <%= 18.months.ago.to_fs(:db) %>

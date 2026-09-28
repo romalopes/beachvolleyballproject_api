@@ -117,6 +117,23 @@ module ContentAuthorization
     false
   end
 
+  # Changing who belongs to an organisation: its owner and its administrators, plus
+  # a site admin. Split out from `require_organisation_admin!` because membership is
+  # a *delegated* authority — a club's own officers run their roster — whereas
+  # creating and re-parenting the organisation itself is a site-level claim.
+  #
+  # An ordinary member is refused even though they can already see the roster: being
+  # on it is not authority over it.
+  def require_organisation_membership_manager!
+    return true if Current.user&.admin?
+    return true if @organisation&.manageable_by?(Current.user&.person)
+
+    render json: {
+      error: "Only this organisation's owner or administrators can manage its members"
+    }, status: :forbidden
+    false
+  end
+
   # Hard delete of a published record: the safety net for a mistaken publication,
   # so it is admin-only and deliberately narrower than every other rule here.
   def authorize_admin_delete!

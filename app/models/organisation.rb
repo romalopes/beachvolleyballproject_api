@@ -54,6 +54,21 @@ class Organisation < ApplicationRecord
   # exist for.
   has_one_attached :logo
 
+  # Membership is the only record of who belongs to an organisation, and it is also
+  # the single source of truth for *ownership*. `created_by_person_id` is audit
+  # only — who recorded the row — so there are never two competing answers to "who
+  # owns this club", which is how a transferred club ends up unmanageable by anyone.
+  has_many :organisation_memberships, dependent: :destroy
+  # `members` means *current* members. Going through the raw association would
+  # include people who had left, so "is this person one of ours?" would keep
+  # answering yes after they resigned — the ended rows stay for history, and this
+  # is how callers read the present.
+  has_many :active_memberships,
+           -> { active },
+           class_name: "OrganisationMembership",
+           inverse_of: :organisation
+  has_many :members, through: :active_memberships, source: :person
+
   has_many :child_organisations,
            class_name: "Organisation",
            foreign_key: :parent_organisation_id,
@@ -101,6 +116,43 @@ class Organisation < ApplicationRecord
 
   def restorable?
     archived?
+  end
+
+  # --- membership ------------------------------------------------------------
+
+  # The organisation's owner, read from the membership rather than from
+  # `created_by_person_id`. An organisation can be handed over, and only one of
+  # these can change when that happens.
+  def owner
+    active_memberships.find_by(role: "owner")&.person
+  end
+
+  def owner?(person)
+    return false if person.nil?
+
+    active_memberships.where(role: "owner", person_id: person.id).exists?
+  end
+
+  # Whether a person may change this organisation's membership: its owner and its
+  # administrators. An ordinary member — however senior — may not, so a club's
+  # roster cannot be rewritten by the people it is a roster of.
+  #
+  # Site admins are *not* handled here; that is a wider authority than membership
+  # and belongs to the authorization layer, which ORs the two.
+  def manageable_by?(person)
+    return false if person.nil?
+
+    person.organisation_memberships.active
+                                   .manageable
+                                   .exists?(organisation_id: id)
+  end
+
+  def active_organisation_memberships
+    active_memberships
+  end
+
+  def member_count
+    active_organisation_memberships.count
   end
 
   def depth

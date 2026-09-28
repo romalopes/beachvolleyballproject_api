@@ -293,6 +293,198 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  # --- membership ------------------------------------------------------------
+  #
+  # Two different authorities in one place: the organisation itself is admin-only,
+  # but its *roster* is delegated to the club's own owner and administrators. Being
+  # on the roster is not authority over it.
+  #
+  # The identities matter here, so they are named rather than reused from the
+  # `@admin`/`@coach` above: `six` is Maria Silva, whose Person owns the Sydney club
+  # and who is emphatically *not* a site admin, which is the only way to show the
+  # delegated path works. `five` is John Smith, an ordinary member of that club.
+
+  def post_membership(organisation, person, **overrides)
+    post_json "/api/v1/organisations/#{organisation.id}/members",
+              membership: { person_id: person.id, **overrides }
+  end
+
+  test "the club's owner can add a member without being a site admin" do
+    owner_user = users(:six)
+    assert_not owner_user.admin?, "this test only means something for a non-admin"
+    sign_in_as(owner_user)
+
+    post_membership(@club, people(:national_official), role: "member", status: "active")
+
+    assert_response :created
+    assert_equal people(:national_official).id, json["person_id"]
+    assert_equal "active", json["status"]
+  end
+
+  test "an ordinary member may not change the roster" do
+    sign_in_as(users(:five)) # John Smith, a plain `member` of this very club
+    before_count = OrganisationMembership.count
+
+    post_membership(@club, people(:national_official))
+
+    assert_response :forbidden
+    assert_equal before_count, OrganisationMembership.count
+  end
+
+  test "a training manager who is not an officer sees only ended memberships" do
+    # The organisation itself is readable by any training manager, but the roster is
+    # narrower. This curator is not on the club's membership at all and has no
+    # Person, so the only rows that are theirs to see are the historical ones —
+    # hiding those would erase the record this feature exists to keep.
+    sign_in_as(users(:four))
+
+    get "/api/v1/organisations/#{@club.id}/members"
+
+    assert_response :success
+    ids = json["data"].map { |row| row["person_id"] }
+    assert_not_includes ids, people(:club_officer).id
+    assert_empty json["data"].reject { |row| row["status"] == "ended" }
+  end
+
+  test "a player who is not a training manager may not read the roster at all" do
+    # John Smith is an ordinary member of the club. Being on the roster is not what
+    # opens the organisation to you.
+    sign_in_as(users(:five))
+
+    get "/api/v1/organisations/#{@club.id}/members"
+
+    assert_response :forbidden
+  end
+
+  test "the owner sees the whole roster" do
+    sign_in_as(users(:six))
+
+    get "/api/v1/organisations/#{@club.id}/members"
+
+    assert_response :success
+    assert_includes json["data"].map { |row| row["person_id"] }, people(:club_officer).id
+  end
+
+  test "a member is added as pending unless a status is given" do
+    sign_in_as(users(:six))
+
+    post_membership(@club, people(:national_official))
+
+    assert_response :created
+    # Defaulting to pending, not active: an invitation is not a grant.
+    assert_equal "pending", json["status"]
+    assert_equal "member", json["role"]
+  end
+
+  test "ending a membership keeps the record and stamps left_at" do
+    sign_in_as(users(:six))
+    membership = organisation_memberships(:club_player)
+
+    delete "/api/v1/organisations/#{@club.id}/members/#{membership.person_id}"
+
+    assert_response :success
+    assert_equal "ended", json["status"]
+    # Not deleted — a historical assessment must still be explicable.
+    assert OrganisationMembership.exists?(membership.id)
+    assert_not_nil OrganisationMembership.find(membership.id).left_at
+  end
+
+  test "re-adding a former member reuses the row rather than duplicating it" do
+    sign_in_as(users(:six))
+    membership = organisation_memberships(:club_player)
+    membership.end!
+    before_count = OrganisationMembership.where(organisation: @club,
+                                                person: membership.person).count
+
+    post_membership(@club, membership.person, role: "member", status: "active")
+
+    assert_response :created
+    assert_equal "active", json["status"]
+    assert_equal before_count,
+                 OrganisationMembership.where(organisation: @club, person: membership.person).count
+  end
+
+  test "adding the same person twice is a conflict, not a second row" do
+    sign_in_as(users(:six))
+    person = people(:national_official)
+    post_membership(@club, person)
+    assert_response :created
+
+    post_membership(@club, person)
+
+    # 201 here would be a lie: nothing was created.
+    assert_response :conflict
+    assert_equal 1, OrganisationMembership.where(organisation: @club, person: person).count
+  end
+
+  test "an unknown person is a 404" do
+    sign_in_as(users(:six))
+
+    post_json "/api/v1/organisations/#{@club.id}/members", membership: { person_id: 0 }
+
+    assert_response :not_found
+  end
+
+  test "an officer can change a member's role" do
+    sign_in_as(users(:six))
+    target = organisation_memberships(:club_player)
+    assert_equal "member", target.role
+
+    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.person_id}",
+               membership: { role: "coach" }
+
+    assert_response :success
+    assert_equal "coach", json["role"]
+    assert_equal "coach", target.reload.role
+  end
+
+  test "a role may not be changed to one that does not exist" do
+    sign_in_as(users(:six))
+    target = organisation_memberships(:club_player)
+
+    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.person_id}",
+               membership: { role: "supreme_leader" }
+
+    assert_response :unprocessable_entity
+    assert_equal "member", target.reload.role
+  end
+
+  test "promoting a second owner is refused, and the club keeps its one owner" do
+    sign_in_as(users(:six))
+    target = organisation_memberships(:club_administrator)
+
+    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.person_id}",
+               membership: { role: "owner" }
+
+    assert_response :unprocessable_entity
+    # The existing owner is untouched: a failed promotion must not demote anyone.
+    assert_equal people(:two), @club.reload.owner
+  end
+
+  test "a member may not change their own role" do
+    sign_in_as(users(:five))
+    target = organisation_memberships(:club_player)
+
+    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.person_id}",
+               membership: { role: "administrator" }
+
+    assert_response :forbidden
+    assert_equal "member", target.reload.role
+  end
+
+  test "ending a membership that does not exist is a 404, not a silent success" do
+    sign_in_as(users(:six))
+
+    delete "/api/v1/organisations/#{@club.id}/members/#{people(:merged).id}"
+
+    assert_response :not_found
+  end
+
+  test "a guest may not read the roster" do
+    get "/api/v1/organisations/#{@club.id}/members"
+    assert_response :unauthorized
+  end
+
   # --- authorization ---------------------------------------------------------
 
   test "a coach may not create, edit, archive or restore" do

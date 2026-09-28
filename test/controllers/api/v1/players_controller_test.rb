@@ -22,22 +22,27 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
 
   test "index paginates 20 per page by default" do
     sign_in_as(@admin)
+    # Relative to the fixtures rather than a hard-coded total: this test is about
+    # pagination, and a magic number here makes it fail every time a player fixture
+    # is added — which is how it stops being a test of anything.
+    baseline = PlayerProfile.count
     25.times do |index|
       Person.create!(first_name: "Paged#{format('%02d', index)}", last_name: "Zzz",
                      creation_source: "system").create_player_profile!
     end
+    total = baseline + 25
 
     get api_v1_players_path
     body = JSON.parse(response.body)
     assert_equal 20, body["data"].length
     assert_equal 20, body["meta"]["per_page"]
     assert_equal 1, body["meta"]["page"]
-    assert_equal 27, body["meta"]["total"]
+    assert_equal total, body["meta"]["total"]
     assert_equal 2, body["meta"]["total_pages"]
 
     get api_v1_players_path, params: { page: 2 }
     second = JSON.parse(response.body)
-    assert_equal 7, second["data"].length
+    assert_equal total - 20, second["data"].length
     assert_equal [], body["data"].map { |p| p["id"] } & second["data"].map { |p| p["id"] },
                  "pages must not overlap"
   end

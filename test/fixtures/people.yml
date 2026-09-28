@@ -37,3 +37,26 @@ merged:
   status: merged
   merged_into: one
   creation_source: system
+
+# Two people who exist for organisation membership only: a club officer and a
+# coach, neither of whom is a User. Membership is keyed on Person precisely so a
+# club can record people who never signed up, and these exercise that.
+club_officer:
+  first_name: Priya
+  last_name: Raman
+  status: active
+  creation_source: system
+
+club_coach:
+  first_name: Tomas
+  last_name: Silva
+  status: active
+  creation_source: system
+
+# Belongs to the national body and to no club. Exists to prove the hierarchy grants
+# nothing by itself: a national membership must not expose a club's private records.
+national_official:
+  first_name: Hana
+  last_name: Watanabe
+  status: active
+  creation_source: system
