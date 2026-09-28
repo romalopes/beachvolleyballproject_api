@@ -22,7 +22,7 @@ class CreateTrainingSessionParticipants < ActiveRecord::Migration[8.1]
     # schedule). Private sessions are visible only to their participants and
     # to training managers — so a coach can schedule a training for a
     # specific player or group without publishing it to everyone.
-    add_column :training_sessions, :visibility, string, null: false, default: "shared"
+    add_column :training_sessions, :visibility, :string, null: false, default: "shared"
     add_index :training_sessions, :visibility
   end
 end
