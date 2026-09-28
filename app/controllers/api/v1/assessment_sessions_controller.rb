@@ -15,12 +15,19 @@ class Api::V1::AssessmentSessionsController < ApplicationController
   def index
     sessions = AssessmentSession.ordered
                        .includes(:assessment_definition, :coach_profile, :group,
+                                 # Preloaded because `serialize` reads the session's
+                                 # consolidations for every row; without this the list
+                                 # would issue a query per session.
+                                 consolidation_sessions: :ranking_consolidation,
                                  participants: :player_profile,
                                  assessments: { assessment_category_scores: :assessment_category })
     render json: { assessment_sessions: sessions.map { |s| serialize(s) } }
   end
 
   def show
+    # Preloaded for the same reason as `index`: the detail screen lists the club
+    # rankings this session feeds.
+    @assessment_session.consolidation_sessions.includes(:ranking_consolidation).load
     render json: { assessment_session: serialize(@assessment_session) }
   end
 
@@ -277,8 +284,30 @@ class Api::V1::AssessmentSessionsController < ApplicationController
           missing_reason: participant.missing_reason,
           result: results[participant.player_profile_id]
         }
-      end
+      end,
+      consolidations: serialize_consolidations(session_record)
     }
+  end
+
+  # The club rankings this session feeds. Carries `included_in_ranking` from the
+  # snapshot row, because a coach retracting a session needs to see not just which
+  # rankings mention it but whether their scores are actually in the numbers — a
+  # withdrawn source stays attached to its ranking without contributing to it.
+  def serialize_consolidations(session_record)
+    session_record.consolidation_sessions
+                  .includes(ranking_consolidation: :assessment_definition)
+                  .sort_by { |join| -join.ranking_consolidation_id }
+                  .map do |join|
+      consolidation = join.ranking_consolidation
+      {
+        id: consolidation.id,
+        name: consolidation.name,
+        status: consolidation.status,
+        status_label: consolidation.status_label,
+        published_at: consolidation.published_at,
+        included_in_ranking: join.included_in_ranking?
+      }
+    end
   end
 
   def serialize_session_identity(session_record)

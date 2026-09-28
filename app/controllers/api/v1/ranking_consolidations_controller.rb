@@ -212,9 +212,11 @@ class Api::V1::RankingConsolidationsController < ApplicationController
     # D21: per-session reasons a source session contributed fewer ranked rows.
     # Keyed by session id so the table can badge exactly the sessions at fault.
     warnings_by_session = consolidation.source_warnings.index_by { |w| w["assessment_session_id"] }
-    # Sources the merge skipped on purpose. Computed once because the loop below asks
-    # about it for every source.
-    excluded_ids = consolidation.excluded_withdrawn_source_sessions.map(&:id)
+    # Every source the merge skipped, whatever state that source is in now. This must
+    # not be narrowed to the withdrawn ones: a source excluded while withdrawn and
+    # since restored is still missing from the snapshot, and would otherwise be
+    # reported as included while contributing nothing.
+    excluded_ids = consolidation.excluded_join_ids
 
     sessions = consolidation.consolidation_sessions.sort_by(&:id).map do |join|
       session = join.assessment_session
@@ -232,9 +234,11 @@ class Api::V1::RankingConsolidationsController < ApplicationController
         # excluded" from "still counted" — something live status alone cannot answer,
         # because a source withdrawn *after* publication is still in the numbers.
         withdrawn_at: session&.withdrawn? ? session.updated_at : nil,
-        # Whether this session's scores are actually in the figures on screen. A
-        # published ranking keeps a source withdrawn after it was frozen, so this is
-        # false only for a source the merge deliberately skipped.
+        # Whether this session's scores are actually in the figures on screen, taken
+        # from the snapshot row rather than from live status. A source the merge
+        # skipped keeps reporting `false` even after it is restored to published,
+        # which is the point: until the ranking is recalculated its scores really
+        # are missing, and saying otherwise would hide a stale result.
         included_in_ranking: !excluded_ids.include?(join.assessment_session_id),
         incomplete_count: warning ? warning["incomplete_count"] : 0,
         incomplete_players: warning ? warning["incomplete_players"] : [],
@@ -287,6 +291,10 @@ class Api::V1::RankingConsolidationsController < ApplicationController
       # until the ranking is explicitly recalculated.
       stale_withdrawn_session_count: consolidation.stale_withdrawn_source_sessions.size,
       excluded_withdrawn_session_count: consolidation.excluded_withdrawn_source_sessions.size,
+      # Sources that were excluded by the merge and have since been restored to
+      # published. They are scoring again but the frozen ranking is not using them,
+      # so it under-reports until it is recalculated.
+      restored_session_count: consolidation.restored_source_sessions.size,
       # When these figures were computed, and whether they were ever corrected.
       computed_at: consolidation.computed_at,
       recalculated_at: consolidation.recalculated_at,

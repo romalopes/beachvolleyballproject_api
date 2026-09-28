@@ -40,13 +40,16 @@ class RankingConsolidationRecalculator
     raise Error, "Only a published ranking can be recalculated" unless @consolidation.published?
 
     stale = @consolidation.stale_withdrawn_source_sessions
-    if stale.empty?
-      raise Error, "There is nothing to recalculate — no source was withdrawn after this ranking was published"
+    restored = @consolidation.restored_source_sessions
+    if stale.empty? && restored.empty?
+      raise Error, "There is nothing to recalculate — no source has changed since this ranking was published"
     end
 
     # Nothing left to rank would publish an empty result that reads as "nobody was
-    # scored", so it is refused here exactly as it is at publish time.
-    if stale.size == @consolidation.consolidation_sessions.size
+    # scored", so it is refused here exactly as it is at publish time. Counted on what
+    # the rebuild would actually skip, not on what is withdrawn now: a restored source
+    # is published and scores again, so it makes the result rankable rather than empty.
+    if rankable_source_count.zero?
       raise Error, "Every source session has been withdrawn, so there is nothing to rank"
     end
 
@@ -64,5 +67,14 @@ class RankingConsolidationRecalculator
     end
 
     @consolidation
+  end
+
+  private
+
+  # How many sources the rebuild would actually rank: everything except the ones that
+  # are still withdrawn. A restored source counts, because restoring it is the whole
+  # reason a recalculation is being offered.
+  def rankable_source_count
+    @consolidation.assessment_sessions.count { |s| !s.withdrawn? }
   end
 end

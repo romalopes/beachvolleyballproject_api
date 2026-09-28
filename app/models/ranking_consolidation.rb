@@ -116,7 +116,8 @@ class RankingConsolidation < ApplicationRecord
   # Withdrawn sources whose scores are genuinely absent from this snapshot — retracted
   # before the ranking was computed, so the merge already skipped them.
   def excluded_withdrawn_source_sessions
-    withdrawn_source_sessions.select { |s| excluded_from_snapshot?(s) }
+    joins_by_id = excluded_join_ids
+    withdrawn_source_sessions.select { |s| joins_by_id.include?(s.id) }
   end
 
   # Withdrawn sources that are *still counted* in this snapshot, because the retraction
@@ -124,24 +125,37 @@ class RankingConsolidation < ApplicationRecord
   # stay as they are until somebody deliberately recalculates — which is the only honest
   # reading of "the ranking does not change".
   def stale_withdrawn_source_sessions
-    withdrawn_source_sessions.reject { |s| excluded_from_snapshot?(s) }
+    withdrawn_source_sessions - excluded_withdrawn_source_sessions
+  end
+
+  # Sources the merge skipped that have since been restored to published. They are
+  # scoring again, but the frozen ranking is not using them, so it now under-reports
+  # and nobody is told. This is the mirror image of a stale withdrawal: there the
+  # snapshot holds scores that should be gone, here it is missing scores that should
+  # be present.
+  #
+  # Only *published* restored sources count. A source sitting in draft is genuinely
+  # not ready, which is a different situation and must not be presented as a ranking
+  # that is quietly wrong.
+  def restored_source_sessions
+    joins_by_id = excluded_join_ids
+    assessment_sessions.select do |s|
+      s.published? && joins_by_id.include?(s.id)
+    end.sort_by(&:id)
   end
 
   # Recalculating is a supervised correction to an otherwise immutable published
-  # ranking, so it needs something to correct: without a stale source it would rewrite
+  # ranking, so it needs something to correct. Both directions count: a stale source
+  # to drop, or a restored one to pick back up. Without either, it would rewrite
   # identical numbers for no reason.
   def recalculable?
-    published? && stale_withdrawn_source_sessions.any?
+    published? && (stale_withdrawn_source_sessions.any? || restored_source_sessions.any?)
   end
 
-  private
-
-  # A source counts as excluded when it was already withdrawn when this snapshot was
-  # computed. A draft has no frozen snapshot yet, so everything withdrawn is simply
-  # excluded — that is what the build will skip.
-  def excluded_from_snapshot?(session)
-    return true unless computed_at
-
-    session.updated_at <= computed_at
+  # The source ids the merge deliberately skipped, read from the snapshot rows rather
+  # than inferred from timestamps. Computed per call site, not memoised: a
+  # recalculation rewrites these rows in place, and a memo would survive it.
+  def excluded_join_ids
+    consolidation_sessions.reject(&:included_in_ranking?).map(&:assessment_session_id)
   end
 end

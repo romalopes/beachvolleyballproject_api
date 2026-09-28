@@ -723,4 +723,52 @@ class Api::V1::AssessmentSessionsControllerTest < ActionDispatch::IntegrationTes
     assert_not_includes ranks.values, 2
     assert_equal [ 80, 80, 70 ], rows.map { |row| row["overall_score"] }.sort.reverse
   end
+
+  # --- the rankings a session feeds ------------------------------------------
+  #
+  # The consequence view a coach needs before retracting a session: which published
+  # results it is standing behind, and whether its scores are actually in them.
+
+  test "a session reports the club rankings it was merged into" do
+    sign_in_as(@owner)
+    consolidation = RankingConsolidationBuilder.new(
+      assessment_definition: @definition, session_ids: [ @published.id ]
+    ).call
+
+    get session_path(@published)
+
+    assert_response :success
+    entries = json["assessment_session"]["consolidations"]
+    assert_equal 1, entries.size
+    assert_equal consolidation.id, entries.first["id"]
+    assert_equal "draft", entries.first["status"]
+    assert_equal "Draft", entries.first["status_label"]
+    # Published, so the merge scored it and it is genuinely in the figures.
+    assert entries.first["included_in_ranking"]
+  end
+
+  test "a session that was excluded from a ranking says so rather than implying it counts" do
+    sign_in_as(@owner)
+    @published.update!(status: "withdrawn", published_at: nil)
+    consolidation = RankingConsolidationBuilder.new(
+      assessment_definition: @definition, session_ids: [ @published.id ]
+    ).call
+
+    get session_path(@published)
+
+    assert_response :success
+    entry = json["assessment_session"]["consolidations"].find { |e| e["id"] == consolidation.id }
+    assert_not_nil entry
+    # Attached, but contributing nothing — the distinction that matters.
+    assert_not entry["included_in_ranking"]
+  end
+
+  test "a session in no ranking reports an empty list" do
+    sign_in_as(@owner)
+
+    get session_path(@draft)
+
+    assert_response :success
+    assert_equal [], json["assessment_session"]["consolidations"]
+  end
 end

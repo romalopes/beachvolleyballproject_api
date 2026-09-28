@@ -82,9 +82,14 @@ class RankingConsolidationRecalculatorTest < ActiveSupport::TestCase
 
   # Publishes, then runs the recalculation as a curator signing off the next day, so
   # the correction is unambiguously later than the retraction it accounts for.
+  #
+  # Reloads first: sources are retracted and restored behind the consolidation's back,
+  # and a recalculation must read their current state. A real request always loads the
+  # ranking afresh, so reloading here keeps the test honest about that instead of
+  # quietly relying on a stale in-memory association.
   def recalculate(consolidation, user: @admin)
     travel_to(T_SIGNED) do
-      RankingConsolidationRecalculator.new(consolidation, current_user: user).call
+      RankingConsolidationRecalculator.new(consolidation.reload, current_user: user).call
     end
   end
 
@@ -95,6 +100,14 @@ class RankingConsolidationRecalculatorTest < ActiveSupport::TestCase
   def snapshot_for(consolidation, session)
     consolidation.consolidation_sessions
                  .find_by(assessment_session_id: session.id).ranking_snapshot
+  end
+
+  # Puts a withdrawn session back to published, the way the admin-only session
+  # restore does. `T_SIGNED` keeps it later than the freeze it was excluded at.
+  def restore_to_published(session)
+    travel_to(T_SIGNED) do
+      session.update!(status: "published", published_at: T_SIGNED)
+    end
   end
 
   # --- the distinction that drives everything --------------------------------
@@ -214,6 +227,75 @@ class RankingConsolidationRecalculatorTest < ActiveSupport::TestCase
     assert_equal 2, consolidation.excluded_withdrawn_source_sessions.size
   end
 
+  # --- a source restored to published -----------------------------------------
+  #
+  # The mirror image of a stale withdrawal. There the snapshot holds scores that
+  # should be gone; here the snapshot is *missing* scores that should be present, and
+  # without this the ranking silently under-reports while claiming full coverage.
+
+  test "a source restored to published is detected as missing from the ranking" do
+    first = published_session(name: "January")
+    second = published_session(name: "Retracted, then restored")
+    withdraw_at(second, T_FROZEN - 1.hour)
+    consolidation = publish!(consolidate(first, second))
+
+    # Excluded while withdrawn, so it is genuinely out of the frozen numbers — and
+    # because it was excluded rather than counted, there is nothing to correct yet.
+    assert_empty snapshot_for(consolidation, second)
+    assert_not_predicate consolidation, :recalculable?
+
+    restore_to_published(second)
+
+    # It scores again, but the ranking has not changed: the snapshot is still empty,
+    # so the ranking under-reports and must say so rather than drift silently. The
+    # reload mirrors a fresh page load — each API request reads the ranking anew.
+    assert_equal 80, john_score(consolidation.reload)
+    assert_equal [ second ], consolidation.restored_source_sessions
+    assert_predicate consolidation, :recalculable?
+    # It is no longer withdrawn, so it belongs to neither withdrawn bucket.
+    assert_empty consolidation.stale_withdrawn_source_sessions
+    assert_empty consolidation.excluded_withdrawn_source_sessions
+  end
+
+  test "recalculating picks a restored source back up" do
+    first = published_session(name: "January")                  # John 80
+    second = published_session(name: "Retracted, then restored") # John 20
+    withdraw_at(second, T_FROZEN - 1.hour)
+    consolidation = publish!(consolidate(first, second))
+
+    # Frozen while withdrawn, so it is out of the figures and no correction is due.
+    # Coverage of 1 is the visible symptom: the ranking is resting on one session.
+    assert_equal 1, consolidation.rows.find_by(player_profile_id: @john.id).coverage
+    assert_not_predicate consolidation, :recalculable?
+
+    restore_to_published(second)
+    recalculate(consolidation)
+
+    # The restored session's scores are in, so the player is now ranked by both.
+    assert_equal 2, snapshot_for(consolidation, second).size
+    assert_equal 2, consolidation.rows.find_by(player_profile_id: @john.id).coverage
+
+    # And the correction is spent: nothing is missing and nothing is stale.
+    assert_empty consolidation.restored_source_sessions
+    assert_empty consolidation.stale_withdrawn_source_sessions
+    assert_not_predicate consolidation, :recalculable?
+  end
+
+  test "a restored source is not presented as included while the ranking ignores it" do
+    first = published_session(name: "January")
+    second = published_session(name: "Retracted, then restored")
+    withdraw_at(second, T_FROZEN - 1.hour)
+    consolidation = publish!(consolidate(first, second))
+    restore_to_published(second)
+
+    join = consolidation.reload.consolidation_sessions
+                   .find_by(assessment_session_id: second.id)
+    # The snapshot row is the authority, and it still says excluded. Reporting `true`
+    # here because the session is published again is exactly the bug: the screen
+    # would claim a ranking that demonstrably does not contain these scores.
+    assert_not join.included_in_ranking?
+  end
+
   # --- refusals --------------------------------------------------------------
 
   test "a draft is not recalculated, because it re-derives at publish anyway" do
@@ -228,7 +310,7 @@ class RankingConsolidationRecalculatorTest < ActiveSupport::TestCase
     first = published_session(name: "January")
     second = published_session(name: "September")
     consolidation = publish!(consolidate(first, second))
-    withdraw_at(second, T_RETRACT)
+    withdraw_at(second, T_FROZEN - 1.hour)
     consolidation.update!(status: "withdrawn", published_at: nil)
 
     error = assert_raises(RankingConsolidationRecalculator::Error) do

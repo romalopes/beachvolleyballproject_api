@@ -17,6 +17,12 @@ class AssessmentSession < ApplicationRecord
            dependent: :destroy,
            inverse_of: :assessment_session
 
+  # The club rankings that merged this session. Named for the join rather than
+  # derived, so a session can always be traced back to every ranking that used it —
+  # including the ones it was excluded from, which is exactly what a coach needs to
+  # see when they retract a session and wonder what it affects.
+  has_many :ranking_consolidations, through: :consolidation_sessions
+
   # A draft is a work in progress, not history, so deleting one takes its own
   # draft results with it — otherwise a discarded screen leaves unrated rows
   # floating in the catalogue attached to no session at all.

@@ -847,6 +847,92 @@ class Api::V1::RankingConsolidationsControllerTest < ActionDispatch::Integration
     assert_not payload["can_recalculate"]
   end
 
+  # --- a source restored to published -----------------------------------------
+  #
+  # The mirror of the late withdrawal: the snapshot is *missing* scores it should
+  # have. Without a notice and an action, the ranking under-reports in silence while
+  # the API claims the session is included.
+
+  # Publishes over two sessions, withdraws the second before the freeze so the merge
+  # excludes it, then puts it back to published — the sequence a real retraction and
+  # admin restore produce.
+  def published_ranking_with_restored_source
+    sign_in_as(@owner)
+    first = create_draft_session(name: "January")
+    add_players!(first, [ { player_profile_id: @john.id } ])
+    score_session!(first, { @john.id => [ 8, 7, 9 ] })
+    publish_session!(first)
+
+    second = create_draft_session(name: "Retracted, then restored")
+    add_players!(second, [ { player_profile_id: @john.id } ])
+    score_session!(second, { @john.id => [ 6, 5, 7 ] })
+    publish_session!(second)
+
+    # Withdrawn before the ranking is frozen, so the merge skips it.
+    withdraw_session!(second)
+    create_consolidation(session_ids: [ first, second ])
+    id = json["ranking_consolidation"]["id"]
+    post "/api/v1/ranking_consolidations/#{id}/publish"
+    assert_response :success
+
+    # Admin-only session restore, back to published.
+    sign_in_as(@admin)
+    post "/api/v1/assessment_sessions/#{second}/restore", params: { to_status: "published" }.to_json,
+                                                            headers: { "Content-Type" => "application/json" }
+    assert_response :success
+    id
+  end
+
+  test "a source restored to published is reported as missing from the ranking" do
+    id = published_ranking_with_restored_source
+
+    get "/api/v1/ranking_consolidations/#{id}"
+
+    assert_response :success
+    payload = json["ranking_consolidation"]
+    assert_equal 1, payload["restored_session_count"]
+    # Nothing is withdrawn any more, so the withdrawn counters are both zero.
+    assert_equal 0, payload["stale_withdrawn_session_count"]
+    assert_equal 0, payload["excluded_withdrawn_session_count"]
+    # But the ranking really is out of date, so the action is offered to oversight.
+    assert payload["recalculable"]
+
+    restored = payload["assessment_sessions"].find { |s| s["name"] == "Retracted, then restored" }
+    assert_equal "published", restored["status"]
+    # The critical assertion: it is *not* included, because the snapshot is empty.
+    # Reporting `true` here is the bug — the screen would claim a ranking that
+    # demonstrably does not contain these scores.
+    assert_not restored["included_in_ranking"]
+  end
+
+  test "recalculating includes a restored source and then reports nothing to do" do
+    id = published_ranking_with_restored_source
+
+    # Coverage of 1 before: the ranking rests on January alone.
+    assert_equal 1, json_rows_for(id).first["coverage"]
+
+    post "/api/v1/ranking_consolidations/#{id}/recalculate"
+
+    assert_response :success
+    payload = json["ranking_consolidation"]
+    assert_equal 2, payload["rows"].first["coverage"]
+    assert_equal 0, payload["restored_session_count"]
+    # The action is spent, so the UI has nothing left to offer.
+    assert_not payload["recalculable"]
+    assert_not payload["can_recalculate"]
+  end
+
+  test "a plain coach is told a restored source is out rather than offered the fix" do
+    id = published_ranking_with_restored_source
+
+    sign_in_as(@owner)
+    get "/api/v1/ranking_consolidations/#{id}"
+
+    payload = json["ranking_consolidation"]
+    assert payload["recalculable"]
+    assert_not payload["can_recalculate"]
+  end
+
   test "a guest may not withdraw a ranking" do
     # Built through the model layer only. A session cookie set anywhere in a test
     # persists for the rest of it, so anything routed through a signing-in helper

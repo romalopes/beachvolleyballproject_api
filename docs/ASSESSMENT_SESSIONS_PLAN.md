@@ -290,13 +290,13 @@ A later criteria phase may add definition-level criterion authoring, category-cr
 | D22 | Consolidation stores coach scores, coverage, average, and rank as an immutable snapshot. Division was considered and explicitly deferred (see §14). |
 | D23 | Groups are reusable roster containers and have no scoring semantics. |
 | D24 | Published sessions and consolidations are archival; corrections create new records. The single exception is D24a below. |
-| D24a | Withdrawing a source session does **not** cascade into an already-published consolidation: it keeps the figures it was frozen with, because publication does not change when a source is retracted. Whether a retracted source is *in* those figures is decided by time, not by live status — withdrawn before the ranking was computed, it was skipped by the merge; withdrawn after, it is still counted. Correcting that is a single explicit, curator/admin-only, transactional `recalculate` that rebuilds the ranking from the sources that remain, preserves `published_at`, and records `recalculated_at` / `recalculated_by_id`. The API reports `included_in_ranking` per source so no screen has to infer it. |
+| D24a | Withdrawing a source session does **not** cascade into an already-published consolidation: it keeps the figures it was frozen with, because publication does not change when a source is retracted. Whether a retracted source is *in* those figures is decided by the snapshot row's own `excluded_from_snapshot` flag — never inferred from live status or from comparing timestamps, which silently mislabels a source once it changes state again. Correcting a published ranking is a single explicit, curator/admin-only, transactional `recalculate` that rebuilds it from the sources as they are, preserves `published_at`, and records `recalculated_at` / `recalculated_by_id`. It works in both directions: dropping sources withdrawn after the freeze, and picking back up sources that were excluded and have since been restored to published — the latter being a genuine shortfall rather than merely an older result. The API reports `included_in_ranking` per source so no screen has to infer it. |
 | D25 | Weight percentages remain positive integers and published definitions total exactly 100. |
 
 ## 12. Final acceptance checklist
 
-Verified 2026-09-28 (backend `1068 runs / 4351 assertions / 0 failures`, frontend
-`743 tests`, `npm run build`, `eslint src` clean, `rubocop` clean on touched files,
+Verified 2026-09-28 (backend `1074 runs / 4424 assertions / 0 failures`, frontend
+`749 tests`, `npm run build`, `eslint src` clean, `rubocop` clean on touched files,
 `db:migrate` status `up`).
 
 - [x] No assessment creation workflow remains on the player page.
@@ -319,15 +319,17 @@ Verified 2026-09-28 (backend `1068 runs / 4351 assertions / 0 failures`, fronten
 - [x] Consolidations are compatible-session snapshots and never mutate source sessions.
       "withdrawing a source session leaves the consolidation unchanged", plus the
       builder's "warnings are stored on the row rather than recomputed from the source".
-      Withdrawn sources are excluded or stale by *when* they were retracted
-      (`RankingConsolidation#excluded_from_snapshot?`); the detail screen drives its
-      coverage denominator and its notices off the server's `included_in_ranking`,
-      never off live status.
+      Withdrawn sources are excluded, stale, or restored by the snapshot row's
+      `excluded_from_snapshot` flag (`RankingConsolidationSession#included_in_ranking?`);
+      the detail screen drives its coverage denominator and its notices off the
+      server's `included_in_ranking`, never off live status.
 - [x] A published ranking is corrected only by an explicit, recorded `recalculate`.
       `RankingConsolidationRecalculator` refuses a draft, a withdrawn record, a ranking
-      with nothing stale, and one whose every source was retracted; `published_at` is
+      with nothing to correct, and one with nothing left to rank; `published_at` is
       preserved and the correction is attributed. Author, non-curator coach and guest
-      are all refused, and `can_recalculate` keeps the control off their screens.
+      are all refused, and `can_recalculate` keeps the control off their screens. The
+      action disappears once spent, and returns only when a source genuinely changes
+      again.
 - [x] Criterion tables/model/nullable score column exist, but criterion scoring is absent.
       `assessment_category_scores.criterion_id` is nullable with a partial unique index
       (`where: criterion_id IS NOT NULL`); D16 defers the scoring side.

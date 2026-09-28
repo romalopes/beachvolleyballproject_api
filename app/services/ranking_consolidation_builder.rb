@@ -198,10 +198,14 @@ class RankingConsolidationBuilder
     [ snapshots, warnings ]
   end
 
+  # `excluded` is the builder's own record of what it did, recorded in the same pass
+  # that produces the empty snapshot. Deriving it later from timestamps is what let a
+  # restored session look included while contributing nothing.
   def write_snapshots(consolidation, sessions, snapshots)
     sessions.each do |session|
       consolidation.consolidation_sessions.create!(
         assessment_session: session,
+        excluded_from_snapshot: snapshots[session.id].empty? && session.withdrawn?,
         ranking_snapshot: snapshots[session.id].map do |row|
           row.slice(:player_profile_id, :overall_score, :rank)
         end
