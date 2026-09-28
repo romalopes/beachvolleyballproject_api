@@ -45,4 +45,66 @@ module ContentAuthorization
     account_user = coach_account_user(coach_profile)
     account_user.present? && account_user == user
   end
+
+  # --- lifecycle authority (withdraw / restore / hard delete) -----------------
+
+  # The creator of a record may always act on it, whatever its status. Sessions
+  # are keyed on the coach of record and consolidations on `created_by_id`, so the
+  # caller supplies the coach profile; everything else — curator, admin, another
+  # coach, nobody signed in — is settled here.
+  def record_creator?(record, coach_profile = nil)
+    user = Current.user
+    return false if user.nil?
+
+    if record.is_a?(AssessmentSession) && coach_profile
+      account_user = coach_account_user(coach_profile)
+      return true if account_user.present? && account_user == user
+    end
+
+    record.respond_to?(:created_by_id) &&
+      record.created_by_id.present? && record.created_by_id == user.id
+  end
+
+  def oversight?
+    Current.user&.admin? || Current.user&.curator?
+  end
+
+  # Edit and delete while a record is a draft: its creator, a curator, or an admin.
+  def authorize_draft_owner!(record, coach_profile = nil)
+    return true if oversight? || record_creator?(record, coach_profile)
+
+    render json: { error: "Forbidden" }, status: :forbidden
+    false
+  end
+
+  # Withdrawing is a retraction of the author's own claim, so it carries the same
+  # authority as editing — creator, curator, or admin — but only from `published`.
+  def authorize_withdraw!(record, coach_profile = nil)
+    return authorize_draft_owner!(record, coach_profile) if record.withdrawable?
+
+    render json: { error: "Only published records can be withdrawn" },
+           status: :unprocessable_entity
+    false
+  end
+
+  # A withdrawn record has been retracted and is inert. Only an admin may bring it
+  # back, edit it, or delete it — including its creator, who otherwise owns it. A
+  # retraction its own author could quietly undo would not be a retraction.
+  def authorize_admin_only!(record)
+    return true if Current.user&.admin?
+
+    render json: { error: "Only an admin can act on a withdrawn record" },
+           status: :forbidden
+    false
+  end
+
+  # Hard delete of a published record: the safety net for a mistaken publication,
+  # so it is admin-only and deliberately narrower than every other rule here.
+  def authorize_admin_delete!
+    return true if Current.user&.admin?
+
+    render json: { error: "Only an admin can delete a published record" },
+           status: :forbidden
+    false
+  end
 end

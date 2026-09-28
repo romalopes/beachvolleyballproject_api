@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_27_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_28_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -389,10 +389,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_27_000004) do
     t.bigint "created_by_id"
     t.string "name"
     t.text "notes"
+    t.datetime "published_at"
+    t.datetime "recalculated_at"
+    t.bigint "recalculated_by_id"
     t.jsonb "source_warnings", default: [], null: false
+    t.string "status", default: "draft", null: false
     t.datetime "updated_at", null: false
     t.index ["assessment_definition_id"], name: "index_ranking_consolidations_on_assessment_definition_id"
     t.index ["created_by_id"], name: "index_ranking_consolidations_on_created_by_id"
+    t.index ["recalculated_by_id"], name: "index_ranking_consolidations_on_recalculated_by_id"
+    t.index ["status"], name: "index_ranking_consolidations_on_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text, 'withdrawn'::character varying::text])", name: "ranking_consolidations_status"
   end
 
   create_table "roles", force: :cascade do |t|
@@ -635,6 +642,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_27_000004) do
   add_foreign_key "ranking_consolidation_sessions", "ranking_consolidations"
   add_foreign_key "ranking_consolidations", "assessment_definitions"
   add_foreign_key "ranking_consolidations", "users", column: "created_by_id"
+  add_foreign_key "ranking_consolidations", "users", column: "recalculated_by_id"
   add_foreign_key "sessions", "users"
   add_foreign_key "sessions", "users", column: "impersonated_user_id"
   add_foreign_key "skills", "categories"

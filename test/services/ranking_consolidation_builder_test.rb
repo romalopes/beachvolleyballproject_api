@@ -38,6 +38,27 @@ class RankingConsolidationBuilderTest < ActiveSupport::TestCase
     ).call
   end
 
+  # Score every category of the definition for one player, which is what makes a
+  # session's ranking non-empty. Used to prove a re-derivation actually sees new
+  # numbers rather than replaying the old snapshot.
+  def rescore_session(session, player_id:, values:)
+    result = session.assessments.find_or_initialize_by(player_profile_id: player_id)
+    result.coach_profile = @coach
+    result.assessment_definition = @definition
+    result.created_by = @creator
+    result.status = "draft"
+    result.save!
+    @definition.assessment_categories.ordered.each_with_index do |category, index|
+      row = result.assessment_category_scores.find_or_initialize_by(
+        assessment_category: category
+      )
+      row.scale = "one_to_ten"
+      row.value = values[index]
+      row.save!
+    end
+    result
+  end
+
   # The policy change: this scenario used to raise and write nothing.
   test "a wholly unscored session merges instead of refusing, naming every player" do
     session = build_published_session(name: "Nobody scored", player_ids: [ @john.id, @pedro.id ])
@@ -114,16 +135,70 @@ class RankingConsolidationBuilderTest < ActiveSupport::TestCase
     assert_equal 0, RankingConsolidation.count
   end
 
-  test "a draft session is refused even though a player is unscored" do
+  test "a draft session is merged, and the result is a draft consolidation" do
     draft = build_published_session(name: "Draft", player_ids: [ @john.id ])
+    rescore_session(draft, player_id: @john.id, values: [ 8, 7, 9 ])
     draft.update!(status: "draft", published_at: nil)
 
+    consolidation = build(session_ids: [ draft.id ])
+
+    # Publication is gated, not construction: a club ranking is assembled from
+    # work in progress and frozen later.
+    assert_predicate consolidation, :draft?
+    assert_nil consolidation.published_at
+    assert_equal [ draft.id ], consolidation.assessment_sessions.map(&:id)
+  end
+
+  test "refresh! re-derives a draft from the sessions' current scores" do
+    draft = build_published_session(name: "Draft", player_ids: [ @john.id ])
+    rescore_session(draft, player_id: @john.id, values: [ 8, 7, 9 ])
+    draft.update!(status: "draft", published_at: nil)
+    consolidation = build(session_ids: [ draft.id ])
+    built_score = consolidation.rows.first.average_score
+
+    # The coach keeps scoring the still-draft session.
+    rescore_session(draft, player_id: @john.id, values: [ 10, 10, 10 ])
+
+    RankingConsolidationBuilder.new(assessment_definition: @definition)
+                               .refresh!(consolidation.reload)
+
+    # A draft's snapshot is not history, so it is rebuilt from the source.
+    assert_equal 100, consolidation.rows.reload.first.average_score
+    refute_equal built_score, consolidation.rows.first.average_score
+  end
+
+  # A withdrawn source is excluded from the merge, not refused: it keeps its place
+  # in the consolidation and gets a warning, so the coach sees what was dropped.
+  test "a withdrawn session is excluded from the ranking and recorded as such" do
+    session = build_published_session(name: "Retracted", player_ids: [ @john.id ])
+    rescore_session(session, player_id: @john.id, values: [ 8, 7, 9 ])
+
+    consolidation = build(session_ids: [ session.id ])
+    session.update!(status: "withdrawn", published_at: nil)
+
+    RankingConsolidationBuilder.new(assessment_definition: @definition).refresh!(consolidation)
+
+    # Still a source, contributing nothing.
+    assert_equal [ session.id ], consolidation.assessment_sessions.map(&:id)
+    assert_empty consolidation.rows
+    warning = consolidation.source_warnings.find { |w| w["reason"] == "source_session_withdrawn" }
+    assert_equal "Retracted", warning["name"]
+  end
+
+  test "refresh! refuses to touch a published consolidation" do
+    first = build_published_session(name: "First", player_ids: [ @john.id ])
+    rescore_session(first, player_id: @john.id, values: [ 8, 7, 9 ])
+    second = build_published_session(name: "Second", player_ids: [ @pedro.id ])
+    rescore_session(second, player_id: @pedro.id, values: [ 9, 8, 7 ])
+    consolidation = build(session_ids: [ first.id, second.id ])
+    consolidation.update!(status: "published", published_at: Time.current)
+
     error = assert_raises(RankingConsolidationBuilder::Error) do
-      build(session_ids: [ draft.id ])
+      RankingConsolidationBuilder.new(assessment_definition: @definition)
+                                  .refresh!(consolidation)
     end
 
-    assert_match(/not published/, error.errors.join(" "))
-    assert_equal 0, RankingConsolidation.count
+    assert_match(/cannot be rebuilt/, error.errors.join(" "))
   end
 
   test "a session on another definition is refused" do

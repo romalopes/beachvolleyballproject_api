@@ -36,6 +36,29 @@ class Api::V1::AssessmentSessionsControllerTest < ActionDispatch::IntegrationTes
     put path, params: payload.to_json, headers: { "Content-Type" => "application/json" }
   end
 
+  # A single draft result, the shape the score grid produces for an unscored row.
+  def draft_assessment_for(session, player)
+    Assessment.create!(
+      player_profile: player, coach_profile: @coach,
+      assessment_definition: @definition, assessment_session: session,
+      created_by: @owner, status: "draft"
+    )
+  end
+
+  # A fully scored, activated result — i.e. history. The model refuses to leave
+  # draft without every category rated, so the child rows have to be built out
+  # rather than just flipping the status.
+  def active_assessment_for(session, player)
+    result = draft_assessment_for(session, player)
+    @definition.assessment_categories.ordered.each do |category|
+      result.assessment_category_scores.create!(
+        assessment_category: category, scale: "one_to_ten", reported_value: 8, score: 80
+      )
+    end
+    result.update!(status: "active")
+    result
+  end
+
   def session_path(record)
     "/api/v1/assessment_sessions/#{record.respond_to?(:id) ? record.id : record}"
   end
@@ -137,6 +160,162 @@ class Api::V1::AssessmentSessionsControllerTest < ActionDispatch::IntegrationTes
     assert_equal @owner.id, body["created_by_id"]
     assert_equal @coach.id, body["coach_profile_id"]
     assert_equal "Maria Silva", body["coach_profile"]["full_name"]
+  end
+
+  test "a group seeds the roster when the session is created" do
+    sign_in_as(@owner)
+    group = groups(:u19_squad)
+    group.group_memberships.create!(player_profile: @john)
+
+    assert_difference -> { AssessmentSessionParticipant.count }, 2 do
+      assert_difference -> { AssessmentSession.count }, 1 do
+        post_json "/api/v1/assessment_sessions", assessment_session: {
+          name: "U19 screening",
+          assessment_definition_id: @definition.id,
+          coach_profile_id: @coach.id,
+          scheduled_on: 10.days.from_now.to_date.iso8601,
+          group_id: group.id
+        }
+      end
+    end
+
+    assert_response :created
+    created = AssessmentSession.find(json["assessment_session"]["id"])
+    assert_equal group.id, created.group_id
+    # Members start included; the coach still removes anyone who did not show up.
+    assert_equal [ @john.id, @pedro.id ].sort, created.participants.map(&:player_profile_id).sort
+    assert created.participants.all?(&:included?)
+  end
+
+  test "a session without a group starts with an empty roster" do
+    sign_in_as(@owner)
+
+    post_json "/api/v1/assessment_sessions", assessment_session: {
+      name: "No group", assessment_definition_id: @definition.id,
+      coach_profile_id: @coach.id, scheduled_on: Date.current.iso8601
+    }
+
+    assert_response :created
+    assert_empty AssessmentSession.find(json["assessment_session"]["id"]).participants
+  end
+
+  # The session row and its seeded roster must land together. Seeding after a
+  # successful save leaves an empty draft behind whenever a membership fails,
+  # which is exactly the state a coach then has to clean up by hand.
+  # Minitest 6 no longer ships `minitest/mock`, so the failure is injected by
+  # overriding the seeder the service depends on.
+  test "a failed roster seed leaves no session behind" do
+    assert_raises(RuntimeError) do
+      AssessmentSessionCreator.new(
+        session: AssessmentSession.new(
+          name: "Doomed",
+          assessment_definition: @definition,
+          coach_profile: @coach,
+          scheduled_on: Date.current,
+          group: groups(:u19_squad)
+        ),
+        seeder: ->(*) { raise "roster seed failed" }
+      ).call
+    end
+
+    assert_equal 0, AssessmentSession.where(name: "Doomed").count,
+                 "a half-built session must not outlive a failed roster seed"
+  end
+
+  test "the coach of record deletes their own draft session" do
+    sign_in_as(@owner)
+
+    assert_difference -> { AssessmentSession.count }, -1 do
+      assert_difference -> { AssessmentSessionParticipant.count }, -@draft.participants.count do
+        delete session_path(@draft)
+      end
+    end
+
+    assert_response :success
+    assert_equal "Session deleted", json["message"]
+  end
+
+  test "curator and admin may delete a draft they did not create" do
+    [ @curator, @admin ].each do |user|
+      sign_in_as(@owner)
+      session_id = create_draft_session
+      sign_in_as(user)
+
+      assert_difference -> { AssessmentSession.count }, -1 do
+        delete session_path(session_id)
+      end
+      assert_response :success
+    end
+  end
+
+  test "another coach may not delete a draft that is not theirs" do
+    sign_in_as(@trainer)
+
+    assert_no_difference -> { AssessmentSession.count } do
+      delete session_path(@draft)
+    end
+
+    assert_response :forbidden
+  end
+
+  # The rule changed: a published session is no longer undeletable outright. It is
+  # still not a coach's or curator's call — deletion is the admin's safety net for
+  # a publication that should not have happened.
+  test "an admin may delete a published session" do
+    sign_in_as(@admin)
+
+    assert_difference -> { AssessmentSession.count }, -1 do
+      delete session_path(@published)
+    end
+
+    assert_response :success
+  end
+
+  test "a curator and a non-authoring coach may not delete a published session" do
+    [ @curator, @trainer ].each do |user|
+      sign_in_as(user)
+
+      assert_no_difference -> { AssessmentSession.count } do
+        delete session_path(@published)
+      end
+
+      assert_response :forbidden
+    end
+  end
+
+  test "a guest may not delete a draft" do
+    assert_no_difference -> { AssessmentSession.count } do
+      delete session_path(@draft)
+    end
+
+    assert_response :unauthorized
+  end
+
+  # Deleting a draft must not leave its results orphaned. A draft session's
+  # results are drafts by construction, so they go with it; anything already
+  # activated is history and must survive with a null session.
+  test "deleting a draft discards its own draft results" do
+    sign_in_as(@owner)
+    session = AssessmentSession.find(create_draft_session)
+    draft_result = draft_assessment_for(session, player_profiles(:john_player))
+
+    assert_difference -> { Assessment.count }, -1 do
+      delete session_path(session)
+    end
+
+    assert_nil Assessment.find_by(id: draft_result.id), "the scratch result should go"
+  end
+
+  test "deleting a draft never removes an already-activated result" do
+    sign_in_as(@owner)
+    session = AssessmentSession.find(create_draft_session)
+    result = active_assessment_for(session, player_profiles(:john_player))
+
+    assert_no_difference -> { Assessment.count } do
+      delete session_path(session)
+    end
+
+    assert_nil result.reload.assessment_session_id, "history survives, detached"
   end
 
   test "a guest cannot create a session" do

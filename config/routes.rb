@@ -115,19 +115,37 @@ Rails.application.routes.draw do
         member { patch :reorder }
       end
 
-      resources :assessment_sessions, only: %i[index show create update] do
+      # `destroy` is scoped to drafts only (a published session is archival, and
+      # the controller refuses it with 422 rather than offering a silent delete).
+      resources :assessment_sessions, only: %i[index show create update destroy] do
         member do
           post :add_players
           patch :remove_players
           put :scores
           post :publish
+          # A withdrawal retracts a published session and is reversible only by an
+          # admin, so `restore` is the single route out of the withdrawn state and
+          # `publish` deliberately is not.
+          post :withdraw
+          post :restore
           get :ranking
         end
       end
 
-      # Immutable club-level ranking snapshots over published sessions
-      # (phase 4): list, view, create. No update/destroy by design.
-      resources :ranking_consolidations, only: %i[index show create]
+      # A consolidation is assembled as a draft (its sources may still be being
+      # scored) and frozen by `publish`, which requires every source session to be
+      # published. A published one is archival, so `destroy` is admin-only; the
+      # ordinary retraction is `withdraw`, which is reversible.
+      resources :ranking_consolidations, only: %i[index show create update destroy] do
+        member do
+          post :publish
+          post :withdraw
+          post :restore
+          # The one supervised exception to a published ranking's immutability:
+          # rebuild it so a source withdrawn *after* publication stops counting.
+          post :recalculate
+        end
+      end
 
       # Coach-authored rubrics outside the club catalogue. `PATCH` only: an
       # in-use custom category may not be deleted, and configuration rows are

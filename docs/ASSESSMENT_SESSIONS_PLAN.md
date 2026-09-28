@@ -204,7 +204,7 @@ The session response must expose definition/category columns, roster status, mis
 
 ### Consolidation
 
-Allow consolidation only when every selected session is published and uses the same definition, scale, and definition snapshot. A compatible player list means every player appearing in any selected session is represented or reported as missing. Choose and document one policy: require every selected coach to score every player, or average available coach scores while exposing coverage. Never silently assign zero.
+Allow consolidation only when every selected session uses the same definition, scale, and definition snapshot. Publication is a separate, later step and requires every selected session to be published; the snapshot is re-derived at that moment so the frozen ranking reflects the sessions' final scores. A compatible player list means every player appearing in any selected session is represented or reported as missing. Choose and document one policy: require every selected coach to score every player, or average available coach scores while exposing coverage. Never silently assign zero.
 
 Generate a snapshot containing each coach's score, average, final rank, and division. Original session and player-assessment rows remain unchanged.
 
@@ -218,7 +218,8 @@ Add:
 - `PlayerSelector`: search existing players and create a new player through the shared identity flow.
 - `SpreadsheetScoreGrid`: rows are players, columns are weighted categories, with keyboard navigation and draft save.
 - `SessionRankingTable`: overall score, rank, status, and missing-score indicators.
-- `ConsolidationBuilder`: select compatible published sessions and generate a snapshot.
+- `ConsolidationBuilder`: select compatible sessions (drafts allowed) and generate a snapshot. `ConsolidationPublisher` re-derives the snapshot and freezes it, once every source session is published.
+- **Lifecycle authority.** A draft may be edited or deleted by its creator (the coach of record, or the consolidation's author), a curator, or an admin. A published record is *withdrawn* by that same authority, and withdrawal is the reversible retraction — a hard delete of a published record is admin-only, as the escape hatch for a publication that should not have happened. A *withdrawn* record is inert: only an admin may restore, edit, or delete it, and restoring to published re-runs the publisher rather than reviving the frozen snapshot. Sessions follow the same rules, with the coach of record kept separate from `created_by`.
 - `ConsolidationRanking`: coach scores, average, final rank, and division.
 
 The grid displays category-level scores only. It does not display, require, or submit criteria in this phase. Disable publish in the UI when totals are not valid, but rely on backend validation as authoritative.
@@ -270,7 +271,7 @@ A later criteria phase may add definition-level criterion authoring, category-cr
 | D3 | The Player page is read-only for assessments and has no creation controls. |
 | D4 | A session belongs to exactly one coach and may reference one optional group. |
 | D5 | A referenced definition is frozen; duplicate it to make changes. |
-| D6 | Sessions use draft, published, and archived statuses. Only published sessions may be consolidated. |
+| D6 | Sessions use draft, published, and archived statuses. A consolidation may be built from drafts, but may only be *published* once every source session is published or withdrawn — a withdrawn source keeps its place in the consolidation but contributes no scores, and does not block publication. A withdrawal is a retraction, not a deletion: only an admin may restore one. |
 | D7 | Rosters reuse the existing Person and PlayerProfile identity model. |
 | D8 | `PlayerAssessment` is the session/player join and stores derived score and rank. |
 | D9 | Inline player creation uses the existing participant/person-creation service path. |
@@ -288,13 +289,14 @@ A later criteria phase may add definition-level criterion authoring, category-cr
 | D21 | A consolidation never blocks over missing or incomplete players. It always merges, always averages over the sessions that scored the player, exposes `coverage` per row, and stores a per-session `source_warnings` list. Nothing is ever assigned zero. |
 | D22 | Consolidation stores coach scores, coverage, average, and rank as an immutable snapshot. Division was considered and explicitly deferred (see §14). |
 | D23 | Groups are reusable roster containers and have no scoring semantics. |
-| D24 | Published sessions and consolidations are archival; corrections create new records. |
+| D24 | Published sessions and consolidations are archival; corrections create new records. The single exception is D24a below. |
+| D24a | Withdrawing a source session does **not** cascade into an already-published consolidation: it keeps the figures it was frozen with, because publication does not change when a source is retracted. Whether a retracted source is *in* those figures is decided by time, not by live status — withdrawn before the ranking was computed, it was skipped by the merge; withdrawn after, it is still counted. Correcting that is a single explicit, curator/admin-only, transactional `recalculate` that rebuilds the ranking from the sources that remain, preserves `published_at`, and records `recalculated_at` / `recalculated_by_id`. The API reports `included_in_ranking` per source so no screen has to infer it. |
 | D25 | Weight percentages remain positive integers and published definitions total exactly 100. |
 
 ## 12. Final acceptance checklist
 
-Verified 2026-09-27 (backend `971 runs / 3681 assertions / 0 failures`, frontend
-`690 tests`, `npm run build`, `eslint src` clean, `rubocop` clean on touched files,
+Verified 2026-09-28 (backend `1068 runs / 4351 assertions / 0 failures`, frontend
+`743 tests`, `npm run build`, `eslint src` clean, `rubocop` clean on touched files,
 `db:migrate` status `up`).
 
 - [x] No assessment creation workflow remains on the player page.
@@ -317,6 +319,15 @@ Verified 2026-09-27 (backend `971 runs / 3681 assertions / 0 failures`, frontend
 - [x] Consolidations are compatible-session snapshots and never mutate source sessions.
       "withdrawing a source session leaves the consolidation unchanged", plus the
       builder's "warnings are stored on the row rather than recomputed from the source".
+      Withdrawn sources are excluded or stale by *when* they were retracted
+      (`RankingConsolidation#excluded_from_snapshot?`); the detail screen drives its
+      coverage denominator and its notices off the server's `included_in_ranking`,
+      never off live status.
+- [x] A published ranking is corrected only by an explicit, recorded `recalculate`.
+      `RankingConsolidationRecalculator` refuses a draft, a withdrawn record, a ranking
+      with nothing stale, and one whose every source was retracted; `published_at` is
+      preserved and the correction is attributed. Author, non-curator coach and guest
+      are all refused, and `can_recalculate` keeps the control off their screens.
 - [x] Criterion tables/model/nullable score column exist, but criterion scoring is absent.
       `assessment_category_scores.criterion_id` is nullable with a partial unique index
       (`where: criterion_id IS NOT NULL`); D16 defers the scoring side.
@@ -325,6 +336,32 @@ Verified 2026-09-27 (backend `971 runs / 3681 assertions / 0 failures`, frontend
       `assessments_controller_test.rb` asserts legacy rows keep their single rubric.
 - [x] Backend and frontend tests, build, lint, and migration checks pass.
       See the summary line above.
+
+### Draft deletion (added after 4.3.3.6)
+
+§3 said "session and historical score rows are not hard-destroyed". That still
+holds for anything *published*, but it was written before a coach could get a
+draft session into a state they simply wanted gone — a half-filled roster, a
+session created against the wrong rubric. `DELETE /api/v1/assessment_sessions/:id`
+now exists and is deliberately narrow:
+
+- **Drafts only.** A published session answers 422 ("Only draft sessions can be
+  modified"), reusing the guard that already governs editing. It is not a missing
+  route and not a silent success, so the SPA can say why.
+- **Coach of record, curator or admin** — the same `oversight_or_coach_of_record?`
+  union every other session write uses, via the existing `authorize_draft_edit!`.
+  Content-management role alone is still not enough. So delete cannot drift from
+  the rule that governs editing: it is literally the same call.
+- **A draft's own draft results go with it.** A draft session's results are drafts
+  by construction, so removing them avoids leaving unrated rows attached to no
+  session. An already-`active` result survives with a null session, as
+  `dependent: :nullify` requires — history is never destroyed.
+
+The `before_destroy` that does this needs `prepend: true`. `dependent: :nullify`
+registers its own `before_destroy` first, so by the time an ordinary callback runs
+the session ids are already nulled and the rows can no longer be identified as
+belonging to this session. Without the prepend the callback runs, finds nothing,
+and silently does nothing — a test now pins it.
 
 ## 13. Implementation notes and deviations (Phase 4.3.3.6)
 

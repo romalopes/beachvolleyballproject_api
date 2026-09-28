@@ -9,7 +9,8 @@ class Api::V1::AssessmentSessionsController < ApplicationController
   # the same gate as the rest of the shared schedule.
   before_action :require_training_manager!
   before_action :set_assessment_session,
-                only: %i[show update add_players remove_players scores publish ranking]
+                only: %i[show update destroy add_players remove_players scores publish
+                        withdraw restore ranking]
 
   def index
     sessions = AssessmentSession.ordered
@@ -31,22 +32,19 @@ class Api::V1::AssessmentSessionsController < ApplicationController
       return render json: { error: "Forbidden" }, status: :forbidden
     end
 
-    if session_record.save
-      if session_record.group.present?
-        session_record.group.player_profiles.each do |profile|
-          session_record.assessment_session_participants.create!(
-            player_profile: profile,
-            inclusion: "included"
-          )
-        end
-      end
-      render json: { assessment_session: serialize(session_record.reload) }, status: :created
+    # Save and group-roster seeding share one transaction, so a coach never
+    # finds a draft that exists with an empty roster. See AssessmentSessionCreator.
+    created = AssessmentSessionCreator.new(session: session_record).call
+
+    if created.persisted?
+      render json: { assessment_session: serialize(created.reload) }, status: :created
     else
-      render json: { errors: session_record.errors.full_messages }, status: :unprocessable_entity
+      render json: { errors: created.errors.full_messages }, status: :unprocessable_entity
     end
   end
 
   def update
+    return if @assessment_session.withdrawn? && !authorize_admin_only!(@assessment_session)
     return unless authorize_draft_edit!(@assessment_session)
 
     if @assessment_session.update(session_params)
@@ -61,6 +59,67 @@ class Api::V1::AssessmentSessionsController < ApplicationController
   # and a nested `person:` for someone who has no record yet. Resolution is
   # shared with training sessions (InlineParticipantResolver) so the identity
   # rules cannot drift between the two flows.
+  # Delete a draft session. This is the one hard destroy in the resource, and it
+  # is scoped on purpose: only a draft, and only by the coach of record or
+  # oversight. `authorize_draft_edit!` already states both halves, so deleting
+  # cannot drift from the rule that governs editing it.
+  #
+  # A published session is archival — D24 — so the 422 from that same guard is
+  # the answer for it, not a missing route.
+  # Delete a session.
+  #
+  # A draft is discardable by the coach of record, a curator or an admin — the
+  # same rule that governs editing it, so the two cannot drift.
+  #
+  # A published session is normally archival, so deletion is admin-only: it exists
+  # as the safety net for a publication that should never have happened, not as a
+  # routine correction. Withdrawal is the ordinary way to retract a published
+  # session, and it is reversible; this is not.
+  def destroy
+    return unless authorize_session_destroy!
+
+    @assessment_session.destroy!
+
+    render json: { message: "Session deleted", id: params[:id] }
+  end
+
+  # Drafts follow the edit rule. A withdrawn record is admin-only, being inert. A
+  # published one is admin-only too, but as a deliberate exception to archival
+  # history rather than as part of the normal workflow.
+  def authorize_session_destroy!
+    return authorize_admin_only!(@assessment_session) if @assessment_session.withdrawn?
+    return authorize_admin_delete! if @assessment_session.published?
+
+    authorize_draft_edit!(@assessment_session)
+  end
+
+  def withdraw
+    return unless authorize_withdraw!(@assessment_session, @assessment_session.coach_profile)
+
+    # published_at is cleared: the session is no longer making a dated claim, and
+    # the model requires the two to agree.
+    @assessment_session.update!(status: "withdrawn", published_at: nil)
+
+    render json: { assessment_session: serialize(@assessment_session.reload) }
+  end
+
+  # Bring a withdrawn session back. Admin only — see ContentAuthorization. The
+  # destination is explicit: `draft` for work in progress, `published` to
+  # republish (which re-runs the full publish checks rather than trusting the
+  # original publication).
+  def restore
+    return unless authorize_admin_only!(@assessment_session)
+
+    to_status = params.require(:to_status)
+    AssessmentSessionRestorer.new(@assessment_session, to_status: to_status).call
+
+    render json: { assessment_session: serialize(@assessment_session.reload) }
+  rescue AssessmentSessionRestorer::Error => e
+    render json: { errors: e.errors }, status: :unprocessable_entity
+  rescue ActionController::ParameterMissing
+    render json: { errors: [ "to_status is required" ] }, status: :unprocessable_entity
+  end
+
   def add_players
     return unless authorize_draft_edit!(@assessment_session)
 
@@ -123,23 +182,11 @@ class Api::V1::AssessmentSessionsController < ApplicationController
   def publish
     return unless authorize_draft_edit!(@assessment_session)
 
-    ranking = AssessmentSessionRanking.new(@assessment_session).call
-    if ranking[:incomplete].any?
-      messages = ranking[:incomplete].map do |row|
-        "#{row[:player_name]} is missing #{row[:missing_category_ids].size} category score(s)"
-      end
-      return render json: { errors: [ "Score every included player before publishing" ] + messages },
-                    status: :unprocessable_entity
-    end
-
-    AssessmentSession.transaction do
-      @assessment_session.update!(status: "published", published_at: Time.current)
-      @assessment_session.assessments.where(status: "draft").find_each do |assessment|
-        assessment.update!(status: "active")
-      end
-    end
+    AssessmentSessionPublisher.new(@assessment_session).call
 
     render json: { assessment_session: serialize(@assessment_session.reload) }
+  rescue AssessmentSessionPublisher::Error => e
+    render json: { errors: e.errors }, status: :unprocessable_entity
   rescue ActiveRecord::RecordInvalid => e
     render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
   end
@@ -157,6 +204,8 @@ class Api::V1::AssessmentSessionsController < ApplicationController
       excluded: payload[:excluded]
     }
   end
+
+  private
 
   def set_assessment_session
     @assessment_session = AssessmentSession.find(params[:id])
