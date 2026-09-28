@@ -98,6 +98,25 @@ module ContentAuthorization
     false
   end
 
+  # --- organisation authority -------------------------------------------------
+  #
+  # Reading an organisation is open to any signed-in user who can already see
+  # people, because the tree is context everyone shares. *Managing* one is a
+  # bigger claim than managing content: a club's name and its place in the
+  # federation tree are asserted to other clubs, so it is admin-only rather than
+  # oversight.
+  #
+  # Curators are excluded on purpose — they oversee content but are not
+  # content creators, and the same reasoning that gates the hard delete of an
+  # assessment definition applies here.
+  def require_organisation_admin!
+    return true if Current.user&.admin?
+
+    render json: { error: "Only an admin can manage organisations" },
+           status: :forbidden
+    false
+  end
+
   # Hard delete of a published record: the safety net for a mistaken publication,
   # so it is admin-only and deliberately narrower than every other rule here.
   def authorize_admin_delete!

@@ -200,6 +200,96 @@ end
 
 puts "Seeded #{Drill.count} drills with skill associations"
 
+# ---------------------------------------------------------------------------
+# Organisations: a sample federation tree
+# ---------------------------------------------------------------------------
+#
+# Exercises the hierarchy as *data* rather than as four separate tables. FIVB down
+# to a club is four tiers, Sydney Beach Academy sits under that club (so a
+# parent is not always the root), Northern Beaches is a second club at the same
+# level, and Maroubra is an independent root with no parent at all.
+#
+# Idempotent, like everything else here: re-seeding updates the parent links
+# rather than duplicating the tree.
+federation_tree = {
+  "FIVB" => {
+    organisation_type: "international_federation",
+    description: "The world governing body for beach volleyball."
+  },
+  "Volleyball Australia" => {
+    organisation_type: "national_federation",
+    description: "The national federation for Australia.",
+    parent: "FIVB"
+  },
+  "Volleyball NSW" => {
+    organisation_type: "state_federation",
+    description: "The state body for New South Wales.",
+    parent: "Volleyball Australia"
+  },
+  "Sydney Beach Volleyball Club" => {
+    organisation_type: "club",
+    description: "A club running weekly training and club competitions.",
+    parent: "Volleyball NSW"
+  },
+  "Sydney Beach Academy" => {
+    organisation_type: "academy",
+    description: "A development squad run out of the club.",
+    parent: "Sydney Beach Volleyball Club"
+  },
+  "Northern Beaches Volleyball Club" => {
+    organisation_type: "club",
+    description: "A second club at the same level, to prove branches stay separate.",
+    parent: "Volleyball NSW"
+  },
+  "Maroubra Beach Volleyball Club" => {
+    organisation_type: "club",
+    description: "An independent club: a root with no parent at all.",
+    parent: nil
+  }
+}
+
+federation = {}
+federation_tree.each do |name, attributes|
+  federation[name] = Organisation.find_or_create_by!(name: name) do |organisation|
+    organisation.organisation_type = attributes[:organisation_type]
+    organisation.description = attributes[:description]
+  end
+end
+
+# Parent links set after every row exists, so the order above does not matter.
+federation_tree.each do |name, attributes|
+  parent = attributes[:parent] ? federation.fetch(attributes[:parent]) : nil
+  federation.fetch(name).update!(parent_organisation: parent)
+end
+
+# A retired organisation, so archive is visible in development rather than only in
+# tests — an archived node is history and must keep its place in the tree.
+Organisation.find_or_create_by!(name: "Retired Surfing Association") do |organisation|
+  organisation.organisation_type = "association"
+  organisation.description = "Defunct. Kept for the record."
+  organisation.status = "archived"
+end
+
+puts "Seeded #{Organisation.count} organisations " \
+     "(#{Organisation.roots.count} root(s), deepest tree " \
+     "#{Organisation.ordered.map(&:depth).max} tiers)"
+
+# A logo on one club, so the upload path and the display are exercised in
+# development rather than only in tests. Uses the same 1x1 fixture the tests use;
+# swap in a real asset when there is one to point at.
+sample_logo = Rails.root.join("test/fixtures/files/sample.png")
+if sample_logo.exist?
+  club = Organisation.find_by(name: "Sydney Beach Volleyball Club")
+  if club && !club.logo.attached?
+    club.logo.attach(
+      io: sample_logo.open, filename: "sydney-beach-volleyball-club.png",
+      content_type: "image/png"
+    )
+    club.save!
+  end
+  puts "Attached a sample logo to #{club&.name}"
+end
+
 # Video Categories
 VideoCategory.find_or_create_by!(name: "Technique") { |c| c.position = 0 }
 VideoCategory.find_or_create_by!(name: "Drills") { |c| c.position = 1 }

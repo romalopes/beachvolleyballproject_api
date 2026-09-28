@@ -115,6 +115,20 @@ Rails.application.routes.draw do
         member { patch :reorder }
       end
 
+      # A hierarchical organisational context: an international federation down to
+      # a club, in one self-referencing table. `destroy` is deliberately absent —
+      # an organisation is archived, and a parent with children cannot be removed
+      # at all, so there is no safe delete to expose.
+      resources :organisations, only: %i[index show create update] do
+        member do
+          post :archive
+          post :restore
+          # Multipart: a file upload rather than JSON. Kept on its own route so
+          # `update` keeps a single content-type contract.
+          post :logo
+        end
+      end
+
       # `destroy` is scoped to drafts only (a published session is archival, and
       # the controller refuses it with 422 rather than offering a silent delete).
       resources :assessment_sessions, only: %i[index show create update destroy] do
