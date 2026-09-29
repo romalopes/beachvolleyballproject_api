@@ -155,6 +155,80 @@ class Organisation < ApplicationRecord
     active_organisation_memberships.count
   end
 
+  # Whether a person may edit the organisation's own record: its name, its
+  # description, its logo.
+  #
+  # Three sources, and they are deliberately different kinds of claim:
+  #
+  #   * the *current* owner and administrators, who run the organisation and must
+  #     be able to correct what it says about itself;
+  #   * whoever created it, **but only while they are still a member**. The
+  #     creator grant is recorded on a Person and is never cleared, so keying on it
+  #     alone would let a founder who resigned keep renaming the club forever while
+  #     their roster rights had correctly lapsed. Membership is what expires it.
+  #
+  # Site admins and curators are not handled here: those are wider authorities and
+  # the authorization layer ORs them in.
+  def editable_by?(person)
+    return false if person.nil?
+    return true if manageable_by?(person)
+    return false unless created_by_person_id == person.id
+
+    person.organisation_memberships.active.exists?(organisation_id: id)
+  end
+
+  # Whether this organisation may be hard-deleted at all.
+  #
+  # Archive is the normal way to retire one. A hard delete is for a *mistake* — a
+  # club created twice, a placeholder that was never used — and the two conditions
+  # below are what make that distinction real rather than a matter of intent:
+  #
+  #   * no child organisations. A node with children cannot be removed without
+  #     either orphaning a branch or silently re-parenting it, and neither is
+  #     something a delete button should do on its own. `child_organisations` is
+  #     `restrict_with_error` as the race-condition backstop; this is the legible
+  #     check that explains it.
+  #   * no memberships, not even ended ones. Deleting would cascade through
+  #     `organisation_memberships` and erase the record of who belonged to the club
+  #     and when they left — which is exactly the history that makes an old
+  #     assessment explicable. A genuine club is therefore never deletable; only
+  #     an empty mistake is.
+  def deletable?
+    child_organisations.none? && organisation_memberships.none?
+  end
+
+  def deletable_blocker
+    return "It still has child organisations" if child_organisations.exists?
+    return "It still has members" if organisation_memberships.exists?
+
+    nil
+  end
+
+  # --- serialization helpers -------------------------------------------------
+
+  # The per-record path, used when the caller supplied neither a precomputed set nor
+  # the "oversight can edit everything" flag — a single `show`, for instance.
+  def default_can_edit?
+    editable_by?(Current&.user&.person) || oversight?
+  end
+
+  # `editable_all` is a flag rather than a sentinel value inside `editable_ids`
+  # because "no ids" and "every id" are opposite answers, and conflating the two is
+  # what sent admins down this per-record path and made a list cost a query per row.
+  def can_edit_flag(editable_ids, editable_all)
+    return true if editable_all
+    return default_can_edit? if editable_ids.nil?
+
+    editable_ids.include?(id)
+  end
+
+  def deletable_with_counts?(child_counts, membership_counts)
+    children = child_counts ? child_counts.fetch(id, 0) : child_organisations.count
+    members = membership_counts ? membership_counts.fetch(id, 0) : organisation_memberships.count
+
+    children.zero? && members.zero?
+  end
+
   def depth
     ancestors.size
   end
@@ -218,16 +292,30 @@ class Organisation < ApplicationRecord
     logo.attached?
   end
 
-  # An absolute URL for the logo, or nil. The host is supplied by the controller
-  # because a JSON payload cannot use the view helper `url_for` that the
+  # An absolute URL for the logo, or nil. Host and protocol are supplied by the
+  # controller because a JSON payload cannot use the view helper `url_for` that the
   # server-rendered equivalent relies on.
-  def logo_url(host = nil)
+  #
+  # Both are needed and both were wrong once: `request.host` omits the port, and
+  # `rails_blob_url` otherwise falls back to the app's default protocol. That
+  # produced `http://127.0.0.1/...` for a service actually listening on
+  # `https://127.0.0.1:3001`, so every stored logo failed to load. The host is
+  # `host_with_port` for the same reason — a portless URL points at :80.
+  def logo_url(host = nil, protocol = nil)
     return nil unless logo.attached?
 
-    Rails.application.routes.url_helpers.rails_blob_url(logo, host: host || "localhost:3000")
+    options = { host: host || "localhost:3000" }
+    options[:protocol] = protocol if protocol.present?
+    Rails.application.routes.url_helpers.rails_blob_url(logo, **options)
   end
 
-  def metadata(host: nil)
+  # The permission and count arguments are all optional and are supplied in bulk
+  # when a whole page is rendered. Each one can be derived from this record alone,
+  # but doing so costs a query per row, so the controller hoists them into grouped
+  # queries and passes them in. A single `show` passes none and pays the two or
+  # three queries, which is the right trade at that size.
+  def metadata(host: nil, protocol: nil, editable_ids: nil, editable_all: false,
+               child_counts: nil, membership_counts: nil)
     {
       id: id,
       name: name,
@@ -241,12 +329,17 @@ class Organisation < ApplicationRecord
         id: parent_organisation.id,
         name: parent_organisation.name
       },
-      child_count: child_organisations.count,
+      child_count: child_counts ? child_counts.fetch(id, 0) : child_organisations.count,
       depth: depth,
       # The upload ceiling is published with the record so a client can refuse a
       # file before sending it, rather than after a rejected round trip.
-      logo_url: logo_url(host),
+      logo_url: logo_url(host, protocol),
       logo_attached: logo_attached?,
+      # Whether the caller may change this record. Published per row because the
+      # answer differs by organisation: a curator can edit all of them, a club's
+      # owner only their own, and the SPA cannot infer that from a role alone.
+      can_edit: can_edit_flag(editable_ids, editable_all),
+      can_delete: deletable_with_counts?(child_counts, membership_counts),
       created_by_person: created_by_person && {
         id: created_by_person.id,
         name: created_by_person.full_name
@@ -257,6 +350,14 @@ class Organisation < ApplicationRecord
   end
 
   private
+
+  # Mirrors `ContentAuthorization#oversight?`. Repeated rather than shared because a
+  # model must not depend on a controller concern; both are two lines and the test
+  # that checks `can_edit` for a curator pins them together.
+  def oversight?
+    user = Current&.user
+    user.present? && (user.admin? || user.curator?)
+  end
 
   # Loads the given ids into records while preserving the order the query
   # returned them in — which `where(id: ...)` on its own would not.

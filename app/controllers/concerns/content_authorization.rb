@@ -100,19 +100,43 @@ module ContentAuthorization
 
   # --- organisation authority -------------------------------------------------
   #
-  # Reading an organisation is open to any signed-in user who can already see
-  # people, because the tree is context everyone shares. *Managing* one is a
-  # bigger claim than managing content: a club's name and its place in the
-  # federation tree are asserted to other clubs, so it is admin-only rather than
-  # oversight.
+  # Reading an organisation is open to any training manager, because the tree is
+  # context everyone shares. *Editing* one is delegated: a club's name and logo are
+  # its own to correct, so the club's officers, its current creator, curators and
+  # admins may all change them, rather than the site admin alone.
   #
-  # Curators are excluded on purpose — they oversee content but are not
-  # content creators, and the same reasoning that gates the hard delete of an
-  # assessment definition applies here.
+  # Creating and re-parenting stay admin-only. Both assert something *about other
+  # organisations* — a new node's place in the federation tree is a claim made to
+  # every other club — and that is a site-level judgement rather than a club's own.
   def require_organisation_admin!
     return true if Current.user&.admin?
 
-    render json: { error: "Only an admin can manage organisations" },
+    render json: { error: "Only an admin can create or re-parent organisations" },
+           status: :forbidden
+    false
+  end
+
+  # Editing an existing organisation: its own record, as opposed to its position in
+  # the tree. Split from `require_organisation_admin!` for the reason above.
+  #
+  # The creator's grant is time-limited inside `Organisation#editable_by?` — it
+  # lapses when they leave — so a resigned founder cannot keep renaming the club.
+  def require_organisation_editor!
+    return true if Current.user&.admin? || Current.user&.curator?
+    return true if @organisation&.editable_by?(Current.user&.person)
+
+    render json: {
+      error: "Only this organisation's officers, its creator, a curator or an admin can edit it"
+    }, status: :forbidden
+    false
+  end
+
+  # Hard delete. Narrower than every other organisation rule, because it is the one
+  # action that destroys the record rather than changing it.
+  def authorize_organisation_delete!
+    return true if Current.user&.admin?
+
+    render json: { error: "Only an admin can delete an organisation" },
            status: :forbidden
     false
   end

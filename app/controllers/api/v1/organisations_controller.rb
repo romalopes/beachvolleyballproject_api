@@ -17,11 +17,18 @@ module Api
 
       before_action :require_authentication
       before_action :require_training_manager!
-      before_action :require_organisation_admin!,
-                    only: %i[create update archive restore logo]
+      # Loaded before the authority checks, not after: every organisation rule below
+      # needs the record it is judging, and a rule that silently passed because the
+      # record was nil would be the worst kind of bug here.
       before_action :set_organisation,
-                    only: %i[show update archive restore logo
+                    only: %i[show update archive restore logo destroy
                              members create_member update_member end_member]
+      # Creating a node and moving one are claims made *to other clubs* about the
+      # tree, so they stay admin-only.
+      before_action :require_organisation_admin!, only: %i[create]
+      # Editing the record is the club's own business.
+      before_action :require_organisation_editor!, only: %i[update archive restore logo]
+      before_action :authorize_organisation_delete!, only: %i[destroy]
       # Membership is delegated rather than admin-only, so it is gated separately
       # from the organisation itself. `set_organisation` runs first, so
       # `@organisation` is available; no `with:` lambda, which would pass the
@@ -36,8 +43,22 @@ module Api
                         .ordered
                         .includes(:parent_organisation, :created_by_person, :logo_attachment)
         records, meta = paginate(organisations)
+        ids = records.map(&:id)
+        # One pass of counts for the whole page. See `serialize` for why this is
+        # computed here rather than per row.
+        child_counts = Organisation.where(parent_organisation_id: ids)
+                                   .group(:parent_organisation_id)
+                                   .count
+        membership_counts = OrganisationMembership.where(organisation_id: ids)
+                                                   .group(:organisation_id)
+                                                   .count
 
-        render json: { data: records.map { |row| serialize(row) }, meta: meta }
+        render json: {
+          data: records.map do |row|
+            serialize(row, child_counts: child_counts, membership_counts: membership_counts)
+          end,
+          meta: meta
+        }
       end
 
       def show
@@ -73,19 +94,30 @@ module Api
         return render json: { errors: [ "A logo file is required" ] },
                       status: :unprocessable_entity if file.blank?
 
-        # Purge first so a replacement does not leave the old blob orphaned behind
-        # the attachment. The old file is only unreferenced once the new one lands.
-        @organisation.logo.purge if @organisation.logo.attached?
+        # Remember the blob being replaced. A refused replacement must leave the
+        # club with the crest it already had: this action used to purge first and
+        # attach second, so uploading an oversized or non-image file destroyed a
+        # perfectly good logo and left the club with none at all.
+        previous = @organisation.logo.attached? ? @organisation.logo.blob : nil
+
         @organisation.logo.attach(file)
 
-        # `attach` defers saving, so the attachment is only persisted if the record
-        # still validates — a rejected content type must not leave a blob behind.
         if @organisation.save
+          # Only now is the old blob genuinely unreferenced, so purging it here
+          # cannot lose a file that is still in use.
+          previous&.purge
           render json: serialize(@organisation.reload)
         else
-          @organisation.logo.purge
-          render json: { errors: @organisation.errors.full_messages },
-                 status: :unprocessable_entity
+          # `attach` saves, and a rejected save rolls back — so the database still
+          # points at the previous logo and only the in-memory record is wrong.
+          # Put it back in memory, then purge the rejected candidate, whose upload
+          # the rolled-back INSERT would otherwise strand in storage.
+          candidate = @organisation.logo.blob
+          errors = @organisation.errors.full_messages
+          @organisation.logo.blob = previous
+          candidate.purge if candidate && candidate != previous
+
+          render json: { errors: errors }, status: :unprocessable_entity
         end
       rescue ActiveStorage::FileNotFoundError, ActiveRecord::RecordInvalid => e
         render json: { errors: [ e.message ] }, status: :unprocessable_entity
@@ -113,6 +145,34 @@ module Api
         @organisation.update!(status: "active")
 
         render json: serialize(@organisation)
+      end
+
+      # Hard delete, for a mistake rather than for a retirement.
+      #
+      # Archive is the ordinary way to close an organisation and stays the only way
+      # for one that has ever been used. This exists so a club created twice, or a
+      # placeholder that was never used, can be removed instead of lingering in the
+      # tree forever as a ghost node.
+      #
+      # The two pre-checks are what make "a mistake" a fact rather than an opinion.
+      # 409 rather than 422, because the request was well formed — the *state* is
+      # what conflicts. `child_organisations` being `restrict_with_error` remains the
+      # backstop for a race between the check and the delete; it would surface as a
+      # 422, which is why the explicit check comes first and says something useful.
+      def destroy
+        blocker = @organisation.deletable_blocker
+        if blocker
+          return render json: {
+            error: "This organisation cannot be deleted: #{blocker.downcase}. Archive it instead."
+          }, status: :conflict
+        end
+
+        destroyed_id = @organisation.id
+        # The logo blob goes with it: `has_one_attached` purges, so a deleted club
+        # does not leave its crest in storage forever.
+        @organisation.destroy!
+
+        render json: { message: "Organisation deleted", id: destroyed_id }
       end
 
       # --- membership ---------------------------------------------------------
@@ -219,8 +279,65 @@ module Api
       # The host has to be threaded in explicitly: a JSON payload cannot rely on
       # the view helper `url_for` that a server-rendered app would use to build a
       # logo URL, so the absolute URL is assembled here.
-      def serialize(organisation)
-        organisation.metadata(host: request.host)
+      #
+      # The permission flags and `child_count` are passed in from the caller when a
+      # whole page is being rendered. `Organisation#metadata` can answer every one of
+      # them on its own, but that costs two or three queries *per row*, which turns
+      # a list of 50 organisations into ~150 queries. Hoisting the counts into a
+      # grouped query keeps the list at a fixed cost. Omitted arguments (a single
+      # `show`) simply fall back to the per-record queries, which are correct and
+      # cheap at that size.
+      def serialize(organisation, child_counts: nil, membership_counts: nil)
+        organisation.metadata(
+          host: request.host_with_port,
+          protocol: request_protocol,
+          editable_ids: editable_organisation_ids,
+          editable_all: editable_all?,
+          child_counts: child_counts,
+          membership_counts: membership_counts
+        )
+      end
+
+      # The scheme the *browser* used, which is not necessarily the one that reached
+      # Rails. Behind the production reverse proxy — and behind the Vite dev proxy —
+      # TLS is terminated upstream, so `request.protocol` can report `http` and every
+      # generated URL would be downgraded. The forwarded header is the browser's own
+      # view of it, so prefer that when present.
+      def request_protocol
+        request.headers["X-Forwarded-Proto"].presence || request.protocol
+      end
+
+      # Oversight can edit *every* organisation, so there is no subset worth
+      # computing and the per-row membership lookups are skipped entirely.
+      #
+      # This is a separate flag rather than a sentinel inside `editable_organisation_ids`
+      # because "no ids" and "every id" are opposite answers, and conflating them is
+      # what previously sent admins down the per-record path and turned a list of 50
+      # organisations into ~150 queries.
+      def editable_all?
+        return @editable_all if defined?(@editable_all)
+
+        @editable_all = Current.user.admin? || Current.user.curator?
+      end
+
+      # The organisations the caller may edit, resolved in a fixed number of queries
+      # rather than once per row. Mirrors `Organisation#editable_by?` exactly — the
+      # controller test that compares the two keeps them from drifting.
+      def editable_organisation_ids
+        return Set.new if editable_all?
+        return @editable_organisation_ids if defined?(@editable_organisation_ids)
+
+        person = Current.user&.person
+        @editable_organisation_ids = person.nil? ? Set.new : membership_ids_for(person)
+      end
+
+      def membership_ids_for(person)
+        active_ids = person.organisation_memberships.active.pluck(:organisation_id)
+        officer_ids = person.organisation_memberships.active.manageable.pluck(:organisation_id)
+        return officer_ids.to_set if active_ids.empty?
+
+        created_ids = Organisation.where(id: active_ids, created_by_person_id: person.id).pluck(:id)
+        (officer_ids + created_ids).to_set
       end
 
       def set_organisation

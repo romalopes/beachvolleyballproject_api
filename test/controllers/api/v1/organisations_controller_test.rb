@@ -185,13 +185,103 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/not archived/, json["errors"].join(" "))
   end
 
-  test "there is no delete route at all" do
+  test "the index does not re-check membership per row for an admin" do
+    # Oversight can edit every organisation, so there is nothing to look up per row.
+    # A sentinel of "no ids" instead of a distinct "all ids" answer used to send
+    # admins down the per-record path, costing a query for every organisation in the
+    # list. Pinned because it is invisible in the response and only shows up as
+    # latency on a large tree.
     sign_in_as(@admin)
+    6.times do |index|
+      Organisation.create!(name: "Perf Club #{index}", slug: "perf-club-#{index}")
+    end
+
+    membership_queries = 0
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+      sql = payload[:sql].to_s
+      membership_queries += 1 if sql.include?("organisation_memberships") && !payload[:cached]
+    end
+
+    get "/api/v1/organisations", params: { per_page: 50 }
+
+    assert_response :success
+    # Bounded, not per-row: the count must not grow with the number of rows.
+    assert_operator membership_queries, :<=, 2,
+                    "index issued #{membership_queries} membership queries for 15 organisations"
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
+  # --- delete ----------------------------------------------------------------
+  #
+  # A hard delete exists, but only for a mistake: admin only, and only for an
+  # organisation with no children and no members. Anything real is archived.
+
+  test "an admin may delete an empty childless organisation" do
+    sign_in_as(@admin)
+    stray = Organisation.create!(name: "Placeholder Club", slug: "placeholder-club")
+
+    delete "/api/v1/organisations/#{stray.id}"
+
+    assert_response :success
+    assert_nil Organisation.find_by(id: stray.id)
+  end
+
+  test "an admin may not delete an organisation that has children" do
+    sign_in_as(@admin)
+
+    delete "/api/v1/organisations/#{@nsw.id}"
+
+    # 409, not a silent cascade: re-parenting a branch is not something a delete
+    # button should do on its own.
+    assert_response :conflict
+    assert Organisation.exists?(@nsw.id)
+  end
+
+  test "an admin may not delete an organisation that has members" do
+    # A leaf club is still a real club. Deleting it would cascade through the
+    # memberships and erase the record of who belonged to it.
+    leaf = organisations(:sydney_academy)
+    sign_in_as(@admin)
+
+    delete "/api/v1/organisations/#{leaf.id}"
+
+    assert_response :conflict
+    assert Organisation.exists?(leaf.id)
+    assert OrganisationMembership.exists?(organisation_id: leaf.id)
+  end
+
+  test "an ended membership still blocks deletion" do
+    sign_in_as(@admin)
+    leaf = organisations(:northern_club)
+    assert leaf.organisation_memberships.ended.exists?,
+           "the fixture must have a former member for this test to mean anything"
+
+    delete "/api/v1/organisations/#{leaf.id}"
+
+    assert_response :conflict
+    assert Organisation.exists?(leaf.id)
+  end
+
+  test "an editor may edit but may not delete" do
+    # The club's owner can correct its name and logo, but deleting is destructive
+    # and stays admin-only.
+    sign_in_as(users(:six))
+    patch_json "/api/v1/organisations/#{@club.id}", organisation: { name: "Renamed By Owner" }
+    assert_response :success
+
     delete "/api/v1/organisations/#{@club.id}"
 
-    # Archive is the only retirement there is; a parent with children could not
-    # safely be removed even if a route existed.
-    assert_response :not_found
+    assert_response :forbidden
+    assert Organisation.exists?(@club.id)
+  end
+
+  test "a curator may edit but may not delete" do
+    sign_in_as(@curator)
+
+    delete "/api/v1/organisations/#{@club.id}"
+
+    assert_response :forbidden
   end
 
   # --- logo ------------------------------------------------------------------
@@ -202,6 +292,16 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
   def png_upload(filename: "logo.png", content_type: "image/png")
     Rack::Test::UploadedFile.new(
       Rails.root.join("test/fixtures/files/sample.png"),
+      content_type,
+      original_filename: filename
+    )
+  end
+
+  # A file the logo content-type rule must refuse, so the "rejected replacement"
+  # path is exercised rather than assumed.
+  def text_file_upload(filename: "notes.txt", content_type: "text/plain")
+    Rack::Test::UploadedFile.new(
+      Rails.root.join("test/fixtures/files/notes.txt"),
       content_type,
       original_filename: filename
     )
@@ -218,6 +318,36 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     # Absolute, so the SPA can use it directly without knowing its own origin.
     assert_match %r{\Ahttps?://}, body["logo_url"]
     assert_predicate @club.reload, :logo_attached?
+  end
+
+  test "the logo URL carries the port the request arrived on" do
+    # The port must survive. `request.host` omits it, so a logo was served as
+    # `http://127.0.0.1/...` for a service on `https://127.0.0.1:3001` — every
+    # upload succeeded and no image ever displayed.
+    #
+    # `host!` is the point of this test: integration requests default to port 80,
+    # where `host` and `host_with_port` are the same string, so the ordinary case
+    # cannot tell the two apart and the bug survives it.
+    sign_in_as(@admin)
+    post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
+    assert_response :success
+
+    get "/api/v1/organisations/#{@club.id}", headers: { "HOST" => "api.example.test:3001" }
+
+    assert_includes json["logo_url"], "api.example.test:3001",
+                    "the logo URL must carry the port, not just the host"
+  end
+
+  test "the logo URL follows the forwarded scheme rather than the one Rails saw" do
+    # TLS is terminated upstream in production, so `request.protocol` reports `http`
+    # and a URL built from it would be downgraded for every browser.
+    sign_in_as(@admin)
+    post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
+    assert_response :success
+
+    get "/api/v1/organisations/#{@club.id}", headers: { "X-Forwarded-Proto" => "https" }
+
+    assert_equal "https", json["logo_url"].split("//").first.split(":").first
   end
 
   test "an organisation with no logo reports null rather than a broken URL" do
@@ -272,19 +402,66 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/logo file is required/i, json["errors"].join(" "))
   end
 
-  test "a coach may not upload a logo" do
-    sign_in_as(@coach)
+  test "a coach who is not an officer may not upload a logo" do
+    sign_in_as(users(:three))
     post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
 
     assert_response :forbidden
     assert_not @club.reload.logo_attached?
   end
 
-  test "a curator may not upload a logo" do
+  test "a rejected replacement leaves the existing logo intact" do
+    # The regression this pins: the action used to purge first and attach second, so
+    # an oversized or non-image replacement destroyed a working crest and left the
+    # club with nothing at all.
+    sign_in_as(@admin)
+    post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
+    assert_response :success
+    original = @club.reload.logo.blob
+    assert_not_nil original
+
+    post "/api/v1/organisations/#{@club.id}/logo",
+         params: { logo: text_file_upload(filename: "notes.txt") }
+
+    assert_response :unprocessable_entity
+    # The old logo survived, and still points at the same file.
+    assert @club.reload.logo_attached?
+    assert_equal original.id, @club.logo.blob.id
+    assert ActiveStorage::Blob.exists?(original.id)
+  end
+
+  test "a rejected first upload leaves the organisation with no logo" do
+    # The mirror image: nothing to preserve, so nothing is created either.
+    sign_in_as(@admin)
+
+    post "/api/v1/organisations/#{@club.id}/logo",
+         params: { logo: text_file_upload(filename: "notes.txt") }
+
+    assert_response :unprocessable_entity
+    assert_not @club.reload.logo_attached?
+  end
+
+  test "a successful replacement purges the blob it replaced" do
+    sign_in_as(@admin)
+    post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
+    original = @club.reload.logo.blob
+
+    post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload(filename: "second.png") }
+
+    assert_response :success
+    # Purged only *after* the new one was accepted, so no orphaned file is left.
+    assert_not ActiveStorage::Blob.exists?(original.id)
+  end
+
+  test "a curator may upload a logo" do
+    # Oversight is enough to maintain a record. This is a deliberate reversal of the
+    # earlier admin-only rule: the logo is the club's own crest, not a claim made to
+    # other clubs the way its place in the tree is.
     sign_in_as(@curator)
     post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
 
-    assert_response :forbidden
+    assert_response :success
+    assert @club.reload.logo_attached?
   end
 
   test "a guest may not upload a logo" do
@@ -293,7 +470,91 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
-  # --- membership ------------------------------------------------------------
+  # --- who may edit an organisation -------------------------------------------
+
+  test "a curator may edit an organisation" do
+    sign_in_as(@curator)
+
+    patch_json "/api/v1/organisations/#{@club.id}", organisation: { name: "Renamed By Curator" }
+
+    assert_response :success
+    assert_equal "Renamed By Curator", @club.reload.name
+  end
+
+  test "the club's owner may edit it" do
+    sign_in_as(users(:six)) # Maria Silva, owner of the Sydney club
+
+    patch_json "/api/v1/organisations/#{@club.id}", organisation: { name: "Renamed By Owner" }
+
+    assert_response :success
+    assert_equal "Renamed By Owner", @club.reload.name
+  end
+
+  test "the creator may edit it while they are still a member" do
+    # Maria Silva owns this club, so her officer role is downgraded to a plain member
+    # first: otherwise the request would be authorised by the officer path and the
+    # test would prove nothing about `created_by_person`.
+    officer = organisation_memberships(:owner_of_sydney_club)
+    officer.update!(role: "member")
+    creator = officer.person
+    @club.update!(created_by_person: creator)
+    assert_equal creator.id, @club.reload.created_by_person_id
+    assert_not @club.manageable_by?(creator), "only the creator grant remains"
+
+    sign_in_as(users(:six))
+
+    patch_json "/api/v1/organisations/#{@club.id}", organisation: { name: "Renamed By Creator" }
+
+    assert_response :success
+    assert_equal "Renamed By Creator", @club.reload.name
+  end
+
+  test "the creator may no longer edit it once their membership has ended" do
+    # The whole reason the creator grant is gated on membership: `created_by_person`
+    # is never cleared, so keying on it alone would let a resigned founder keep
+    # renaming the club forever while their roster rights had correctly lapsed.
+    officer = organisation_memberships(:owner_of_sydney_club)
+    officer.update!(role: "member")
+    creator = officer.person
+    @club.update!(created_by_person: creator)
+    assert_equal creator.id, @club.reload.created_by_person_id
+    assert_not @club.manageable_by?(creator), "still only reachable via the creator grant"
+
+    officer.end!
+    assert_not @club.editable_by?(creator), "the model agrees before the request is made"
+
+    sign_in_as(users(:six))
+
+    patch_json "/api/v1/organisations/#{@club.id}", organisation: { name: "After Resigning" }
+
+    assert_response :forbidden
+    assert_equal "Sydney Beach Volleyball Club", @club.reload.name
+  end
+
+  test "can_edit is reported per organisation rather than per role" do
+    sign_in_as(users(:six)) # owns the Sydney club, nothing else
+
+    get "/api/v1/organisations"
+
+    rows = json["data"].index_by { |row| row["id"] }
+    assert rows[@club.id]["can_edit"], "the club's own officer may edit it"
+    assert_not rows[@nsw.id]["can_edit"], "but not an unrelated federation above it"
+  end
+
+  test "can_edit matches what the endpoint actually allows" do
+    # The flag drives the SPA, so a mismatch would render a control that 403s.
+    [ users(:six), users(:four), users(:three) ].each do |user|
+      sign_in_as(user)
+      get "/api/v1/organisations"
+      flag = json["data"].find { |row| row["id"] == @club.id }["can_edit"]
+
+      patch_json "/api/v1/organisations/#{@club.id}", organisation: { name: "Probe" }
+      expected = response.status.between?(200, 299)
+      assert_equal flag, expected,
+                   "can_edit=#{flag} disagrees with #{response.status} for #{user.email_address}"
+    end
+  end
+
   #
   # Two different authorities in one place: the organisation itself is admin-only,
   # but its *roster* is delegated to the club's own owner and administrators. Being
@@ -487,11 +748,12 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
 
   # --- authorization ---------------------------------------------------------
 
-  test "a coach may not create, edit, archive or restore" do
-    sign_in_as(@coach)
-
-    post_json "/api/v1/organisations", organisation: { name: "Sneaky Club" }
-    assert_response :forbidden
+  test "a coach who is not an officer may not edit an organisation" do
+    # `users(:six)` owns this very club, so the refusal needs somebody genuinely
+    # outside it: `users(:four)` is a curator and `users(:three)` is a coach with no
+    # Person at all.
+    outsider = users(:three)
+    sign_in_as(outsider)
 
     patch_json "/api/v1/organisations/#{@club.id}", organisation: { name: "Renamed" }
     assert_response :forbidden

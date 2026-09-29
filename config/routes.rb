@@ -116,10 +116,14 @@ Rails.application.routes.draw do
       end
 
       # A hierarchical organisational context: an international federation down to
-      # a club, in one self-referencing table. `destroy` is deliberately absent —
-      # an organisation is archived, and a parent with children cannot be removed
-      # at all, so there is no safe delete to expose.
-      resources :organisations, only: %i[index show create update] do
+      # a club, in one self-referencing table.
+      #
+      # `destroy` exists but is deliberately narrow: admin only, and refused for
+      # anything with children or members. An organisation is *archived* to be
+      # retired; a hard delete is for a mistake — a club created twice, a
+      # placeholder never used — and neither the tree below it nor the membership
+      # history of a real club may be destroyed as a side effect of tidying up.
+      resources :organisations, only: %i[index show create update destroy] do
         member do
           post :archive
           post :restore
