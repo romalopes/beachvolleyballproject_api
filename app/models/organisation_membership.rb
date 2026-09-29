@@ -49,6 +49,22 @@ class OrganisationMembership < ApplicationRecord
     status == "ended"
   end
 
+  # Invited but not yet accepted. Distinct from `ended` because the two mean
+  # opposite things: one never arrived, the other was here and left.
+  def pending?
+    status == "pending"
+  end
+
+  # An invitation nobody accepted can be withdrawn outright. It records no stint,
+  # so keeping it would keep nothing and removing it loses nothing — whereas
+  # ending it would write a `left_at` claiming the person left a club they never
+  # joined, which is precisely the fabricated history §2.5 exists to prevent.
+  #
+  # This is the only membership row that may be destroyed.
+  def withdrawable?
+    pending?
+  end
+
   def manages?
     active? && MANAGEMENT_ROLES.include?(role)
   end

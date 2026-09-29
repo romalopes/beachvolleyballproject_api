@@ -260,4 +260,72 @@ class OrganisationTest < ActiveSupport::TestCase
     assert_includes payload.keys, :logo_attached
     assert_equal false, payload[:logo_attached]
   end
+
+  # --- acronym ----------------------------------------------------------------
+
+  test "an acronym is optional" do
+    # A development squad inside a club has no recognised short form, so requiring
+    # one would mean inventing data for every existing row.
+    assert organisations(:sydney_academy).valid?
+    assert_nil organisations(:sydney_academy).acronym
+  end
+
+  test "an acronym is stored as it is displayed" do
+    organisation = Organisation.create!(name: "New Body", slug: "new-body", acronym: "  fivb  ")
+
+    assert_equal "FIVB", organisation.acronym
+  end
+
+  test "a blank acronym reads as absent rather than as an empty string" do
+    organisation = Organisation.create!(name: "Another Body", slug: "another-body", acronym: "   ")
+
+    assert_nil organisation.acronym
+  end
+
+  test "an acronym must be a short label" do
+    organisation = Organisation.new(name: "Bad Acronym", acronym: "a" * 30)
+
+    assert_not organisation.valid?
+    assert_includes organisation.errors[:acronym].join, "too long"
+  end
+
+  test "an acronym must not carry punctuation that is not part of a label" do
+    # Short enough that only the format can reject them. A long sentence is caught
+    # by the length rule instead, which is what that rule is for.
+    [ "Club/2026", "Club:NSW", "100%", "(NSW)" ].each do |value|
+      organisation = Organisation.new(name: "Bad #{value}", acronym: value)
+
+      assert_not organisation.valid?, "#{value.inspect} should have been refused"
+      assert_includes organisation.errors[:acronym].join, "may contain only"
+    end
+  end
+
+  test "an acronym long enough to be a sentence is refused as too long" do
+    organisation = Organisation.new(name: "Sentential", acronym: "The Very Best Club")
+
+    assert_not organisation.valid?
+    assert_includes organisation.errors[:acronym].join, "too long"
+  end
+
+  test "the short forms that genuinely exist are accepted" do
+    [ "FIVB", "VA", "NSW", "VB NSW", "C.B.V.A.", "SB-1" ].each do |value|
+      assert Organisation.new(name: "Body #{value}", acronym: value).valid?,
+             "#{value.inspect} should have been accepted"
+    end
+  end
+
+  test "an accented acronym is refused" do
+    # The name is French, so this is a plausible mistake rather than a fanciful one.
+    organisation = Organisation.new(name: "Body", acronym: "FÉDÉRATION")
+
+    assert_not organisation.valid?
+  end
+
+  test "an acronym is published in the metadata" do
+    # Persisted, not `new`: `metadata` walks ancestors, and the recursive CTE needs
+    # a real id to anchor on.
+    organisation = Organisation.create!(name: "Payload Body", slug: "payload-body", acronym: "PB")
+
+    assert_equal "PB", organisation.metadata[:acronym]
+  end
 end

@@ -78,7 +78,7 @@ module Api
       end
 
       def update
-        if @organisation.update(organisation_params)
+        if @organisation.update(updatable_organisation_params)
           render json: serialize(@organisation)
         else
           render json: { errors: @organisation.errors.full_messages },
@@ -236,13 +236,23 @@ module Api
 
       # Leaving is an `ended` status, never a delete: a historical assessment must
       # still be explicable by the membership that existed when it was recorded.
+      #
+      # An invitation nobody accepted is the single exception — see
+      # `OrganisationMembership#withdrawable?`. One response shape either way, with
+      # `removed` telling the client whether the row is still there.
       def end_member
         membership = find_membership
         return if membership.nil?
 
-        membership.end!
-
-        render json: membership.metadata
+        if membership.withdrawable?
+          person_id = membership.person_id
+          name = membership.display_name
+          membership.destroy!
+          render json: { removed: true, person_id: person_id, message: "Invitation to #{name} withdrawn." }
+        else
+          membership.end!
+          render json: { removed: false, membership: membership.metadata }
+        end
       rescue ActiveRecord::RecordInvalid => e
         render json: { errors: e.record.errors.full_messages },
                status: :unprocessable_entity
@@ -353,8 +363,22 @@ module Api
       # and is not the caller's to choose.
       def organisation_params
         params.require(:organisation).permit(
-          :name, :description, :organisation_type, :status, :parent_organisation_id
+          :name, :description, :acronym, :organisation_type, :status, :parent_organisation_id
         )
+      end
+
+      # Editing a record and moving it in the tree are different claims. Relaxing
+      # `update` from admin-only to include curators, owners and the creator also
+      # relaxed re-parenting with it, which let a club rename-and-move a federation
+      # node — a claim made *to* every other club, and admin-only by design.
+      #
+      # Dropped rather than rejected: silently ignoring an unauthorised field is the
+      # standard Rails answer, and the SPA does not offer re-parenting outside the
+      # create form, so nothing legitimate is lost.
+      def updatable_organisation_params
+        permitted = organisation_params
+        permitted.delete(:parent_organisation_id) unless Current.user&.admin?
+        permitted
       end
 
       def member_params

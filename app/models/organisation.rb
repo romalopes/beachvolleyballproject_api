@@ -35,6 +35,9 @@ class Organisation < ApplicationRecord
   ].freeze
 
   NAME_MAX_LENGTH = 120
+  # Short enough to be a badge or a fallback tile. An acronym longer than this is
+  # an abbreviation nobody uses.
+  ACRONYM_MAX_LENGTH = 12
 
   # Logo limits, mirroring Producer in the sibling wine_prediction_api project so
   # an uploaded logo behaves identically across both applications.
@@ -76,10 +79,30 @@ class Organisation < ApplicationRecord
            inverse_of: :parent_organisation
 
   normalizes :name, with: ->(value) { value.strip.presence }
+  # An acronym is a display short form, so it is stored the way it is shown:
+  # upcased, trimmed, and empty rather than a blank string. "FIVB" and "fivb"
+  # are the same short form, and a blank one must read as absent.
+  normalizes :acronym, with: ->(value) { value.strip.upcase.presence }
 
   validates :name, presence: true,
                    length: { maximum: NAME_MAX_LENGTH },
                    uniqueness: { case_sensitive: false }
+  # Optional, but bounded and shaped. An acronym is a short display form, so
+  # anything that is not a compact label — a full sentence, a URL, an
+  # accented word — is a mistake worth refusing rather than rendering. Permissive
+  # enough for the forms that genuinely exist: "FIVB", "VB NSW", "C.B.V.A.".
+  #
+  # Explicit ASCII rather than Ruby's `[[:alnum:]]`, which matches Unicode letters
+  # and so would have accepted "FÉDÉRATION" — a capitalised word, not an acronym.
+  # Acronyms are conventionally ASCII even inside a non-English organisation: the
+  # governing body here is French-named and is still FIVB, not FÉDÉRATION.
+  validates :acronym,
+            length: { maximum: ACRONYM_MAX_LENGTH },
+            format: {
+              with: /\A[A-Za-z0-9][A-Za-z0-9 .&'-]*\z/,
+              message: "may contain only letters, numbers, spaces, dots, dashes and ampersands"
+            },
+            allow_blank: true
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :organisation_type, presence: true, inclusion: { in: ORGANISATION_TYPES }
   validate :parent_must_not_be_self
@@ -321,6 +344,7 @@ class Organisation < ApplicationRecord
       name: name,
       slug: slug,
       description: description,
+      acronym: acronym,
       organisation_type: organisation_type,
       status: status,
       status_label: status_label,

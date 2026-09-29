@@ -212,36 +212,44 @@ puts "Seeded #{Drill.count} drills with skill associations"
 # Idempotent, like everything else here: re-seeding updates the parent links
 # rather than duplicating the tree.
 federation_tree = {
-  "FIVB" => {
+  "Fédération Internationale de Volleyball" => {
+    acronym: "FIVB",
     organisation_type: "international_federation",
-    description: "The world governing body for beach volleyball."
+    description: "The world governing body for beach volleyball.",
+    formerly: "FIVB"
   },
   "Volleyball Australia" => {
+    acronym: "VA",
     organisation_type: "national_federation",
     description: "The national federation for Australia.",
-    parent: "FIVB"
+    parent: "Fédération Internationale de Volleyball"
   },
   "Volleyball NSW" => {
+    acronym: "SVNSW",
     organisation_type: "state_federation",
     description: "The state body for New South Wales.",
     parent: "Volleyball Australia"
   },
   "Sydney Beach Volleyball Club" => {
+    acronym: "SBVC",
     organisation_type: "club",
     description: "A club running weekly training and club competitions.",
     parent: "Volleyball NSW"
   },
   "Sydney Beach Academy" => {
+    acronym: "SBA",
     organisation_type: "academy",
     description: "A development squad run out of the club.",
     parent: "Sydney Beach Volleyball Club"
   },
   "Northern Beaches Volleyball Club" => {
+    acronym: "NBVA",
     organisation_type: "club",
     description: "A second club at the same level, to prove branches stay separate.",
     parent: "Volleyball NSW"
   },
   "Maroubra Beach Volleyball Club" => {
+    acronym: "MBVC",
     organisation_type: "club",
     description: "An independent club: a root with no parent at all.",
     parent: nil
@@ -250,10 +258,24 @@ federation_tree = {
 
 federation = {}
 federation_tree.each do |name, attributes|
+  # The world body was seeded under the bare name "FIVB" and is now its full name.
+  # `find_or_create_by!` on the new name would create a *second* row and leave the
+  # old one as a duplicate root, so the rename is done first and deliberately.
+  # `formerly` is the seam for exactly this kind of rename.
+  if attributes[:formerly] && (legacy = Organisation.find_by(name: attributes[:formerly]))
+    legacy.update!(name: name)
+  end
+
   federation[name] = Organisation.find_or_create_by!(name: name) do |organisation|
     organisation.organisation_type = attributes[:organisation_type]
     organisation.description = attributes[:description]
   end
+end
+
+# Acronyms applied after the rows exist, so a re-seed corrects an existing row
+# rather than only filling in a new one.
+federation_tree.each do |name, attributes|
+  federation.fetch(name).update!(acronym: attributes[:acronym])
 end
 
 # Parent links set after every row exists, so the order above does not matter.
@@ -269,6 +291,7 @@ Organisation.find_or_create_by!(name: "Retired Surfing Association") do |organis
   organisation.description = "Defunct. Kept for the record."
   organisation.status = "archived"
 end
+Organisation.find_by(name: "Retired Surfing Association")&.update!(acronym: "RSA")
 
 puts "Seeded #{Organisation.count} organisations " \
      "(#{Organisation.roots.count} root(s), deepest tree " \

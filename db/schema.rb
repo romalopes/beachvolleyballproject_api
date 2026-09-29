@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_29_060602) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -362,6 +362,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_060602) do
   end
 
   create_table "organisations", force: :cascade do |t|
+    t.string "acronym"
     t.datetime "created_at", null: false
     t.bigint "created_by_person_id"
     t.text "description"
@@ -372,6 +373,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_060602) do
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
     t.index "lower((name)::text)", name: "index_organisations_on_lower_name", unique: true
+    t.index ["acronym"], name: "index_organisations_on_acronym"
     t.index ["created_by_person_id"], name: "index_organisations_on_created_by_person_id"
     t.index ["organisation_type"], name: "index_organisations_on_organisation_type"
     t.index ["parent_organisation_id"], name: "index_organisations_on_parent_organisation_id"

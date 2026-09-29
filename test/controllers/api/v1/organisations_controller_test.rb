@@ -470,6 +470,77 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  test "a curator may not re-parent an organisation" do
+    # Re-parenting asserts this node's place to every other club, so it stayed
+    # admin-only by design. Relaxing `update` to include curators, owners and the
+    # creator silently relaxed *this* too, which let a club move a federation node.
+    sign_in_as(@curator)
+    original_parent = @australia.parent_organisation_id
+
+    patch_json "/api/v1/organisations/#{@australia.id}",
+               organisation: { parent_organisation_id: @nsw.id }
+
+    assert_response :success
+    # The rename is applied; the move is quietly dropped rather than accepted.
+    assert_equal original_parent, @australia.reload.parent_organisation_id
+  end
+
+  test "the club's owner may not re-parent their own club either" do
+    sign_in_as(users(:six))
+    original_parent = @club.parent_organisation_id
+
+    patch_json "/api/v1/organisations/#{@club.id}",
+               organisation: { parent_organisation_id: @australia.id }
+
+    assert_response :success
+    assert_equal original_parent, @club.reload.parent_organisation_id
+  end
+
+  test "an admin may still re-parent" do
+    # Otherwise the fix above would have removed a capability rather than narrowed
+    # it, and the federation tree could never be reorganised.
+    sign_in_as(@admin)
+
+    patch_json "/api/v1/organisations/#{@club.id}",
+               organisation: { parent_organisation_id: @australia.id }
+
+    assert_response :success
+    assert_equal @australia.id, @club.reload.parent_organisation_id
+  end
+
+  test "an acronym round-trips through the API and is upcased server-side" do
+    sign_in_as(@admin)
+
+    patch_json "/api/v1/organisations/#{@club.id}", organisation: { acronym: " sbvc " }
+
+    assert_response :success
+    # Normalised on write, so the client never has to know the stored casing.
+    assert_equal "SBVC", json["acronym"]
+    assert_equal "SBVC", @club.reload.acronym
+  end
+
+  test "a bad acronym is refused with a 422 and nothing is stored" do
+    sign_in_as(@admin)
+    original = @club.reload.acronym
+    assert_nil original, "the fixture starts with no acronym"
+
+    patch_json "/api/v1/organisations/#{@club.id}", organisation: { acronym: "Not/A/Club" }
+
+    assert_response :unprocessable_entity
+    assert_nil @club.reload.acronym
+  end
+
+  test "clearing the acronym is allowed" do
+    # Nullable by design: an organisation may have no short form.
+    sign_in_as(@admin)
+    @club.update!(acronym: "SBVC")
+
+    patch_json "/api/v1/organisations/#{@club.id}", organisation: { acronym: "" }
+
+    assert_response :success
+    assert_nil @club.reload.acronym
+  end
+
   # --- who may edit an organisation -------------------------------------------
 
   test "a curator may edit an organisation" do
@@ -644,10 +715,59 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     delete "/api/v1/organisations/#{@club.id}/members/#{membership.person_id}"
 
     assert_response :success
-    assert_equal "ended", json["status"]
+    assert_equal "ended", json.dig("membership", "status")
     # Not deleted — a historical assessment must still be explicable.
     assert OrganisationMembership.exists?(membership.id)
     assert_not_nil OrganisationMembership.find(membership.id).left_at
+  end
+
+  # --- invitations ------------------------------------------------------------
+
+  test "withdrawing an unaccepted invitation removes the row rather than faking one" do
+    # A `pending` membership records no stint. Ending it would write a `left_at`
+    # saying the person left a club they never joined — the fabricated history the
+    # membership model exists to prevent.
+    sign_in_as(@admin)
+    invitation = organisation_memberships(:pending_academy_member)
+    academy_id = invitation.organisation_id
+    person_id = invitation.person_id
+    assert_predicate invitation, :pending?
+
+    delete "/api/v1/organisations/#{academy_id}/members/#{person_id}"
+
+    assert_response :success
+    assert json["removed"]
+    assert_equal person_id, json["person_id"]
+    assert_not OrganisationMembership.exists?(invitation.id)
+  end
+
+  test "withdrawing an invitation makes the organisation deletable" do
+    # The reason withdrawal is worth having: the Academy's only membership was an
+    # invitation, so without this the delete guard was permanently unsatisfiable and
+    # the only route to deleting it wrote a false departure.
+    sign_in_as(@admin)
+    academy = organisations(:sydney_academy)
+    assert academy.organisation_memberships.pending.exists?
+    assert_not academy.deletable?
+
+    pending = academy.organisation_memberships.pending.first
+    delete "/api/v1/organisations/#{academy.id}/members/#{pending.person_id}"
+    assert_response :success
+
+    assert_predicate academy.reload, :deletable?
+    delete "/api/v1/organisations/#{academy.id}"
+    assert_response :success
+    assert_not Organisation.exists?(academy.id)
+  end
+
+  test "a real member's departure is never treated as a withdrawn invitation" do
+    sign_in_as(users(:six))
+    membership = organisation_memberships(:club_player)
+
+    delete "/api/v1/organisations/#{@club.id}/members/#{membership.person_id}"
+
+    assert_not json["removed"]
+    assert OrganisationMembership.exists?(membership.id)
   end
 
   test "re-adding a former member reuses the row rather than duplicating it" do
