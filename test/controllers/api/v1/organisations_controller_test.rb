@@ -62,6 +62,32 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ "Retired Surfing Association" ], json["data"].map { |row| row["name"] }
   end
 
+  test "index returns the whole hierarchy when asked for the tree" do
+    # A page boundary is meaningless for a tree: a child whose parent landed on
+    # another page has nothing to be drawn under, and a client walking from the
+    # roots silently drops it. `tree=1` therefore bypasses pagination. The extra
+    # rows are what makes this a real assertion — without them both responses
+    # would be a single page and the test would pass either way.
+    sign_in_as(@coach)
+    (Pagination::DEFAULT_PER_PAGE + 5).times do |index|
+      Organisation.create!(name: "Perf Club #{index}", slug: "perf-club-#{index}")
+    end
+
+    get "/api/v1/organisations"
+    assert_operator json["data"].size, :<=, Pagination::DEFAULT_PER_PAGE
+
+    get "/api/v1/organisations", params: { tree: "1" }
+    assert_response :success
+    assert_equal Organisation.count, json["data"].size
+    assert_equal 1, json["meta"]["total_pages"]
+    # Every parent is resolvable within the one response, which is the whole point.
+    present = json["data"].map { |row| row["id"] }
+    json["data"].each do |row|
+      parent_id = row["parent_organisation_id"]
+      assert_includes present, parent_id if parent_id
+    end
+  end
+
   test "show reports the parent and depth without a second call" do
     sign_in_as(@coach)
     get "/api/v1/organisations/#{@club.id}"
@@ -508,6 +534,29 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal @australia.id, @club.reload.parent_organisation_id
   end
 
+  test "an admin can give a standalone club a parent" do
+    # The move that actually builds the tree: Maroubra is a root with no parent to
+    # change, and giving it one is the common case rather than the exception.
+    sign_in_as(@admin)
+    maroubra = organisations(:maroubra_club)
+    assert_nil maroubra.parent_organisation_id
+
+    patch_json "/api/v1/organisations/#{maroubra.id}",
+               organisation: { parent_organisation_id: @fivb.id }
+
+    assert_response :success
+    maroubra.reload
+    assert_equal @fivb.id, maroubra.parent_organisation_id
+    assert_equal 1, maroubra.depth
+
+    # And it reads back the way the tree view needs it, without a second call.
+    get "/api/v1/organisations/#{maroubra.id}"
+    assert_response :success
+    assert_equal @fivb.id, json["parent_organisation_id"]
+    assert_equal "FIVB", json["parent_organisation"]["name"]
+    assert_equal 1, json["depth"]
+  end
+
   test "an acronym round-trips through the API and is upcased server-side" do
     sign_in_as(@admin)
 
@@ -539,6 +588,39 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_nil @club.reload.acronym
+  end
+
+  test "can_manage_members is narrower than can_edit and matches the server" do
+    # The bug this pins: the roster was gated on `can_edit`, which admits a curator
+    # and a club's creator. Neither runs anybody's roster, so those users saw invite
+    # and role controls that the endpoint answered 403.
+    [ users(:four), users(:three) ].each do |user|
+      sign_in_as(user)
+      get "/api/v1/organisations"
+      row = json["data"].find { |r| r["id"] == @club.id }
+
+      assert_not row["can_manage_members"],
+                 "#{user.email_address} can edit but must not manage the roster"
+
+      # And the flag must not disagree with what the endpoint actually allows.
+      post_json "/api/v1/organisations/#{@club.id}/members", membership: { person_id: people(:national_official).id }
+      assert_equal 403, response.status, "flag and endpoint disagree for #{user.email_address}"
+    end
+  end
+
+  test "a curator can edit an organisation but not manage its roster" do
+    sign_in_as(@curator)
+    get "/api/v1/organisations/#{@club.id}"
+
+    assert json["can_edit"], "oversight may correct the record"
+    assert_not json["can_manage_members"], "but is not an officer of this club"
+  end
+
+  test "the club's owner may manage the roster" do
+    sign_in_as(users(:six))
+    get "/api/v1/organisations/#{@club.id}"
+
+    assert json["can_manage_members"]
   end
 
   # --- who may edit an organisation -------------------------------------------
@@ -697,15 +779,29 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_includes json["data"].map { |row| row["person_id"] }, people(:club_officer).id
   end
 
-  test "a member is added as pending unless a status is given" do
+  test "a member added without a status is active immediately, not an invitation" do
+    # Adding somebody to your own roster is a record-keeping act, not a request.
+    # It used to default to `pending` on the principle that "an invitation is not a
+    # grant" — but nothing could accept an invitation (no endpoint, no inbox, and no
+    # channel at all for an accountless person), so the officer had to make a second
+    # call to clear a state only they could move.
     sign_in_as(users(:six))
 
     post_membership(@club, people(:national_official))
 
     assert_response :created
-    # Defaulting to pending, not active: an invitation is not a grant.
+    assert_equal "active", json["status"]
+    # Effective at once: no second call, and the person is a member now.
+    assert_includes @club.reload.members.map(&:id), people(:national_official).id
+  end
+
+  test "pending remains available as an explicit choice meaning not yet active" do
+    sign_in_as(users(:six))
+
+    post_membership(@club, people(:national_official), status: "pending")
+
+    assert_response :created
     assert_equal "pending", json["status"]
-    assert_equal "member", json["role"]
   end
 
   test "ending a membership keeps the record and stamps left_at" do

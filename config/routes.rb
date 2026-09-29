@@ -97,7 +97,22 @@ Rails.application.routes.draw do
 
       # Identity search used by the "create player/coach" flow before a new
       # Person is created (possible-duplicate lookup). Staff-only.
-      resources :people, only: [ :index ]
+      # People are the identity behind every profile, and are managed here rather
+      # than derived from players and coaches: a club records a committee member who
+      # has no profile at all, so a roster cannot be the only way in.
+      #
+      # `search` keeps the original bare-array typeahead contract that the invite
+      # form and the create-player flow already call; `index` is the paginated
+      # management list the People screen uses. Splitting them avoids changing a
+      # response shape two other screens depend on.
+      resources :people, only: %i[index show create update destroy] do
+        collection do
+          get :search
+        end
+        # Admin-only: attaching a player or coach profile to somebody who already
+        # exists is a broader act than creating a new player.
+        post :promote, on: :member
+      end
       resources :players, only: %i[index show create update]
       resources :coaches, only: %i[index show create update]
       # A coach's assessment of a player. There is deliberately no `destroy`:

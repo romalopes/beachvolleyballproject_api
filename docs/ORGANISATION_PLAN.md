@@ -100,8 +100,21 @@ choose between them.
 
 `pending` → `active` → `suspended` → `ended`, plus `pending → ended`.
 
-A **new** membership defaults to `pending`: adding somebody to a roster is an
-invitation, and an invitation is not a grant.
+**A new membership defaults to `active`.** It used to default to `pending`, on the
+principle that "adding somebody to a roster is an invitation, and an invitation is
+not a grant". That principle was sound and the system could not honour it: there is
+no acceptance endpoint, no inbox, and no channel at all by which an accountless
+person could respond. So `pending` was an inert state only an officer could clear,
+requiring a second call, and a pending row could sit between a club and being
+deletable.
+
+Recording somebody on your own roster is a record-keeping act, not a request, so it
+now takes effect immediately. `pending` survives only as an explicit choice meaning
+*recorded, not yet active* — somebody put on a roster ahead of time.
+
+If real invitations are wanted later that needs an acceptance flow, a delivery
+channel, and a product decision about accountless people. It should be added as a new
+verb, not by reviving the old default.
 
 
 ## 6. Authorization

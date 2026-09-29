@@ -15,7 +15,7 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
 
   test "index lists canonical people with account status and profile ids" do
     sign_in_as(@admin)
-    get api_v1_people_path
+    get search_api_v1_people_path
 
     assert_response :success
     body = JSON.parse(response.body)
@@ -33,7 +33,7 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
 
   test "index excludes merged people" do
     sign_in_as(@admin)
-    get api_v1_people_path
+    get search_api_v1_people_path
 
     ids = JSON.parse(response.body).map { |person| person["id"] }
     assert_not_includes ids, people(:merged).id
@@ -41,7 +41,7 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
 
   test "index orders people by last name then first name" do
     sign_in_as(@admin)
-    get api_v1_people_path
+    get search_api_v1_people_path
 
     keys = JSON.parse(response.body).map { |p| [ p["last_name"].to_s, p["first_name"].to_s, p["id"] ] }
     assert_equal keys.sort, keys
@@ -49,20 +49,20 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
 
   test "index searches by name or email" do
     sign_in_as(@admin)
-    get api_v1_people_path, params: { q: "Pedro" }
+    get search_api_v1_people_path, params: { q: "Pedro" }
 
     assert_response :success
     names = JSON.parse(response.body).map { |person| person["full_name"] }
     assert_equal [ "Pedro Santos" ], names
 
-    get api_v1_people_path, params: { q: "one@example.com" }
+    get search_api_v1_people_path, params: { q: "one@example.com" }
     emails = JSON.parse(response.body).map { |person| person["email"] }
     assert_includes emails, "one@example.com"
   end
 
   test "index filters by exact email" do
     sign_in_as(@admin)
-    get api_v1_people_path, params: { email: "ONE@example.com" }
+    get search_api_v1_people_path, params: { email: "ONE@example.com" }
 
     assert_response :success
     body = JSON.parse(response.body)
@@ -72,7 +72,7 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
   test "index finds a person by a previous name" do
     sign_in_as(@admin)
 
-    get api_v1_people_path, params: { q: "Johnny" }
+    get search_api_v1_people_path, params: { q: "Johnny" }
 
     assert_response :success
     ids = JSON.parse(response.body).map { |person| person["id"] }
@@ -82,7 +82,7 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
   test "index returns the alternate names with each person" do
     sign_in_as(@admin)
 
-    get api_v1_people_path, params: { q: "one@example.com" }
+    get search_api_v1_people_path, params: { q: "one@example.com" }
 
     body = JSON.parse(response.body)
     assert_equal %w[Johnny\ Smith João\ Smith].sort, body.first["aliases"].sort
@@ -94,7 +94,7 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
       Person.create!(first_name: "Person#{index}", last_name: "Zzz", creation_source: "system")
     end
 
-    get api_v1_people_path
+    get search_api_v1_people_path
 
     assert_response :success
     assert_equal Api::V1::PeopleController::LIMIT, JSON.parse(response.body).length
@@ -103,13 +103,225 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
   test "index requires a content creator" do
     [ @public_user, @curator ].each do |viewer|
       sign_in_as(viewer)
-      get api_v1_people_path
+      get search_api_v1_people_path
       assert_response :forbidden
     end
   end
 
   test "index requires authentication" do
-    get api_v1_people_path
+    get search_api_v1_people_path
     assert_response :unauthorized
+  end
+
+  def json
+    JSON.parse(response.body)
+  end
+
+  def post_json(path, payload)
+    post path, params: payload.to_json, headers: { "Content-Type" => "application/json" }
+  end
+
+  def patch_json(path, payload)
+    patch path, params: payload.to_json, headers: { "Content-Type" => "application/json" }
+  end
+
+  # --- the paginated management list -----------------------------------------
+
+  test "the management list returns the pagination envelope" do
+    sign_in_as(@trainer)
+
+    get api_v1_people_path
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["data"].is_a?(Array)
+    assert_equal 20, body["meta"]["per_page"]
+    assert_operator body["meta"]["total"], :>, 0
+  end
+
+  test "the management list narrows with the same search as the typeahead" do
+    sign_in_as(@trainer)
+
+    get api_v1_people_path, params: { q: "Pedro" }
+
+    assert_response :success
+    names = JSON.parse(response.body)["data"].map { |p| p["full_name"] }
+    assert names.any? { |n| n.include?("Pedro") }
+  end
+
+  test "the management list excludes merged people" do
+    sign_in_as(@trainer)
+
+    get api_v1_people_path, params: { per_page: 100 }
+
+    ids = JSON.parse(response.body)["data"].map { |p| p["id"] }
+    assert_not_includes ids, people(:merged).id
+  end
+
+  # --- create / update --------------------------------------------------------
+
+  test "a coach may record a person, and the provenance is the server's" do
+    sign_in_as(@trainer)
+
+    post_json api_v1_people_path,
+              person: { first_name: "Rosa", last_name: "New", email: "rosa@example.com" }
+
+    assert_response :created
+    person = Person.find_by(email: "rosa@example.com")
+    assert_equal "coach_created", person.creation_source
+    assert_equal @trainer, person.created_by
+  end
+
+  test "a caller cannot forge the provenance of a new person" do
+    sign_in_as(@trainer)
+
+    post_json api_v1_people_path, person: { first_name: "Forged", creation_source: "signup" }
+
+    assert_response :created
+    assert_equal "coach_created", Person.find_by(first_name: "Forged").creation_source
+  end
+
+  test "create refuses a person with no name" do
+    sign_in_as(@trainer)
+
+    post_json api_v1_people_path, person: { first_name: "" }
+
+    assert_response :unprocessable_entity
+  end
+
+  test "a coach may correct a person's details" do
+    sign_in_as(@trainer)
+
+    patch_json "/api/v1/people/#{people(:one).id}",
+               person: { last_name: "Renamed", phone: "0400000000" }
+
+    assert_response :success
+    assert_equal "Renamed", people(:one).reload.last_name
+  end
+
+  test "update does not let a caller rewrite provenance" do
+    sign_in_as(@trainer)
+    before_source = people(:one).creation_source
+
+    patch_json "/api/v1/people/#{people(:one).id}", person: { creation_source: "signup" }
+
+    assert_response :success
+    assert_equal before_source, people(:one).reload.creation_source
+  end
+
+  test "show returns 404 for an unknown person" do
+    sign_in_as(@trainer)
+
+    get "/api/v1/people/0"
+
+    assert_response :not_found
+  end
+
+  # --- delete: admin only ----------------------------------------------------
+
+  test "a coach may not delete a person" do
+    sign_in_as(@trainer)
+
+    delete "/api/v1/people/#{people(:one).id}"
+
+    assert_response :forbidden
+    assert Person.exists?(people(:one).id)
+  end
+
+  test "a curator may not delete a person, being oversight but not administration" do
+    sign_in_as(@curator)
+
+    delete "/api/v1/people/#{people(:one).id}"
+
+    assert_response :forbidden
+  end
+
+  test "an admin may delete a person" do
+    sign_in_as(@admin)
+    person = Person.create!(first_name: "Mistake", last_name: "Record",
+                            creation_source: "system")
+
+    delete "/api/v1/people/#{person.id}"
+
+    assert_response :success
+    assert_not Person.exists?(person.id)
+  end
+
+  test "a person with an account cannot be deleted, so the account is not orphaned" do
+    sign_in_as(@admin)
+    # `people(:five)` does not exist: the person behind an account is `people(:one)`.
+    person = people(:one)
+    assert person.account, "the fixture must have an account for this test to mean anything"
+
+    delete "/api/v1/people/#{person.id}"
+
+    # `dependent: :restrict_with_error` on the account: a refusal, not a silently
+    # detached login.
+    assert_response :unprocessable_entity
+    assert Person.exists?(person.id)
+  end
+
+  # --- promotion: admin only -------------------------------------------------
+
+  test "an admin may turn a person into a player" do
+    sign_in_as(@admin)
+    person = Person.create!(first_name: "Wannabe", last_name: "Player",
+                            creation_source: "system")
+    assert_nil person.player_profile
+
+    post "/api/v1/people/#{person.id}/promote", params: { promotion: { role: "player" } }
+
+    assert_response :created
+    assert person.reload.player_profile
+    assert_equal "player", json["profile_kind"]
+  end
+
+  test "an admin may turn a person into a coach" do
+    sign_in_as(@admin)
+    person = Person.create!(first_name: "Wannabe", last_name: "Coach",
+                            creation_source: "system")
+
+    post "/api/v1/people/#{person.id}/promote", params: { promotion: { role: "coach" } }
+
+    assert_response :created
+    assert person.reload.coach_profile
+  end
+
+  test "promotion is admin-only, because it is not the same as creating a player" do
+    # A coach may create a brand-new player every day. Attaching a profile to an
+    # identity that may already be on a roster, with assessments attributed to it,
+    # is a different and broader act.
+    sign_in_as(@trainer)
+    person = Person.create!(first_name: "Wannabe", last_name: "Player",
+                            creation_source: "system")
+
+    post "/api/v1/people/#{person.id}/promote", params: { promotion: { role: "player" } }
+
+    assert_response :forbidden
+    assert_nil person.reload.player_profile
+  end
+
+  test "promoting somebody who is already a player is a conflict" do
+    sign_in_as(@admin)
+    person = people(:one)
+    existing = person.player_profile
+    assert existing
+
+    post "/api/v1/people/#{person.id}/promote", params: { promotion: { role: "player" } }
+
+    assert_response :conflict
+    # One person may be both a player and a coach, but never two players.
+    assert_equal existing.id, person.reload.player_profile.id
+  end
+
+  test "an unknown promotion role is refused" do
+    sign_in_as(@admin)
+    person = Person.create!(first_name: "Wannabe", last_name: "Player",
+                            creation_source: "system")
+
+    post "/api/v1/people/#{person.id}/promote", params: { promotion: { role: "admin" } }
+
+    assert_response :unprocessable_entity
+    assert_nil person.reload.player_profile
   end
 end

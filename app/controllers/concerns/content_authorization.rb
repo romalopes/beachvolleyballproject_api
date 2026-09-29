@@ -158,6 +158,16 @@ module ContentAuthorization
     false
   end
 
+  # Site administration, for the few actions that are neither content creation nor
+  # delegated to a club's own officers: deleting a person, and promoting somebody to
+  # a player or a coach. Curators are oversight, not administration, and are refused.
+  def require_admin!
+    return true if Current.user&.admin?
+
+    render json: { error: "Only an admin can do this" }, status: :forbidden
+    false
+  end
+
   # Hard delete of a published record: the safety net for a mistaken publication,
   # so it is admin-only and deliberately narrower than every other rule here.
   def authorize_admin_delete!

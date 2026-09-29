@@ -245,6 +245,16 @@ class Organisation < ApplicationRecord
     editable_ids.include?(id)
   end
 
+  # Roster authority: a site admin, or an active owner/administrator of *this*
+  # organisation. Deliberately narrower than `editable_by?`, which additionally
+  # admits the creator and the curator — neither of whom runs anybody's roster.
+  def manage_members_flag(manage_members_ids, manage_members_all)
+    return true if manage_members_all
+    return manageable_by?(Current&.user&.person) if manage_members_ids.nil?
+
+    manage_members_ids.include?(id)
+  end
+
   def deletable_with_counts?(child_counts, membership_counts)
     children = child_counts ? child_counts.fetch(id, 0) : child_organisations.count
     members = membership_counts ? membership_counts.fetch(id, 0) : organisation_memberships.count
@@ -338,6 +348,7 @@ class Organisation < ApplicationRecord
   # queries and passes them in. A single `show` passes none and pays the two or
   # three queries, which is the right trade at that size.
   def metadata(host: nil, protocol: nil, editable_ids: nil, editable_all: false,
+               manage_members_ids: nil, manage_members_all: false,
                child_counts: nil, membership_counts: nil)
     {
       id: id,
@@ -364,6 +375,11 @@ class Organisation < ApplicationRecord
       # owner only their own, and the SPA cannot infer that from a role alone.
       can_edit: can_edit_flag(editable_ids, editable_all),
       can_delete: deletable_with_counts?(child_counts, membership_counts),
+      # Roster authority, which is *not* the same as record authority. A curator may
+      # correct any organisation but is not an officer of any of them, and a club's
+      # creator may edit their club while running nobody's roster. Reusing
+      # `can_edit` for this rendered controls the server would refuse.
+      can_manage_members: manage_members_flag(manage_members_ids, manage_members_all),
       created_by_person: created_by_person && {
         id: created_by_person.id,
         name: created_by_person.full_name

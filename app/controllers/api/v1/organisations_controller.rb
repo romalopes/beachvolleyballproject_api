@@ -42,7 +42,19 @@ module Api
                         .of_type(params[:organisation_type])
                         .ordered
                         .includes(:parent_organisation, :created_by_person, :logo_attachment)
-        records, meta = paginate(organisations)
+        # `tree=1` returns the whole hierarchy in one response, unpaginated. A tree
+        # view has no meaningful page: a child whose parent landed on another page
+        # cannot be drawn under it, and a client that walks from the roots silently
+        # drops it. The federation tree is a small, bounded domain (federations down
+        # to clubs), so the unbounded read is the honest trade here. Every other
+        # caller still gets a bounded page.
+        records, meta =
+          if params[:tree].present?
+            all = organisations.to_a
+            [ all, { page: 1, per_page: all.size, total: all.size, total_pages: 1 } ]
+          else
+            paginate(organisations)
+          end
         ids = records.map(&:id)
         # One pass of counts for the whole page. See `serialize` for why this is
         # computed here rather than per row.
@@ -209,7 +221,17 @@ module Api
         # invitation, and an invitation is not a grant.
         membership = existing || @organisation.organisation_memberships.build(person: person)
         membership.role = member_params[:role].presence || (existing ? membership.role : "member")
-        membership.status = member_params[:status].presence || (existing ? "active" : "pending")
+        # Defaulting to `active`. This used to default to `pending` — "adding
+        # somebody to a roster is an invitation" — but nothing could ever accept an
+        # invitation: there is no acceptance endpoint, no inbox, and for an
+        # accountless person no channel to respond through at all. So `pending` was
+        # an inert state an officer had to clear with a second call, and a pending
+        # row could sit between a club and being deletable.
+        #
+        # An officer recording somebody on their own roster is a record-keeping act,
+        # not a request, so it now takes effect. `pending` survives only as an
+        # explicit choice meaning "recorded, not yet active".
+        membership.status = member_params[:status].presence || "active"
 
         if membership.save
           render json: membership.metadata, status: :created
@@ -303,9 +325,30 @@ module Api
           protocol: request_protocol,
           editable_ids: editable_organisation_ids,
           editable_all: editable_all?,
+          manage_members_ids: manageable_organisation_ids,
+          manage_members_all: Current.user.admin?,
           child_counts: child_counts,
           membership_counts: membership_counts
         )
+      end
+
+      # The organisations whose roster the caller may run: a site admin runs every
+      # one, and otherwise it is the active owner/administrator memberships. Resolved
+      # once for the whole page for the same reason `editable_organisation_ids` is —
+      # a per-row check would be one query per organisation in the list.
+      def manageable_organisation_ids
+        return @manageable_organisation_ids if defined?(@manageable_organisation_ids)
+        return @manageable_organisation_ids = Set.new if Current.user.admin?
+
+        person = Current.user&.person
+        # A curator, or a coach with no Person, runs nobody's roster. An empty set
+        # says so without a per-row query.
+        return @manageable_organisation_ids = Set.new if person.nil?
+
+        @manageable_organisation_ids = person.organisation_memberships.active
+                                                      .manageable
+                                                      .pluck(:organisation_id)
+                                                      .to_set
       end
 
       # The scheme the *browser* used, which is not necessarily the one that reached
