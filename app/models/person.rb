@@ -23,6 +23,14 @@ class Person < ApplicationRecord
   has_one :coach_profile, dependent: :destroy
   has_many :person_aliases, dependent: :destroy
 
+  # Squad rosters, keyed on Person (§2.2) — the same reason organisation
+  # memberships are. `restrict_with_error` rather than `:destroy`: a squad row is
+  # a roster an assessment session was run against, and §2.5 requires membership
+  # history to outlive the people in it. A person is removed from squads by ending
+  # the membership, not by deleting them.
+  has_many :group_memberships, dependent: :restrict_with_error
+  has_many :groups, through: :group_memberships
+
   # Memberships are the *only* place a person's place in an organisation is
   # recorded, and they are keyed on Person so an accountless person — a committee
   # member, a parent, a volunteer coach — can belong to a club too.

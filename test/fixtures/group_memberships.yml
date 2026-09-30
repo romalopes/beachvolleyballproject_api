@@ -1,9 +1,26 @@
 # Phase 6 (Assessment Sessions), plan §2: roster rows.
 #
-# The shared squad carries one member so the read-back and the uniqueness rule
-# have something to work from; the private squad is left empty on purpose,
-# because adding a member is what the tests do.
+# Keyed on `person`, not `player_profile` (§2.2). `accountless_player` has no
+# player profile at all, which is the point: under the old key this row could not
+# have existed, and neither could an owner row for anybody who is not a
+# registered player.
+#
+# Both fixture groups carry an explicit owner, because ownership is a membership
+# (§2.6) and a group without one cannot be managed by anybody.
 
 u19_squad_pedro:
   group: u19_squad
-  player_profile: pedro_player
+  person: accountless_player
+
+# users(:six) created u19_squad and owns it.
+u19_squad_owner:
+  group: u19_squad
+  person: two
+  role: owner
+
+# users(:three) created private_squad and owns it. That roster is otherwise left
+# empty on purpose, because adding a member is what the tests do.
+private_squad_owner:
+  group: private_squad
+  person: three_person
+  role: owner

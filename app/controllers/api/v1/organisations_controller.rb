@@ -22,7 +22,7 @@ module Api
       # record was nil would be the worst kind of bug here.
       before_action :set_organisation,
                     only: %i[show update archive restore logo destroy
-                             members create_member update_member end_member]
+                             members create_member update_member end_member join]
       # Creating a node and moving one are claims made *to other clubs* about the
       # tree, so they stay admin-only.
       before_action :require_organisation_admin!, only: %i[create]
@@ -42,6 +42,19 @@ module Api
                         .of_type(params[:organisation_type])
                         .ordered
                         .includes(:parent_organisation, :created_by_person, :logo_attachment)
+        # `mine=1` narrows to the organisations the caller is an *active* member
+        # of. It exists because the group form needs the choices a person can
+        # actually make: offering every organisation would list ones the server
+        # would refuse on submit. Active only — an ended membership does not let
+        # you start a new group for a club you have left. A caller with no Person
+        # is a non-member rather than an error, so they simply get none.
+        if params[:mine].present?
+          mine_ids = OrganisationMembership
+                     .where(person_id: Current.user&.person&.id, status: "active")
+                     .select(:organisation_id)
+          organisations = organisations.where(id: mine_ids)
+        end
+
         # `tree=1` returns the whole hierarchy in one response, unpaginated. A tree
         # view has no meaningful page: a child whose parent landed on another page
         # cannot be drawn under it, and a client that walks from the roots silently
@@ -75,6 +88,59 @@ module Api
 
       def show
         render json: serialize(@organisation)
+      end
+
+      # You add yourself. Distinct from `create_member`, which an officer does to
+      # *somebody else* and which is gated on `can_manage_members`: joining is
+      # self-service, so it deliberately sits outside that before_action rather
+      # than widening it.
+      #
+      # Role is fixed at `member` and cannot be supplied — self-granting `owner` or
+      # `administrator` is precisely the escalation this must not allow. An admin
+      # still grants roles afterwards through the roster.
+      def join
+        person = Current.user&.person
+        # A user with no Person has nothing to join *as*. Returned as 422 rather
+        # than 404: the request was fine, this particular account is incomplete.
+        if person.nil?
+          return render json: {
+            errors: [ "Your account has no person record yet, so it cannot join an organisation." ]
+          }, status: :unprocessable_entity
+        end
+
+        if @organisation.archived?
+          return render json: {
+            errors: [ "This organisation is archived and is not accepting members." ]
+          }, status: :unprocessable_entity
+        end
+
+        existing = @organisation.organisation_memberships.find_by(person: person)
+
+        # Already a member: 409, because the request was well formed and the state
+        # is what conflicts. A `pending` row is *recorded but not yet active*, so it
+        # counts as already having a seat rather than as a reason to refuse.
+        if existing && !existing.ended?
+          return render json: {
+            error: "You are already a member of this organisation.",
+            membership: existing.metadata
+          }, status: :conflict
+        end
+
+        # Re-joining after an ending reactivates the same row rather than adding a
+        # second one, so the earlier stint's history stays on the record — the same
+        # rule organisation memberships already follow.
+        membership = existing || @organisation.organisation_memberships.build(person: person)
+        membership.role = "member"
+        membership.status = "active"
+        membership.joined_at ||= Time.current
+        membership.left_at = nil
+
+        if membership.save
+          render json: { membership: membership.metadata }, status: :created
+        else
+          render json: { errors: membership.errors.full_messages },
+                 status: :unprocessable_entity
+        end
       end
 
       def create

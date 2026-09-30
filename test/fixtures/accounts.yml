@@ -7,3 +7,10 @@ one:
 two:
   user: six
   person: two
+
+# users(:three) created the `private_squad` fixture and now owns it through this
+# account. Group ownership is a Person membership, so a user without a Person
+# cannot be an owner at all.
+three:
+  user: three
+  person: three_person

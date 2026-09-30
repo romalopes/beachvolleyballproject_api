@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_051000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -120,7 +120,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
     t.index ["assessment_id"], name: "index_assessment_category_scores_on_assessment_id"
     t.index ["criterion_id"], name: "index_assessment_category_scores_on_criterion_id"
     t.check_constraint "(score IS NULL) = (reported_value IS NULL)", name: "assessment_category_scores_score_pair"
-    t.check_constraint "scale::text = ANY (ARRAY['one_to_five'::character varying::text, 'one_to_ten'::character varying::text, 'one_to_hundred'::character varying::text])", name: "assessment_category_scores_scale"
+    t.check_constraint "scale::text = ANY (ARRAY['one_to_five'::character varying, 'one_to_ten'::character varying, 'one_to_hundred'::character varying]::text[])", name: "assessment_category_scores_scale"
     t.check_constraint "score IS NULL OR score >= 0 AND score <= 100", name: "assessment_category_scores_score_range"
   end
 
@@ -134,7 +134,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
     t.index ["created_by_id"], name: "index_assessment_definitions_on_created_by_id"
     t.index ["name"], name: "index_assessment_definitions_on_name"
     t.index ["status"], name: "index_assessment_definitions_on_status"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'active'::character varying::text, 'archived'::character varying::text])", name: "assessment_definitions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'active'::character varying, 'archived'::character varying]::text[])", name: "assessment_definitions_status"
   end
 
   create_table "assessment_session_participants", force: :cascade do |t|
@@ -147,7 +147,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
     t.index ["assessment_session_id", "player_profile_id"], name: "index_session_participants_on_session_and_player", unique: true
     t.index ["assessment_session_id"], name: "index_assessment_session_participants_on_assessment_session_id"
     t.index ["player_profile_id"], name: "index_assessment_session_participants_on_player_profile_id"
-    t.check_constraint "inclusion::text = ANY (ARRAY['included'::character varying::text, 'excluded'::character varying::text])", name: "assessment_session_participants_inclusion"
+    t.check_constraint "inclusion::text = ANY (ARRAY['included'::character varying, 'excluded'::character varying]::text[])", name: "assessment_session_participants_inclusion"
   end
 
   create_table "assessment_sessions", force: :cascade do |t|
@@ -169,7 +169,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
     t.index ["scheduled_on"], name: "index_assessment_sessions_on_scheduled_on"
     t.index ["status"], name: "index_assessment_sessions_on_status"
     t.check_constraint "status::text <> 'published'::text OR published_at IS NOT NULL", name: "assessment_sessions_published_requires_timestamp"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'published'::character varying::text, 'withdrawn'::character varying::text])", name: "assessment_sessions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying, 'withdrawn'::character varying]::text[])", name: "assessment_sessions_status"
   end
 
   create_table "assessments", force: :cascade do |t|
@@ -202,7 +202,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
     t.check_constraint "assessment_definition_id IS NULL OR category_id IS NULL AND custom_category IS NULL", name: "assessment_definition_xor_rubric"
     t.check_constraint "score IS NULL OR score >= 0 AND score <= 100", name: "assessments_score_range"
     t.check_constraint "status::text = 'draft'::text OR score IS NOT NULL AND (assessment_definition_id IS NOT NULL OR reported_value IS NOT NULL)", name: "assessments_published_requires_score"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'active'::character varying::text, 'withdrawn'::character varying::text])", name: "assessments_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'active'::character varying, 'withdrawn'::character varying]::text[])", name: "assessments_status"
   end
 
   create_table "categories", force: :cascade do |t|
@@ -222,7 +222,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
     t.index ["created_by_id", "name"], name: "index_category_customs_on_creator_and_name", unique: true
     t.index ["created_by_id"], name: "index_category_customs_on_created_by_id"
     t.index ["visibility"], name: "index_category_customs_on_visibility"
-    t.check_constraint "visibility::text = ANY (ARRAY['shared'::character varying::text, 'private'::character varying::text])", name: "category_customs_visibility"
+    t.check_constraint "visibility::text = ANY (ARRAY['shared'::character varying, 'private'::character varying]::text[])", name: "category_customs_visibility"
   end
 
   create_table "coach_profiles", force: :cascade do |t|
@@ -286,11 +286,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
   create_table "group_memberships", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "group_id", null: false
-    t.bigint "player_profile_id", null: false
+    t.datetime "joined_at"
+    t.datetime "left_at"
+    t.bigint "person_id", null: false
+    t.string "role", default: "member", null: false
+    t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
-    t.index ["group_id", "player_profile_id"], name: "index_group_memberships_on_group_and_player", unique: true
+    t.index ["group_id", "person_id"], name: "index_group_memberships_on_group_and_person", unique: true
     t.index ["group_id"], name: "index_group_memberships_on_group_id"
-    t.index ["player_profile_id"], name: "index_group_memberships_on_player_profile_id"
+    t.index ["group_id"], name: "index_group_memberships_single_active_owner", unique: true, where: "(((role)::text = 'owner'::text) AND ((status)::text = 'active'::text))"
+    t.index ["person_id"], name: "index_group_memberships_on_person_id"
+    t.check_constraint "left_at IS NULL OR status::text = 'ended'::text AND left_at IS NOT NULL", name: "group_memberships_left_at_when_ended"
+    t.check_constraint "role::text = ANY (ARRAY['owner'::text, 'coach'::text, 'member'::text])", name: "group_memberships_role"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'ended'::text])", name: "group_memberships_status"
   end
 
   create_table "groups", force: :cascade do |t|
@@ -298,6 +306,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
     t.bigint "created_by_id"
     t.text "description"
     t.string "name", null: false
+    t.bigint "organisation_id"
     t.string "slug", null: false
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
@@ -305,11 +314,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
     t.index "lower((name)::text)", name: "index_groups_on_lower_name", unique: true
     t.index ["created_by_id"], name: "index_groups_on_created_by_id"
     t.index ["name"], name: "index_groups_on_name"
+    t.index ["organisation_id"], name: "index_groups_on_organisation_id"
     t.index ["slug"], name: "index_groups_on_slug", unique: true
     t.index ["status"], name: "index_groups_on_status"
     t.index ["visibility"], name: "index_groups_on_visibility"
-    t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'archived'::character varying::text])", name: "groups_status"
-    t.check_constraint "visibility::text = ANY (ARRAY['shared'::character varying::text, 'private'::character varying::text])", name: "groups_visibility"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'archived'::character varying]::text[])", name: "groups_status"
+    t.check_constraint "visibility::text = ANY (ARRAY['shared'::character varying, 'private'::character varying]::text[])", name: "groups_visibility"
   end
 
   create_table "log_objects", force: :cascade do |t|
@@ -567,7 +577,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
     t.index ["status"], name: "index_training_sessions_on_status"
     t.index ["visibility"], name: "index_training_sessions_on_visibility"
     t.check_constraint "ends_at > starts_at", name: "training_sessions_ends_at_after_starts_at"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'scheduled'::character varying::text, 'cancelled'::character varying::text, 'completed'::character varying::text])", name: "training_sessions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'scheduled'::character varying, 'cancelled'::character varying, 'completed'::character varying]::text[])", name: "training_sessions_status"
   end
 
   create_table "user_roles", force: :cascade do |t|
@@ -699,7 +709,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_070001) do
   add_foreign_key "drill_skills", "skills"
   add_foreign_key "drills", "users", column: "created_by_id"
   add_foreign_key "group_memberships", "groups"
-  add_foreign_key "group_memberships", "player_profiles"
+  add_foreign_key "group_memberships", "people"
+  add_foreign_key "groups", "organisations"
   add_foreign_key "groups", "users", column: "created_by_id"
   add_foreign_key "log_objects", "logs"
   add_foreign_key "organisation_memberships", "organisations"

@@ -32,11 +32,13 @@ class PlayerProfile < ApplicationRecord
 
   has_many :training_session_participants, dependent: :destroy, inverse_of: :player_profile
 
-  # Group membership is a roster entry, not evidence: taking a player out of a
-  # squad is the ordinary way to keep the roster current, so these join rows go
-  # with the profile rather than pinning it the way assessments do.
-  has_many :group_memberships, dependent: :destroy, inverse_of: :player_profile
-  has_many :groups, through: :group_memberships
+  # Group membership is a roster entry, not evidence, and it is keyed on Person
+  # (plan §2.2) rather than on this profile — so a squad can hold somebody who
+  # never registered as a player. The profile reaches its groups through the
+  # Person it belongs to; there is no longer a join row owned by the profile, and
+  # so nothing here to cascade. `GroupMembership` belongs to the Person, which is
+  # what gets destroyed with it.
+  has_many :groups, through: :person
 
   # Assessments are the player's coaching history, so a profile may never be
   # destroyed while they exist: the row is the evidence a coach recorded, and

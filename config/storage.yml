@@ -25,6 +25,16 @@ supabase:
   endpoint: "https://<%= ENV['SUPABASE_PROJECT_REF'] %>.supabase.co/storage/v1/s3"
   force_path_style: true # Required for Supabase
 
+cloudflare_r2:
+  service: S3
+  access_key_id: <%= ENV["CLOUD_FLARE_R2_ACCESS_KEY_ID"] %>
+  secret_access_key: <%= ENV["CLOUD_FLARE_R2_ACCESS_KEY"] %>
+  region: auto
+  bucket: <%= ENV["CLOUD_FLARE_R2_BUCKET"] %>
+  # Custom endpoint format for Cloudflare R2:
+  endpoint: "https://<%= ENV['CLOUD_FLARE_R2_REF'] %>.r2.cloudflarestorage.com"
+  # Force path style is required for R2 & Backblaze compatibility
+  force_path_style: true
 
 # Use bin/rails credentials:edit to set the AWS secrets (as aws:access_key_id|secret_access_key)
 # amazon:

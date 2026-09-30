@@ -37,11 +37,20 @@ class AssessmentSessionCreator
   # the coach still removes anyone who did not turn up (membership is not
   # attendance). Players already on the roster are skipped rather than raising,
   # so an overlapping group cannot block creation.
+  #
+  # Roster membership is a Person and the roster rows are still PlayerProfile-keyed,
+  # so a member with no player profile has nothing to seed. They are skipped rather
+  # than created on the fly: a Participant row is a coach's record of a person
+  # assessed, and inventing a player profile to satisfy a roster would fabricate
+  # exactly that. Only *active* memberships seed — somebody who left the squad is
+  # not somebody being assessed.
   def seed_roster_from_group(session_record)
     return if session_record.group.nil?
 
     existing = session_record.participants.map(&:player_profile_id).to_set
-    session_record.group.player_profiles.each do |profile|
+    session_record.group.group_memberships.active.includes(person: :player_profile).each do |membership|
+      profile = membership.person&.player_profile
+      next if profile.nil?
       next if existing.include?(profile.id)
 
       session_record.participants.create!(player_profile: profile, inclusion: "included")

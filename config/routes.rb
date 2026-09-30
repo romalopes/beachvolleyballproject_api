@@ -157,6 +157,11 @@ Rails.application.routes.draw do
           # verbs address the same person.
           patch "members/:person_id", action: :update_member, as: :update_member
           delete "members/:person_id", action: :end_member, as: :end_member
+          # Self-service, so it is a separate route rather than another verb on
+          # `members`: `post :members` writes somebody *else's* roster row and is
+          # gated on `can_manage_members`, while `join` writes your own and must
+          # not be.
+          post :join
         end
       end
 
@@ -202,7 +207,9 @@ Rails.application.routes.draw do
       resources :groups, except: %i[new edit] do
         member do
           post :members, to: "groups#add_members"
-          delete "members/:player_profile_id", to: "groups#remove_member"
+          # `:person_id`, not `:player_profile_id`: the roster is keyed on Person
+          # (§2.2), so the path segment names what is being removed from it.
+          delete "members/:person_id", to: "groups#remove_member"
         end
       end
 

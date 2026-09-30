@@ -60,3 +60,26 @@ national_official:
   last_name: Watanabe
   status: active
   creation_source: system
+
+# The Person behind users(:three), who created the `private_squad` fixture.
+# Needed because group ownership is a membership on a Person (§2.6): a user with
+# no Person cannot hold one, and would leave that fixture group unmanageable.
+three_person:
+  first_name: Nadia
+  last_name: Osei
+  email: three@example.com
+  status: active
+  creation_source: signup
+
+# Deliberately has NO player profile and no account. The point of moving group
+# membership onto Person (§2.2) is that a squad can hold a volunteer coach or a
+# parent; under the old `player_profile_id` key this person could not be on a
+# roster at all, so this fixture is what proves the change did anything.
+squad_volunteer:
+  first_name: Rosa
+  last_name: Duarte
+  # Not rosa@example.com: the people controller test creates a person with that
+  # address, and this fixture must not collide with it.
+  email: rosa.volunteer@example.com
+  status: active
+  creation_source: coach_created

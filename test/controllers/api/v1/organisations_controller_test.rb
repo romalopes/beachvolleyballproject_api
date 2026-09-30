@@ -1002,6 +1002,104 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  # --- joining (self-service) ------------------------------------------------
+
+  test "a coach can join an organisation they belong to nothing yet" do
+    # Self-service. Distinct from `members`, which writes *somebody else's* row and
+    # is gated on `can_manage_members` — this writes your own and must not be.
+    # @coach is an owner of Sydney Beach Volleyball Club and of nothing else, so
+    # joining Volleyball Australia is a genuine first-time join.
+    sign_in_as(@coach)
+
+    assert_difference "OrganisationMembership.count", 1 do
+      post join_api_v1_organisation_path(@australia)
+    end
+
+    assert_response :created
+    membership = OrganisationMembership.find_by(
+      organisation: @australia, person: @coach.person
+    )
+    assert_equal "member", membership.role
+    assert_equal "active", membership.status
+    assert_not_nil membership.joined_at
+    assert_nil membership.left_at
+  end
+
+  test "joining is never a way to grant yourself a management role" do
+    sign_in_as(@coach)
+
+    post_json join_api_v1_organisation_path(@australia),
+              role: "owner", status: "active"
+
+    assert_response :created
+    membership = OrganisationMembership.find_by(
+      organisation: @australia, person: @coach.person
+    )
+    assert_equal "member", membership.role
+    assert_equal "active", membership.status
+  end
+
+  test "joining an organisation twice conflicts rather than duplicating" do
+    sign_in_as(@coach)
+    post join_api_v1_organisation_path(@australia)
+    assert_response :created
+
+    assert_no_difference "OrganisationMembership.count" do
+      post join_api_v1_organisation_path(@australia)
+    end
+
+    assert_response :conflict
+    assert_match(/already a member/, json["error"])
+  end
+
+  test "rejoining after leaving reactivates the same row rather than adding one" do
+    # §2.5: the earlier stint stays on the record, so the row count must not move.
+    sign_in_as(@coach)
+    left = @australia.organisation_memberships.create!(
+      person: @coach.person, role: "member", status: "ended",
+      joined_at: 1.year.ago, left_at: 1.month.ago
+    )
+
+    assert_no_difference "OrganisationMembership.count" do
+      post join_api_v1_organisation_path(@australia)
+    end
+
+    assert_response :created
+    reloaded = OrganisationMembership.find(left.id)
+    assert_equal "active", reloaded.status
+    assert_nil reloaded.left_at
+    assert_not_nil reloaded.joined_at
+  end
+
+  test "an account with no person cannot join, because there is nothing to join as" do
+    # users(:four) is a curator — a training manager, so it passes the read gate —
+    # but has no account, and therefore no Person.
+    curator = users(:four)
+    assert_nil curator.person
+
+    sign_in_as(curator)
+    post join_api_v1_organisation_path(@australia)
+
+    assert_response :unprocessable_entity
+    assert_match(/no person record/, json["errors"].first)
+  end
+
+  test "an archived organisation does not accept new members" do
+    sign_in_as(@coach)
+    retired = organisations(:retired_association)
+
+    post join_api_v1_organisation_path(retired)
+
+    assert_response :unprocessable_entity
+    assert_match(/archived/, json["errors"].first)
+  end
+
+  test "a guest may not join an organisation" do
+    post join_api_v1_organisation_path(@australia)
+
+    assert_response :unauthorized
+  end
+
   test "a guest may not create one" do
     post_json "/api/v1/organisations", organisation: { name: "Guest Club" }
     assert_response :unauthorized

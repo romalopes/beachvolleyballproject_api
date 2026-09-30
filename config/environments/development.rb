@@ -32,7 +32,9 @@ Rails.application.configure do
   # Supabase is kept for production, but pointing development at it meant every
   # attachment failed with an AWS signature error unless the SUPABASE_S3_* env
   # vars happened to be set — which defeats the point of a local environment.
-  config.active_storage.service = :local
+  # config.active_storage.service = :local
+# config.active_storage.service = :supabase
+config.active_storage.service = :cloudflare_r2
 
   config.logger = ActiveSupport::Logger.new("log/development.log")
 # OR

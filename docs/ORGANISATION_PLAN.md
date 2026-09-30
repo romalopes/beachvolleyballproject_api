@@ -1,6 +1,7 @@
 # Organisation, Group and Membership Plan
 
-> **Status: Phases 1–3 implemented; Phase 4 (GroupMembership) not started.**
+> **Status: Phases 1–3 implemented; Phase 4 data and API layers implemented, SPA
+> and the development migration outstanding.**
 >
 > This file is the ground truth for the §-numbered design. It exists because the
 > repository already contains four *unrelated* things called "Phase 4" — the
@@ -191,22 +192,49 @@ Refusals are `409`, not `422` — the request was well formed, the state is what
 conflicts. `child_organisations` being `restrict_with_error` remains the
 race-condition backstop behind the explicit check.
 
-## 10. Phase 4 — GroupMembership (not started)
+## 10. Phase 4 — GroupMembership (data + API done; SPA pending)
 
 **Decided: a Group is "a group of people who share an Organisation."** The *members*
 share an organisation; `Group` gets **no** `organisation_id`.
 
-Current state, and what Phase 4 must fix:
+What Phase 4 had to fix, and what turned out to be missing from this list originally:
 
-- `group_memberships.player_profile_id` must become `person_id`, so coaches and
-  accountless people can belong to a group (§2.2). This needs a backfill.
-- `Group#owner?` is `created_by_id`, a second competing source of ownership against
-  §2.6. It should move to a membership role, as Organisation did.
-- `groups` has no organisation link at all yet.
+- `group_memberships.player_profile_id` became `person_id` (§2.2). The backfill is a
+  lossless 1:1 join because `player_profiles.person_id` is `NOT NULL` and uniquely
+  indexed — one profile is exactly one person, so the new unique
+  `(group_id, person_id)` index is satisfied without collision handling.
+- **`group_memberships` had no `role` and no `status` column at all.** This is why
+  the work was larger than the three bullets used to suggest: §2.6's "ownership has
+  exactly one source of truth" had nowhere to live, and §2.5's "memberships are
+  ended, never destroyed" was not *representable* — it only held by accident. Both
+  now mirror `organisation_memberships`, including the single-active-owner partial
+  unique index and the `left_at`-only-when-`ended` check.
+- `Group#owner?` read `created_by_id`, a second competing source of ownership
+  against §2.6. It now reads the active owner membership. `created_by` remains, but
+  as audit only, and visibility still keys off it because "private to its creator"
+  is presentation rather than authority.
+- `groups` still has no organisation link, by the decision above.
 
-**Open:** without an `organisation_id` on `Group`, Phase 5 cannot name *which*
-organisation an assessment session belongs to — it would have to infer it from the
-members, which is ambiguous for a mixed group. Resolve this before Phase 5.
+**The migration order is load-bearing, and the rehearsal proved why.** The
+`person_id` swap has to run *before* the ownership backfill, because the only group
+in the development data was created by somebody who had no player profile at all —
+under a `player_profile_id` key they could not have been given an owner membership,
+so a single "promote the creator's row" backfill would have left that group with no
+owner and nothing able to manage it. Person-keyed membership is what makes the
+second backfill pass (insert an owner row for a creator who is not on the roster)
+possible. Both passes are counted and reported by the migration.
+
+`status` is deliberately narrower than `organisation_memberships`' (no `pending`, no
+`suspended`): a squad roster has no use for them yet, and a check constraint is
+cheap to widen when there is a reason to. The old model comment rejecting an
+invited/confirmed/attended vocabulary still stands — attendance is evidence about
+one session, so it lives on the session, not the roster. Leaving a squad does not.
+
+**Open for Phase 5:** without an `organisation_id` on `Group`, Phase 5 cannot name
+*which* organisation an assessment session belongs to. It has to come from the
+session itself rather than be inferred from the group — the development data's one
+group has members spread across four organisations, so inference is not an option
+even in principle.
 
 ## 11. Phase 5 — Assessment and Training context (not started)
 
