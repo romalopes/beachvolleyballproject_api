@@ -59,9 +59,30 @@ module Api
         @group = Group.new(group_params)
         @group.created_by = Current.user
 
+        # A group belongs to an organisation the caller is actually *in*. Being able
+        # to name an organisation is not membership of it, and this is the one place
+        # where the two are told apart.
+        if @group.organisation_id.present? && !active_member_of?(@group.organisation_id)
+          return render json: {
+            errors: [ "You must be an active member of that organisation to create a group for it." ]
+          }, status: :forbidden
+        end
+
         if @group.save
-          if params[:player_profile_ids].present?
-            assign_player_profile_ids(Array(params[:player_profile_ids]))
+          # The creator owns it, and ownership is a membership now (§2.6). Creating
+          # the group without this row would produce a group nobody can manage —
+          # exactly the state the old `created_by_id` check was papering over.
+          if Current.user&.person
+            @group.group_memberships.create!(
+              person: Current.user.person,
+              role: "owner",
+              status: "active",
+              joined_at: Time.current
+            )
+          end
+
+          if params[:person_ids].present?
+            assign_person_ids(Array(params[:person_ids]))
           end
 
           render json: { group: serialize_detail(@group.reload) }, status: :created
@@ -71,9 +92,38 @@ module Api
       end
 
       def update
+        # Re-pointing the group at an organisation needs the same standing as
+        # choosing it in the first place: the model then checks the roster still
+        # shares it.
+        if params.dig(:group, :organisation_id).present? &&
+           !active_member_of?(params.dig(:group, :organisation_id))
+          return render json: {
+            errors: [ "You must be an active member of that organisation to move this group to it." ]
+          }, status: :forbidden
+        end
+
+        if params.key?(:person_ids)
+          # Checked against the organisation this request *would* leave the group in,
+          # and against the roster it *would* leave — a group being moved and
+          # re-rostered together has to be judged as a whole, or the order of two
+          # writes would decide whether the rule holds.
+          proposed = Array(params[:person_ids]).map(&:to_i)
+          # `sync_person_ids` always retains the active owner, so the owner is part
+          # of what is being proposed.
+          proposed += @group.group_memberships.active.pluck(:person_id)
+          target_organisation = params.dig(:group, :organisation_id).presence ||
+                                @group.organisation_id
+
+          unless @group.shares_organisation?(proposed.uniq, target_organisation)
+            return render json: {
+              errors: [ "The roster must contain only active members of this group's organisation." ]
+            }, status: :unprocessable_entity
+          end
+        end
+
         if @group.update(group_params)
-          if params.key?(:player_profile_ids)
-            sync_player_profile_ids(Array(params[:player_profile_ids]))
+          if params.key?(:person_ids)
+            sync_person_ids(Array(params[:person_ids]))
           end
 
           render json: { group: serialize_detail(@group.reload) }
@@ -93,14 +143,24 @@ module Api
         render json: { message: "Group deleted successfully", id: @group.id }
       end
 
-      # Add one or more players to the group's roster
+      # Add one or more people to the group's roster. People, not players: a squad
+      # may hold a coach or a volunteer who has no player profile (plan §2.2).
       def add_members
-        ids = Array(params[:player_profile_ids] || params[:player_profile_id]).compact.map(&:to_i)
+        ids = Array(params[:person_ids] || params[:person_id]).compact.map(&:to_i)
         if ids.empty?
-          return render json: { errors: [ "No players specified" ] }, status: :unprocessable_entity
+          return render json: { errors: [ "No people specified" ] }, status: :unprocessable_entity
         end
 
-        added = assign_player_profile_ids(ids)
+        # The rule that makes a group "people who share an Organisation" (§10): only
+        # somebody actually in it can be added. 422 rather than 403 — the request
+        # was well formed, the person simply does not belong.
+        unless @group.shares_organisation?(ids)
+          return render json: {
+            errors: [ "That person is not an active member of this group's organisation." ]
+          }, status: :unprocessable_entity
+        end
+
+        added = assign_person_ids(ids)
 
         render json: {
           group: serialize_detail(@group.reload),
@@ -108,20 +168,30 @@ module Api
         }
       end
 
-      # Remove a single player from the group's roster
+      # End a membership rather than removing the row (§2.5). The person stays on
+      # the roster as history, which is what keeps a past assessment explicable.
       def remove_member
-        player_id = params[:player_profile_id].to_i
-        membership = @group.group_memberships.find_by(player_profile_id: player_id)
+        person_id = params[:person_id].to_i
+        membership = @group.group_memberships.active.find_by(person_id: person_id)
 
         unless membership
-          return render json: { errors: [ "Player is not a member of this group" ] }, status: :not_found
+          return render json: { errors: [ "That person is not an active member of this group" ] },
+                        status: :not_found
         end
 
-        membership.destroy!
+        # The one active owner is not walk-away-able: a group with no owner cannot
+        # be managed by anybody, which is the failure §2.6 exists to prevent.
+        if membership.owner?
+          return render json: {
+            errors: [ "The group's owner cannot be removed. Give the group another owner first." ]
+          }, status: :unprocessable_entity
+        end
+
+        membership.end_membership!
 
         render json: {
           group: serialize_detail(@group.reload),
-          removed: player_id
+          removed: person_id
         }
       end
 
@@ -139,9 +209,9 @@ module Api
       end
 
       def set_group
-        @group = Group.includes(:created_by, group_memberships: { player_profile: :person })
+        @group = Group.includes(:created_by, group_memberships: :person)
                       .find_by(id: params[:id]) ||
-                 Group.includes(:created_by, group_memberships: { player_profile: :person })
+                 Group.includes(:created_by, group_memberships: :person)
                       .find_by!(slug: params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Group not found" }, status: :not_found
@@ -162,35 +232,57 @@ module Api
       end
 
       def group_params
-        params.require(:group).permit(:name, :description, :visibility, :status)
+        params.require(:group).permit(:name, :description, :visibility, :status,
+                                      :organisation_id)
       end
 
-      def assign_player_profile_ids(ids)
-        existing = @group.group_memberships.pluck(:player_profile_id).to_set
-        new_ids = ids.uniq.reject { |id| existing.include?(id) }
-        valid_players = PlayerProfile.where(id: new_ids)
+      # Is this caller's Person an active member of that organisation?
+      # `Current.user&.person` rather than the user id: memberships are on Person
+      # (§2.2), so an account with no Person is a non-member rather than an error.
+      def active_member_of?(organisation_id)
+        person_id = Current.user&.person&.id
+        return false if person_id.nil?
 
-        created_count = 0
-        valid_players.each do |player|
-          @group.group_memberships.create!(player_profile: player)
-          created_count += 1
-        end
-        created_count
+        OrganisationMembership.where(
+          organisation_id: organisation_id.to_i,
+          person_id: person_id,
+          status: "active"
+        ).exists?
       end
 
-      def sync_player_profile_ids(ids)
-        target_ids = ids.map(&:to_i).uniq.to_set
-        valid_players = PlayerProfile.where(id: target_ids.to_a)
-        valid_ids = valid_players.pluck(:id).to_set
-
-        # Remove ones not in target
-        @group.group_memberships.where.not(player_profile_id: valid_ids.to_a).destroy_all
-
-        # Add new ones
-        existing = @group.group_memberships.pluck(:player_profile_id).to_set
-        (valid_ids - existing).each do |player_id|
-          @group.group_memberships.create!(player_profile_id: player_id)
+      # Adds people, re-activating an ended membership rather than adding a second
+      # row for the same person: the unique index is on (group_id, person_id) across
+      # all statuses, so a re-join that inserted would collide — and the first
+      # stint's history has to stay on the record anyway (mirrors
+      # organisation_memberships §4.4).
+      def assign_person_ids(ids)
+        added = 0
+        Person.where(id: ids.map(&:to_i).uniq).find_each do |person|
+          membership = @group.group_memberships.find_by(person_id: person.id)
+          if membership.nil?
+            @group.group_memberships.create!(person: person, joined_at: Time.current)
+            added += 1
+          elsif membership.ended?
+            membership.update!(status: "active", left_at: nil)
+            added += 1
+          end
         end
+        added
+      end
+
+      # Ends memberships that are no longer wanted. Never destroys them (§2.5), and
+      # never ends the active owner: "replace the roster" is not a way to hand a
+      # group over, and losing the owner would leave it unmanageable by anyone.
+      def sync_person_ids(ids)
+        target_ids = ids.map(&:to_i).to_set
+        @group.group_memberships.owners.each { |m| target_ids << m.person_id }
+        valid_ids = Person.where(id: target_ids.to_a).pluck(:id).to_set
+
+        @group.group_memberships.active
+              .where.not(person_id: valid_ids.to_a)
+              .find_each { |membership| membership.end_membership! }
+
+        assign_person_ids(valid_ids.to_a)
       end
 
       def serialize_summary(group)
@@ -198,21 +290,29 @@ module Api
       end
 
       def serialize_detail(group)
-        members = group.group_memberships.sort_by(&:id).map do |m|
-          player = m.player_profile
-          person = player&.person
+        members = group.group_memberships.sort_by(&:id).map do |membership|
+          person = membership.person
+          # The player profile is optional now: a squad may hold somebody who never
+          # registered as a player (§2.2), so these three are legitimately nil.
+          player = person&.player_profile
           {
-            id: m.id,
-            player_profile_id: m.player_profile_id,
-            player_name: m.player_name || person&.full_name,
+            id: membership.id,
+            person_id: membership.person_id,
+            name: person&.full_name,
+            player_profile_id: player&.id,
             level: player&.level,
             preferred_position: player&.preferred_position,
             email: person&.email,
-            status: player&.status,
-            joined_at: m.created_at
+            role: membership.role,
+            status: membership.status,
+            joined_at: membership.joined_at,
+            left_at: membership.left_at
           }
         end
 
+        # `players` kept as an alias of `members` for now: it is the same list, and
+        # dropping it in the same change as the key rename would break callers for
+        # no gain. It goes when the SPA is moved over.
         group.metadata.merge(
           members: members,
           players: members

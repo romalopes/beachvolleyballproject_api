@@ -15,6 +15,11 @@ class GroupTest < ActiveSupport::TestCase
     @squad = groups(:u19_squad)
     @pedro = player_profiles(:pedro_player)
     @john = player_profiles(:john_player)
+    # Membership is keyed on Person (§2.2). `@pedro_person` is deliberately the
+    # one with no player profile at all, which is the case the old key could not
+    # express.
+    @pedro_person = people(:accountless_player)
+    @john_person = people(:one)
   end
 
   test "a group names a roster and records who created it" do
@@ -52,38 +57,79 @@ class GroupTest < ActiveSupport::TestCase
     assert_includes group.errors.attribute_names, :visibility
   end
 
-  test "a player joins a group once" do
-    @squad.group_memberships.create!(player_profile: @john)
+  test "a person joins a group once" do
+    @squad.group_memberships.create!(person: @john_person)
 
-    duplicate = @squad.group_memberships.build(player_profile: @john)
+    duplicate = @squad.group_memberships.build(person: @john_person)
 
     assert_not duplicate.valid?
-    assert_includes duplicate.errors.attribute_names, :player_profile_id
+    assert_includes duplicate.errors.attribute_names, :person_id
   end
 
   test "the database refuses a duplicate membership too" do
-    @squad.group_memberships.create!(player_profile: @john)
+    @squad.group_memberships.create!(person: @john_person)
 
-    duplicate = @squad.group_memberships.new(player_profile: @john)
+    duplicate = @squad.group_memberships.new(person: @john_person)
 
     assert_raises(ActiveRecord::RecordNotUnique) { duplicate.save(validate: false) }
   end
 
-  test "the same player may belong to more than one group" do
+  test "the same person may belong to more than one group" do
     other = Group.create!(name: "Second squad #{SecureRandom.hex(3)}", created_by: @owner)
-    other.group_memberships.create!(player_profile: @pedro)
+    other.group_memberships.create!(person: @pedro_person)
 
-    assert_includes @pedro.reload.groups, other
-    assert_includes @pedro.groups, @squad
+    assert_includes @pedro_person.reload.groups, other
+    assert_includes @pedro_person.groups, @squad
+    # Still reachable from the player profile, through its person.
+    assert_includes @pedro.groups, other
+  end
+
+  test "a person with no player profile can be on the roster" do
+    # The whole reason the key moved (§2.2): a squad has to hold a coach, a parent
+    # or a volunteer who never registered as a player.
+    volunteer = people(:squad_volunteer)
+    assert_nil volunteer.player_profile
+
+    membership = @squad.group_memberships.create!(person: volunteer)
+
+    assert_equal volunteer, membership.person
+    assert_includes @squad.reload.people, volunteer
   end
 
   test "the roster is reachable from both ends and counted" do
-    @squad.group_memberships.create!(player_profile: @john)
+    @squad.group_memberships.create!(person: @john_person)
 
-    assert_includes @squad.reload.player_profiles, @pedro
-    assert_includes @squad.player_profiles, @john
-    assert_includes @pedro.groups, @squad
-    assert_equal 2, @squad.player_count
+    assert_includes @squad.reload.people, @pedro_person
+    assert_includes @squad.people, @john_person
+    assert_includes @pedro_person.groups, @squad
+    # Fixture owner + Pedro + John.
+    assert_equal 3, @squad.player_count
+  end
+
+  test "an ended membership is history, and is not counted as a current member" do
+    membership = @squad.group_memberships.find_by(person: @pedro_person)
+
+    membership.end_membership!
+
+    assert_predicate membership, :ended?
+    # Scoped on the membership, not on `people` — that association resolves to
+    # Person, which has no `active` of its own to offer here.
+    assert_not_includes @squad.group_memberships.active.pluck(:person_id),
+                        @pedro_person.id
+    assert_equal 1, @squad.player_count
+    # The row survives, which is what keeps a past assessment explicable (§2.5).
+    assert GroupMembership.exists?(membership.id)
+  end
+
+  test "a person who left can rejoin, and the first stint is kept on the record" do
+    membership = @squad.group_memberships.find_by(person: @pedro_person)
+    membership.end_membership!
+    first_joined_at = membership.joined_at
+
+    membership.update!(status: "active", left_at: nil)
+
+    assert_not_predicate membership.reload, :ended?
+    assert_equal first_joined_at.to_i, membership.joined_at.to_i
   end
 
   test "a private group is visible to its creator and to oversight, not to another coach" do
@@ -103,9 +149,12 @@ class GroupTest < ActiveSupport::TestCase
     payload = @squad.metadata
 
     assert_equal "U19 squad", payload[:name]
-    assert_equal 1, payload[:player_count]
+    # Pedro plus the fixture owner, who is on the roster like anybody else.
+    assert_equal 2, payload[:player_count]
     assert_equal "shared", payload[:visibility]
     assert_equal "Coach Six", payload[:created_by][:name]
+    # Ownership is reported from the membership, so it cannot drift from `owner?`.
+    assert_equal people(:two).full_name, payload[:owner][:name]
   end
 
   test "visible_to_user? allows owner, admin, curator and any coach for shared groups" do
@@ -130,4 +179,44 @@ class GroupTest < ActiveSupport::TestCase
     end
     assert @squad.errors[:base].any?
   end
+
+  # --- the group's organisation ---------------------------------------------
+
+  test "a group is refused when its roster does not share its organisation" do
+    # national_official belongs to Volleyball Australia and to no club, so putting
+    # them on this roster and then naming the club cannot both be allowed.
+    @squad.group_memberships.create!(person: people(:national_official))
+    @squad.organisation = organisations(:sydney_club)
+
+    assert_not @squad.valid?
+    assert_includes @squad.errors.attribute_names, :organisation_id
+    assert_match(/share one organisation/, @squad.errors[:organisation_id].first)
+  end
+
+  test "a group whose roster does share its organisation is accepted" do
+    # people(:two) and people(:accountless_player) are both active in the club.
+    @squad.organisation = organisations(:sydney_club)
+
+    assert @squad.valid?
+  end
+
+  test "an ended member does not hold a group against its organisation forever" do
+    # §2.5 keeps ended rows on the roster as history. Counting them would make the
+    # group permanently unsavable for a fact nobody can change.
+    @squad.organisation = organisations(:sydney_club)
+    outsider = people(:national_official)
+    @squad.group_memberships.create!(person: outsider)
+    @squad.group_memberships.find_by(person: outsider).end_membership!
+
+    assert_predicate @squad, :valid?
+    # Still on the roster as history — the row was never deleted.
+    assert_includes @squad.group_memberships.reload.map(&:person_id), outsider.id
+  end
+
+  test "a group with no organisation imposes no sharing rule at all" do
+    assert_nil @squad.organisation_id
+    assert @squad.shares_organisation?([ people(:national_official).id ])
+    assert @squad.valid?
+  end
+
 end

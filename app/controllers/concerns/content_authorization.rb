@@ -98,6 +98,76 @@ module ContentAuthorization
     false
   end
 
+  # --- organisation authority -------------------------------------------------
+  #
+  # Reading an organisation is open to any training manager, because the tree is
+  # context everyone shares. *Editing* one is delegated: a club's name and logo are
+  # its own to correct, so the club's officers, its current creator, curators and
+  # admins may all change them, rather than the site admin alone.
+  #
+  # Creating and re-parenting stay admin-only. Both assert something *about other
+  # organisations* — a new node's place in the federation tree is a claim made to
+  # every other club — and that is a site-level judgement rather than a club's own.
+  def require_organisation_admin!
+    return true if Current.user&.admin?
+
+    render json: { error: "Only an admin can create or re-parent organisations" },
+           status: :forbidden
+    false
+  end
+
+  # Editing an existing organisation: its own record, as opposed to its position in
+  # the tree. Split from `require_organisation_admin!` for the reason above.
+  #
+  # The creator's grant is time-limited inside `Organisation#editable_by?` — it
+  # lapses when they leave — so a resigned founder cannot keep renaming the club.
+  def require_organisation_editor!
+    return true if Current.user&.admin? || Current.user&.curator?
+    return true if @organisation&.editable_by?(Current.user&.person)
+
+    render json: {
+      error: "Only this organisation's officers, its creator, a curator or an admin can edit it"
+    }, status: :forbidden
+    false
+  end
+
+  # Hard delete. Narrower than every other organisation rule, because it is the one
+  # action that destroys the record rather than changing it.
+  def authorize_organisation_delete!
+    return true if Current.user&.admin?
+
+    render json: { error: "Only an admin can delete an organisation" },
+           status: :forbidden
+    false
+  end
+
+  # Changing who belongs to an organisation: its owner and its administrators, plus
+  # a site admin. Split out from `require_organisation_admin!` because membership is
+  # a *delegated* authority — a club's own officers run their roster — whereas
+  # creating and re-parenting the organisation itself is a site-level claim.
+  #
+  # An ordinary member is refused even though they can already see the roster: being
+  # on it is not authority over it.
+  def require_organisation_membership_manager!
+    return true if Current.user&.admin?
+    return true if @organisation&.manageable_by?(Current.user&.person)
+
+    render json: {
+      error: "Only this organisation's owner or administrators can manage its members"
+    }, status: :forbidden
+    false
+  end
+
+  # Site administration, for the few actions that are neither content creation nor
+  # delegated to a club's own officers: deleting a person, and promoting somebody to
+  # a player or a coach. Curators are oversight, not administration, and are refused.
+  def require_admin!
+    return true if Current.user&.admin?
+
+    render json: { error: "Only an admin can do this" }, status: :forbidden
+    false
+  end
+
   # Hard delete of a published record: the safety net for a mistaken publication,
   # so it is admin-only and deliberately narrower than every other rule here.
   def authorize_admin_delete!

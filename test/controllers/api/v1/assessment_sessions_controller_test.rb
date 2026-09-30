@@ -165,7 +165,7 @@ class Api::V1::AssessmentSessionsControllerTest < ActionDispatch::IntegrationTes
   test "a group seeds the roster when the session is created" do
     sign_in_as(@owner)
     group = groups(:u19_squad)
-    group.group_memberships.create!(player_profile: @john)
+    group.group_memberships.create!(person: people(:one))
 
     assert_difference -> { AssessmentSessionParticipant.count }, 2 do
       assert_difference -> { AssessmentSession.count }, 1 do

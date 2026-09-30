@@ -19,6 +19,9 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
     @private_group = groups(:private_squad)
     @pedro = player_profiles(:pedro_player)
     @john = player_profiles(:john_player)
+    # The roster is keyed on Person (§2.2); these are what the API now takes.
+    @pedro_person = people(:accountless_player)
+    @john_person = people(:one)
   end
 
   # --- Helpers ---
@@ -125,10 +128,17 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
     group_data = json["group"]
     assert_equal @u19.id, group_data["id"]
     assert_equal "U19 squad", group_data["name"]
-    assert_equal 1, group_data["player_count"]
-    assert_equal 1, group_data["members"].length
-    assert_equal @pedro.id, group_data["members"].first["player_profile_id"]
-    assert_equal "Pedro Santos", group_data["members"].first["player_name"]
+    # Pedro plus the fixture owner, who is on the roster like anybody else.
+    assert_equal 2, group_data["player_count"]
+    assert_equal 2, group_data["members"].length
+    # Found by person, not by position: Rails derives fixture ids from a hash of
+    # the label, so the members list is not in fixture-declaration order.
+    pedro = group_data["members"].find { |m| m["person_id"] == @pedro_person.id }
+    assert_not_nil pedro
+    assert_equal "Pedro Santos", pedro["name"]
+    assert_equal "Pedro Santos", pedro["name"]
+    # Ownership travels with the membership, not with `created_by`.
+    assert_equal "Maria Silva", group_data["owner"]["name"]
   end
 
   test "show supports slug lookup" do
@@ -161,11 +171,13 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
         description: "Competitive training group",
         visibility: "shared"
       },
-      player_profile_ids: [ @john.id, @pedro.id ]
+      person_ids: [ @john_person.id, @pedro_person.id ]
     }
 
     assert_difference "Group.count", 1 do
-      assert_difference "GroupMembership.count", 2 do
+      # Two asked for, plus the creator's own owner membership: a group with no
+      # owner cannot be managed by anybody (§2.6).
+      assert_difference "GroupMembership.count", 3 do
         post_json api_v1_groups_path, payload
       end
     end
@@ -174,8 +186,10 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
     group_data = json["group"]
     assert_equal "Morning Elite", group_data["name"]
     assert_equal "morning-elite", group_data["slug"]
-    assert_equal 2, group_data["player_count"]
+    # The two asked for, plus the creator, who is on their own roster as owner.
+    assert_equal 3, group_data["player_count"]
     assert_equal @owner.id, group_data["created_by"]["id"]
+    assert_equal @owner.person.id, group_data["owner"]["id"]
   end
 
   test "create validates unique name" do
@@ -193,14 +207,19 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
 
     patch_json api_v1_group_path(@u19), {
       group: { name: "U19 Premier Squad", description: "Updated description" },
-      player_profile_ids: [ @john.id ]
+      person_ids: [ @john_person.id ]
     }
 
     assert_response :success
     assert_equal "U19 Premier Squad", json["group"]["name"]
     assert_equal "Updated description", json["group"]["description"]
-    assert_equal 1, json["group"]["player_count"]
-    assert_equal @john.id, json["group"]["members"].first["player_profile_id"]
+    # John, plus the owner: syncing the roster is not a way to lose the owner.
+    assert_equal 2, json["group"]["player_count"]
+    # Looked up by person rather than by position: the members list is ordered by
+    # membership id, and the owner's row predates the one just created.
+    member = json["group"]["members"].find { |m| m["person_id"] == @john_person.id }
+    assert_not_nil member
+    assert_equal "John Smith", member["name"]
   end
 
   test "update is forbidden for another coach who does not own the group" do
@@ -244,36 +263,136 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
     assert json["errors"].any? { |e| e.include?("assessment sessions") }
   end
 
-  # --- Member Management ---
+  # --- the group's organisation ---------------------------------------------
 
-  test "add_members adds player to group without duplicates" do
+  test "a member creates a group for an organisation they are actually in" do
+    # @owner is an active member (owner) of Sydney Beach Volleyball Club.
     sign_in_as(@owner)
 
+    assert_difference "Group.count", 1 do
+      post_json api_v1_groups_path, {
+        group: {
+          # Not "U19 squad": that fixture already exists and the name is unique.
+          name: "Sydney U19 squad",
+          organisation_id: organisations(:sydney_club).id
+        }
+      }
+    end
+
+    assert_response :created
+    assert_equal "Sydney Beach Volleyball Club",
+                 json["group"]["organisation"]["name"]
+  end
+
+  test "a non-member cannot create a group for an organisation they do not belong to" do
+    # Naming an organisation is not membership of it. users(:three) belongs to none.
+    sign_in_as(@other_coach)
+
+    assert_no_difference "Group.count" do
+      post_json api_v1_groups_path, {
+        group: {
+          name: "Outsider squad",
+          organisation_id: organisations(:sydney_club).id
+        }
+      }
+    end
+
+    assert_response :forbidden
+    assert_match(/active member/, json["errors"].first)
+  end
+
+  test "a person outside the group's organisation cannot be added to it" do
+    sign_in_as(@owner)
+    @u19.update!(organisation: organisations(:sydney_club))
+    outsider = people(:national_official)
+    assert_not @u19.shares_organisation?([ outsider.id ])
+
+    assert_no_difference "GroupMembership.count" do
+      post_json members_api_v1_group_path(@u19), { person_ids: [ outsider.id ] }
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/not an active member/, json["errors"].first)
+  end
+
+  test "a person inside the group's organisation can be added to it" do
+    sign_in_as(@owner)
+    @u19.update!(organisation: organisations(:sydney_club))
+    insider = people(:club_coach) # an active member of the club
+
     assert_difference "GroupMembership.count", 1 do
-      post_json members_api_v1_group_path(@u19), { player_profile_ids: [ @john.id, @pedro.id ] }
+      post_json members_api_v1_group_path(@u19), { person_ids: [ insider.id ] }
     end
 
     assert_response :success
-    assert_equal 2, json["group"]["player_count"]
+    assert_includes @u19.reload.people, insider
+  end
+
+  test "a group cannot be moved to an organisation the caller does not belong to" do
+    # Firing *before* the roster check: naming an organisation is not membership of
+    # it, and that is the more specific fact about this request. The roster rule
+    # itself is covered on the model, where it is not masked by this guard.
+    sign_in_as(@owner)
+
+    patch_json api_v1_group_path(@u19), {
+      group: { organisation_id: organisations(:volleyball_australia).id }
+    }
+
+    assert_response :forbidden
+    assert_match(/active member/, json["errors"].first)
+    assert_nil @u19.reload.organisation_id
+  end
+
+  # --- Member Management ---
+
+  test "add_members adds people to the group without duplicates" do
+    sign_in_as(@owner)
+
+    # Pedro is already on the roster, so only John is really added.
+    assert_difference "GroupMembership.count", 1 do
+      post_json members_api_v1_group_path(@u19),
+                { person_ids: [ @john_person.id, @pedro_person.id ] }
+    end
+
+    assert_response :success
+    # Owner + Pedro + John.
+    assert_equal 3, json["group"]["player_count"]
     assert_equal 1, json["added"]
   end
 
-  test "remove_member removes player from group" do
+  test "remove_member ends the membership rather than deleting it" do
     sign_in_as(@owner)
 
-    assert_difference "GroupMembership.count", -1 do
-      delete "#{api_v1_groups_path}/#{@u19.id}/members/#{@pedro.id}"
+    # §2.5: the row survives as history, so the count of rows does not change.
+    assert_no_difference "GroupMembership.count" do
+      delete "#{api_v1_groups_path}/#{@u19.id}/members/#{@pedro_person.id}"
     end
 
     assert_response :success
-    assert_equal 0, json["group"]["player_count"]
-    assert_equal @pedro.id, json["removed"]
+    # Owner only; Pedro is no longer a current member.
+    assert_equal 1, json["group"]["player_count"]
+    assert_equal @pedro_person.id, json["removed"]
+
+    membership = @u19.group_memberships.find_by(person: @pedro_person)
+    assert_predicate membership, :ended?
+    assert_not_nil membership.left_at
   end
 
-  test "remove_member returns 404 if player is not in group" do
+  test "remove_member will not end the owner's membership" do
+    # A group with no owner cannot be managed by anybody, which is the failure
+    # §2.6 exists to prevent.
     sign_in_as(@owner)
 
-    delete "#{api_v1_groups_path}/#{@u19.id}/members/#{@john.id}"
+    delete "#{api_v1_groups_path}/#{@u19.id}/members/#{@owner.person.id}"
+
+    assert_response :unprocessable_entity
+    assert @u19.reload.group_memberships.owners.exists?(person_id: @owner.person.id)
+  end
+
+  test "remove_member returns 404 if the person is not in the group" do
+    sign_in_as(@owner)
+
+    delete "#{api_v1_groups_path}/#{@u19.id}/members/#{@john_person.id}"
     assert_response :not_found
   end
 end

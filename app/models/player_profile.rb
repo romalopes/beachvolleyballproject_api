@@ -32,11 +32,13 @@ class PlayerProfile < ApplicationRecord
 
   has_many :training_session_participants, dependent: :destroy, inverse_of: :player_profile
 
-  # Group membership is a roster entry, not evidence: taking a player out of a
-  # squad is the ordinary way to keep the roster current, so these join rows go
-  # with the profile rather than pinning it the way assessments do.
-  has_many :group_memberships, dependent: :destroy, inverse_of: :player_profile
-  has_many :groups, through: :group_memberships
+  # Group membership is a roster entry, not evidence, and it is keyed on Person
+  # (plan §2.2) rather than on this profile — so a squad can hold somebody who
+  # never registered as a player. The profile reaches its groups through the
+  # Person it belongs to; there is no longer a join row owned by the profile, and
+  # so nothing here to cascade. `GroupMembership` belongs to the Person, which is
+  # what gets destroyed with it.
+  has_many :groups, through: :person
 
   # Assessments are the player's coaching history, so a profile may never be
   # destroyed while they exist: the row is the evidence a coach recorded, and
@@ -61,7 +63,14 @@ class PlayerProfile < ApplicationRecord
     return all if user.nil?
     return all if user.admin? || user.curator?
 
-    where(visibility: "shared").or(where(created_by_id: user.id))
+    base = where(visibility: "shared").or(where(created_by_id: user.id))
+    # §15: belonging to the same club as a player is itself a reason to see them.
+    # This is what a membership is *for* — otherwise a club's roster would have to
+    # be restated as a list of coach-player grants and would drift out of date.
+    peer_ids = user.person&.organisation_peer_ids
+    return base if peer_ids.blank?
+
+    base.or(where(person_id: peer_ids))
   }
   scope :owned_by, ->(user) { where(created_by_id: user.id) }
 
@@ -80,8 +89,12 @@ class PlayerProfile < ApplicationRecord
     return true if shared?
     return true if user.nil?
     return true if user.admin? || user.curator?
+    return true if created_by_id.present? && created_by_id == user.id
+    # §15, the single-row counterpart of the `visible_to` scope. Both must agree,
+    # or a list and an item can disagree about who may see what.
+    return false if person.nil? || user.person.nil?
 
-    created_by_id.present? && created_by_id == user.id
+    user.person.shares_organisation_with?(person)
   end
 
   def owner?(user)

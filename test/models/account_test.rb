@@ -9,17 +9,20 @@ class AccountTest < ActiveSupport::TestCase
   end
 
   test "every account automatically gets a person on creation" do
-    user = users(:three)
+    # users(:four), not users(:three): the latter now has an `accounts` fixture so
+    # that the user who created `private_squad` can own it, and this test needs a
+    # user that genuinely has no account yet.
+    user = users(:four)
     account = Account.create!(user: user)
 
     assert account.person.present?
-    assert_equal "Coach", account.person.first_name
+    assert_equal "Curator", account.person.first_name
     assert_equal "signup", account.person.creation_source
-    assert_equal "three@example.com", account.person.email
+    assert_equal "four@example.com", account.person.email
   end
 
   test "contact values assigned to the account are handed to the person" do
-    user = users(:three)
+    user = users(:four)
     account = Account.new(user: user)
     account.first_name = "Carlos"
     account.last_name = "Santos"

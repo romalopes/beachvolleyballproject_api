@@ -23,6 +23,20 @@ class Person < ApplicationRecord
   has_one :coach_profile, dependent: :destroy
   has_many :person_aliases, dependent: :destroy
 
+  # Squad rosters, keyed on Person (§2.2) — the same reason organisation
+  # memberships are. `restrict_with_error` rather than `:destroy`: a squad row is
+  # a roster an assessment session was run against, and §2.5 requires membership
+  # history to outlive the people in it. A person is removed from squads by ending
+  # the membership, not by deleting them.
+  has_many :group_memberships, dependent: :restrict_with_error
+  has_many :groups, through: :group_memberships
+
+  # Memberships are the *only* place a person's place in an organisation is
+  # recorded, and they are keyed on Person so an accountless person — a committee
+  # member, a parent, a volunteer coach — can belong to a club too.
+  has_many :organisation_memberships, dependent: :destroy
+  has_many :organisations, through: :organisation_memberships
+
   belongs_to :merged_into, class_name: "Person", optional: true
   has_many :merged_from, class_name: "Person", foreign_key: :merged_into_id, inverse_of: :merged_into
 
@@ -46,6 +60,50 @@ class Person < ApplicationRecord
   # Records used by identity resolution: merged people are excluded from
   # canonical lookups but remain queryable through `merged_into_id`.
   scope :canonical, -> { where(status: [ "active", "archived" ]) }
+
+  # Ids of the organisations this person is *currently* an active member of. The
+  # basis for every organisation-scoped visibility rule, so it is one query and one
+  # definition rather than the same join restated in each policy.
+  def active_organisation_ids
+    organisation_memberships.active.pluck(:organisation_id)
+  end
+
+  def member_of?(organisation)
+    organisation_memberships.active.exists?(organisation_id: organisation.id)
+  end
+
+  def manages?(organisation)
+    organisation_memberships.active.manageable.exists?(organisation_id: organisation.id)
+  end
+
+  # True when this person and `other` are active members of at least one of the
+  # *same* organisations. Deliberately an exact-match test and not an ancestor one:
+  # a national federation member does not thereby see a private assessment
+  # belonging to a club at the bottom of its tree.
+  # The people who are peers of this one: everyone who is an active member of at
+  # least one of the *same* organisations. §15 makes these mutually visible.
+  #
+  # Deliberately not the hierarchy. Sitting above a club in the tree is not the
+  # same as being in it, and a national federation's roster is not a union of its
+  # clubs' rosters.
+  def organisation_peer_ids
+    ids = active_organisation_ids
+    return [] if ids.empty?
+
+    Person.joins(:organisation_memberships)
+         .where(organisation_memberships: { organisation_id: ids, status: "active" })
+         .distinct
+         .pluck(:id)
+  end
+
+  def shares_organisation_with?(other)
+    return false if other.nil?
+
+    ids = active_organisation_ids
+    return false if ids.empty?
+
+    other.active_organisation_ids.any? { |id| ids.include?(id) }
+  end
 
   def full_name
     [ first_name, last_name ].compact.join(" ")

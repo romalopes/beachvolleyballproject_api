@@ -200,6 +200,173 @@ end
 
 puts "Seeded #{Drill.count} drills with skill associations"
 
+# ---------------------------------------------------------------------------
+# Organisations: a sample federation tree
+# ---------------------------------------------------------------------------
+#
+# Exercises the hierarchy as *data* rather than as four separate tables. FIVB down
+# to a club is four tiers, Sydney Beach Academy sits under that club (so a
+# parent is not always the root), Northern Beaches is a second club at the same
+# level, and Maroubra is an independent root with no parent at all.
+#
+# Idempotent, like everything else here: re-seeding updates the parent links
+# rather than duplicating the tree.
+federation_tree = {
+  "Fédération Internationale de Volleyball" => {
+    acronym: "FIVB",
+    organisation_type: "international_federation",
+    description: "The world governing body for beach volleyball.",
+    formerly: "FIVB"
+  },
+  "Volleyball Australia" => {
+    acronym: "VA",
+    organisation_type: "national_federation",
+    description: "The national federation for Australia.",
+    parent: "Fédération Internationale de Volleyball"
+  },
+  "Volleyball NSW" => {
+    acronym: "SVNSW",
+    organisation_type: "state_federation",
+    description: "The state body for New South Wales.",
+    parent: "Volleyball Australia"
+  },
+  "Sydney Beach Volleyball Club" => {
+    acronym: "SBVC",
+    organisation_type: "club",
+    description: "A club running weekly training and club competitions.",
+    parent: "Volleyball NSW"
+  },
+  "Sydney Beach Academy" => {
+    acronym: "SBA",
+    organisation_type: "academy",
+    description: "A development squad run out of the club.",
+    parent: "Sydney Beach Volleyball Club"
+  },
+  "Northern Beaches Volleyball Club" => {
+    acronym: "NBVA",
+    organisation_type: "club",
+    description: "A second club at the same level, to prove branches stay separate.",
+    parent: "Volleyball NSW"
+  },
+  "Maroubra Beach Volleyball Club" => {
+    acronym: "MBVC",
+    organisation_type: "club",
+    description: "An independent club: a root with no parent at all.",
+    parent: nil
+  }
+}
+
+federation = {}
+federation_tree.each do |name, attributes|
+  # The world body was seeded under the bare name "FIVB" and is now its full name.
+  # `find_or_create_by!` on the new name would create a *second* row and leave the
+  # old one as a duplicate root, so the rename is done first and deliberately.
+  # `formerly` is the seam for exactly this kind of rename.
+  if attributes[:formerly] && (legacy = Organisation.find_by(name: attributes[:formerly]))
+    legacy.update!(name: name)
+  end
+
+  federation[name] = Organisation.find_or_create_by!(name: name) do |organisation|
+    organisation.organisation_type = attributes[:organisation_type]
+    organisation.description = attributes[:description]
+  end
+end
+
+# Acronyms applied after the rows exist, so a re-seed corrects an existing row
+# rather than only filling in a new one.
+federation_tree.each do |name, attributes|
+  federation.fetch(name).update!(acronym: attributes[:acronym])
+end
+
+# Parent links set after every row exists, so the order above does not matter.
+federation_tree.each do |name, attributes|
+  parent = attributes[:parent] ? federation.fetch(attributes[:parent]) : nil
+  federation.fetch(name).update!(parent_organisation: parent)
+end
+
+# A retired organisation, so archive is visible in development rather than only in
+# tests — an archived node is history and must keep its place in the tree.
+Organisation.find_or_create_by!(name: "Retired Surfing Association") do |organisation|
+  organisation.organisation_type = "association"
+  organisation.description = "Defunct. Kept for the record."
+  organisation.status = "archived"
+end
+Organisation.find_by(name: "Retired Surfing Association")&.update!(acronym: "RSA")
+
+puts "Seeded #{Organisation.count} organisations " \
+     "(#{Organisation.roots.count} root(s), deepest tree " \
+     "#{Organisation.ordered.map(&:depth).max} tiers)"
+
+# ---------------------------------------------------------------------------
+# Organisation membership
+# ---------------------------------------------------------------------------
+#
+# Without these the tree is a set of names, and nothing about it is testable by
+# hand: every membership rule in development needs somebody who is an officer and
+# somebody who is merely on the roster, because the interesting cases are the
+# refusals.
+#
+# Keyed on Person, and the coach here is deliberately *not* a User — a club has to
+# be able to record the volunteers and committee members who never signed up.
+#
+# Idempotent: the pair is unique, so re-seeding updates rather than duplicating.
+
+club = Organisation.find_by(name: "Sydney Beach Volleyball Club")
+academy = Organisation.find_by(name: "Sydney Beach Academy")
+northern = Organisation.find_by(name: "Northern Beaches Volleyball Club")
+australia = Organisation.find_by(name: "Volleyball Australia")
+
+def seed_member(organisation, full_name, role:, status: "active")
+  return if organisation.nil?
+
+  first_name, last_name = full_name.split(" ", 2)
+  person = Person.find_or_create_by!(first_name: first_name, last_name: last_name) do |candidate|
+    candidate.creation_source = "system"
+  end
+  membership = OrganisationMembership.find_or_initialize_by(organisation: organisation, person: person)
+  membership.role = role
+  membership.status = status
+  membership.save!
+  membership
+end
+
+if club
+  seed_member(club, "Alex Clubhouse", role: "owner")
+  seed_member(club, "Priya Raman", role: "administrator")
+  # A coach with no account, which is the case a User-keyed membership could not
+  # represent at all.
+  seed_member(club, "Tomas Silva", role: "coach")
+  # A plain member, so the "on the roster is not authority over it" rule has
+  # somebody it applies to.
+  seed_member(club, "Jordan Member", role: "member")
+  # Invited but not yet accepted: grants nothing until it is.
+  seed_member(academy, "Casey Prospective", role: "member", status: "pending")
+  # Left the club, still on the record.
+  seed_member(northern, "Robin Former", role: "member", status: "ended")
+  # In the national body only. Nobody at the club is their peer, which is the
+  # point: the hierarchy is not a grant.
+  seed_member(australia, "Hana Watanabe", role: "member")
+end
+
+puts "Seeded #{OrganisationMembership.count} organisation memberships " \
+     "(#{OrganisationMembership.active.count} active)"
+
+# A logo on one club, so the upload path and the display are exercised in
+# development rather than only in tests. Uses the same 1x1 fixture the tests use;
+# swap in a real asset when there is one to point at.
+sample_logo = Rails.root.join("test/fixtures/files/sample.png")
+if sample_logo.exist?
+  club = Organisation.find_by(name: "Sydney Beach Volleyball Club")
+  if club && !club.logo.attached?
+    club.logo.attach(
+      io: sample_logo.open, filename: "sydney-beach-volleyball-club.png",
+      content_type: "image/png"
+    )
+    club.save!
+  end
+  puts "Attached a sample logo to #{club&.name}"
+end
+
 # Video Categories
 VideoCategory.find_or_create_by!(name: "Technique") { |c| c.position = 0 }
 VideoCategory.find_or_create_by!(name: "Drills") { |c| c.position = 1 }

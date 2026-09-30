@@ -9,3 +9,13 @@ pedro_player:
   preferred_position: setter
   level: beginner
   status: active
+
+# Deliberately `private`, unlike the two above. §15 is only testable this way: a
+# shared profile is visible to everybody, so it cannot show that a club
+# membership granted anything.
+private_club_player:
+  person: club_officer
+  preferred_position: outside
+  level: advanced
+  status: active
+  visibility: private

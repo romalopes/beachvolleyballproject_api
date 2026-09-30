@@ -1,0 +1,78 @@
+# A four-tier federation tree, plus two independent roots, used to prove the
+# hierarchy is data rather than code: depth is unbounded and nothing here may
+# assume how many levels exist.
+#
+#   FIVB
+#   └── Volleyball Australia
+#       └── Volleyball NSW
+#           ├── Sydney Beach Volleyball Club
+#           └── Northern Beaches Volleyball Club
+#
+# `sydney_academy` sits under the same club, so tests can reach an
+# organisation with a parent that is *not* the root — the shape a real
+# "own organisation" check has to cope with.
+
+fivb:
+  name: FIVB
+  slug: fivb
+  organisation_type: international_federation
+  description: The world governing body for beach volleyball.
+  status: active
+  created_by_person: two
+
+volleyball_australia:
+  name: Volleyball Australia
+  slug: volleyball-australia
+  organisation_type: national_federation
+  parent_organisation: fivb
+  status: active
+  created_by_person: two
+
+volleyball_nsw:
+  name: Volleyball NSW
+  slug: volleyball-nsw
+  organisation_type: state_federation
+  parent_organisation: volleyball_australia
+  status: active
+  created_by_person: two
+
+sydney_club:
+  name: Sydney Beach Volleyball Club
+  slug: sydney-beach-volleyball-club
+  organisation_type: club
+  parent_organisation: volleyball_nsw
+  status: active
+  created_by_person: two
+
+sydney_academy:
+  name: Sydney Beach Academy
+  slug: sydney-beach-academy
+  organisation_type: academy
+  parent_organisation: sydney_club
+  status: active
+  created_by_person: two
+
+northern_club:
+  name: Northern Beaches Volleyball Club
+  slug: northern-beaches-volleyball-club
+  organisation_type: club
+  parent_organisation: volleyball_nsw
+  status: active
+  created_by_person: two
+
+# An independent root: a club with no parent, and a different tree entirely.
+maroubra_club:
+  name: Maroubra Beach Volleyball Club
+  slug: maroubra-beach-volleyball-club
+  organisation_type: club
+  status: active
+  created_by_person: two
+
+# Retired, but kept: it is history and must not be deleted out from under
+# whatever referenced it.
+retired_association:
+  name: Retired Surfing Association
+  slug: retired-surfing-association
+  organisation_type: association
+  status: archived
+  created_by_person: two

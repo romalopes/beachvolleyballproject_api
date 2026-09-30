@@ -37,3 +37,49 @@ merged:
   status: merged
   merged_into: one
   creation_source: system
+
+# Two people who exist for organisation membership only: a club officer and a
+# coach, neither of whom is a User. Membership is keyed on Person precisely so a
+# club can record people who never signed up, and these exercise that.
+club_officer:
+  first_name: Priya
+  last_name: Raman
+  status: active
+  creation_source: system
+
+club_coach:
+  first_name: Tomas
+  last_name: Silva
+  status: active
+  creation_source: system
+
+# Belongs to the national body and to no club. Exists to prove the hierarchy grants
+# nothing by itself: a national membership must not expose a club's private records.
+national_official:
+  first_name: Hana
+  last_name: Watanabe
+  status: active
+  creation_source: system
+
+# The Person behind users(:three), who created the `private_squad` fixture.
+# Needed because group ownership is a membership on a Person (§2.6): a user with
+# no Person cannot hold one, and would leave that fixture group unmanageable.
+three_person:
+  first_name: Nadia
+  last_name: Osei
+  email: three@example.com
+  status: active
+  creation_source: signup
+
+# Deliberately has NO player profile and no account. The point of moving group
+# membership onto Person (§2.2) is that a squad can hold a volunteer coach or a
+# parent; under the old `player_profile_id` key this person could not be on a
+# roster at all, so this fixture is what proves the change did anything.
+squad_volunteer:
+  first_name: Rosa
+  last_name: Duarte
+  # Not rosa@example.com: the people controller test creates a person with that
+  # address, and this fixture must not collide with it.
+  email: rosa.volunteer@example.com
+  status: active
+  creation_source: coach_created
