@@ -1,4 +1,8 @@
 require "test_helper"
+# The app declares `gem "aws-sdk-s3", require: false`, so the SDK — and with it the
+# error class a refused upload raises — is only loaded once an S3-backed service is
+# built. The storage-failure tests below raise that real error, so they load it.
+require "aws-sdk-s3"
 
 # Request tests for the Organisations API.
 #
@@ -333,6 +337,26 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     )
   end
 
+  # Make the storage service refuse the next upload, the way Cloudflare R2 refuses a
+  # request that carries two non-default checksums (see config/storage.yml). The
+  # error raised is the real SDK error, not a stand-in, so the controller's rescue
+  # clause is what is under test. The singleton method is removed again afterwards
+  # so no other test inherits a service that cannot store anything.
+  def with_failing_upload
+    service = ActiveStorage::Blob.services.fetch(:test)
+    service.define_singleton_method(:upload) do |*|
+      raise Aws::S3::Errors::ServiceError.new(
+        nil, "You can only specify one non-default checksum at a time."
+      )
+    end
+
+    yield
+  ensure
+    if service&.singleton_class&.instance_methods(false)&.include?(:upload)
+      service.singleton_class.send(:remove_method, :upload)
+    end
+  end
+
   test "an admin attaches a logo and gets a same-origin-relative URL back" do
     sign_in_as(@admin)
 
@@ -465,6 +489,51 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :unprocessable_entity
     assert_not @club.reload.logo_attached?
+  end
+
+  test "a storage failure leaves the previous logo intact rather than a broken one" do
+    # The regression this pins: Active Storage uploads the bytes from an
+    # `after_commit` hook, so a refused upload lands *after* the database already
+    # points at the new blob. Without the rescue the club keeps a logo that cannot
+    # be served, and the blob it replaced is never purged because that line sits
+    # behind the exception.
+    sign_in_as(@admin)
+    post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
+    assert_response :success
+    original = @club.reload.logo.blob
+    blobs_before = ActiveStorage::Blob.count
+
+    with_failing_upload do
+      post "/api/v1/organisations/#{@club.id}/logo",
+           params: { logo: png_upload(filename: "second.png") }
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/could not be stored/, json["errors"].join(" "))
+    # The old logo survived, still points at the same file, and is the only one
+    # attached — the refused candidate was not left behind as a second crest.
+    assert @club.reload.logo_attached?
+    assert_equal original.id, @club.logo.blob.id
+    assert_equal 1, ActiveStorage::Attachment
+                     .where(record_type: "Organisation", record_id: @club.id).count
+    # The candidate's row went with it: a refused upload must not strand a blob.
+    assert_equal blobs_before, ActiveStorage::Blob.count
+  end
+
+  test "a storage failure on a first upload leaves no attachment behind" do
+    # Nothing to restore, so the answer is the state the club started in.
+    sign_in_as(@admin)
+
+    with_failing_upload do
+      post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/could not be stored/, json["errors"].join(" "))
+    assert_not @club.reload.logo_attached?
+    assert_equal 0, ActiveStorage::Attachment
+                     .where(record_type: "Organisation", record_id: @club.id).count
+    assert_equal 0, ActiveStorage::Blob.count
   end
 
   test "a successful replacement purges the blob it replaced" do

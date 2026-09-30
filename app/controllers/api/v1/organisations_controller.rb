@@ -199,6 +199,15 @@ module Api
         end
       rescue ActiveStorage::FileNotFoundError, ActiveRecord::RecordInvalid => e
         render json: { errors: [ e.message ] }, status: :unprocessable_entity
+      rescue *storage_service_errors => e
+        # Active Storage uploads the bytes from an `after_commit` hook, not inside
+        # the transaction, so a refused upload arrives *after* the database already
+        # points at the new blob. Left alone, the club keeps a crest that was never
+        # stored — and the replaced blob is never purged, because that line sits
+        # after the exception. Put the previous logo back and drop the candidate.
+        restore_previous_logo(previous)
+        render json: { errors: [ "The logo could not be stored: #{e.message}" ] },
+               status: :unprocessable_entity
       end
 
       # Retire an organisation without destroying it. Children are left in place:
@@ -372,6 +381,41 @@ module Api
         render json: { errors: [ "That person is not a member of this organisation" ] },
                status: :not_found
         nil
+      end
+
+      # The failures a storage *service* raises when it will not accept the bytes:
+      # an S3-compatible endpoint refusing the request (Cloudflare R2 rejects a
+      # request carrying two non-default checksums, see config/storage.yml) or a
+      # checksum that does not match what was stored.
+      #
+      # `aws-sdk-s3` is a lazy dependency (`gem "aws-sdk-s3", require: false`), so
+      # its error class is only named when the SDK is actually loaded — which is
+      # precisely when an S3-backed service can raise one. In an environment where
+      # it is not loaded no such error can occur, and referencing it would only
+      # risk an uninitialized-constant error while handling an unrelated exception.
+      def storage_service_errors
+        [
+          ActiveStorage::IntegrityError,
+          (Aws::S3::Errors::ServiceError if defined?(Aws::S3::Errors::ServiceError))
+        ].compact
+      end
+
+      # Undo the database half of a replacement whose upload was refused: re-attach
+      # the remembered blob and discard the candidate, whose bytes never reached the
+      # service. `previous` is nil for a first logo, where the right answer is no
+      # attachment at all. Attaching an existing blob uploads nothing — the case is
+      # a no-op in Active Storage — so this cannot fail the same way again.
+      def restore_previous_logo(previous)
+        candidate = @organisation.logo.blob
+
+        if previous
+          @organisation.logo.attach(previous)
+          @organisation.save
+        else
+          @organisation.logo.detach
+        end
+
+        candidate.purge if candidate && candidate != previous
       end
 
       # The host has to be threaded in explicitly: a JSON payload cannot rely on

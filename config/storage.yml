@@ -1,3 +1,21 @@
+# S3-compatible services (R2, Supabase, Neon) and the AWS SDK flexible checksums.
+#
+# aws-sdk-s3 >= 1.177 computes a checksum of its own for every upload
+# (request_checksum_calculation defaults to "when_supported"), and Active Storage
+# independently sends a Content-MD5. Two non-default checksums on one request is
+# accepted by Amazon S3 but rejected by Cloudflare R2 with:
+#
+#   Aws::S3::Errors::InvalidRequest: You can only specify one non-default checksum at a time.
+#
+# "when_required" stops the SDK from adding its CRC32, leaving Active Storage's
+# Content-MD5 as the only checksum. Response validation is relaxed for the same
+# reason: it makes the SDK add "x-amz-checksum-mode: ENABLED" to the downloads
+# behind the logo proxy, which R2 does not answer.
+#
+# Active Storage passes every unknown key in these blocks to Aws::S3::Resource,
+# so the options below are ordinary SDK client options.
+# See https://github.com/rails/rails/issues/54374 and https://github.com/loomio/loomio/issues/11679
+
 test:
   service: Disk
   root: <%= Rails.root.join("tmp/storage") %>
@@ -15,6 +33,9 @@ neon:
   # Neon's branch-specific S3 endpoint:
   endpoint: "https://<%= ENV['NEON_PROJECT_ID'] %>.s3.<region>.neon.tech"
   force_path_style: true
+  # See the checksum note at the top of this file.
+  request_checksum_calculation: "when_required"
+  response_checksum_validation: "when_required"
 
 supabase:
   service: S3
@@ -24,6 +45,9 @@ supabase:
   bucket: <%= ENV['SUPABASE_S3_BUCKET_NAME'] %>
   endpoint: "https://<%= ENV['SUPABASE_PROJECT_REF'] %>.supabase.co/storage/v1/s3"
   force_path_style: true # Required for Supabase
+  # See the checksum note at the top of this file.
+  request_checksum_calculation: "when_required"
+  response_checksum_validation: "when_required"
 
 cloudflare_r2:
   service: S3
@@ -31,10 +55,14 @@ cloudflare_r2:
   secret_access_key: <%= ENV["CLOUD_FLARE_R2_ACCESS_KEY"] %>
   region: auto
   bucket: <%= ENV["CLOUD_FLARE_R2_BUCKET"] %>
-  # Custom endpoint format for Cloudflare R2:
-  endpoint: "https://<%= ENV['CLOUD_FLARE_R2_REF'] %>.r2.cloudflarestorage.com"
+  # Custom endpoint format for Cloudflare R2. The explicit variable wins so that
+  # the value in .env (which is what a human edits) is the one actually used.
+  endpoint: <%= ENV["CLOUD_FLARE_R2_ENDPOINT"] || "https://#{ENV['CLOUD_FLARE_R2_REF']}.r2.cloudflarestorage.com" %>
   # Force path style is required for R2 & Backblaze compatibility
   force_path_style: true
+  # See the checksum note at the top of this file.
+  request_checksum_calculation: "when_required"
+  response_checksum_validation: "when_required"
 
 # Use bin/rails credentials:edit to set the AWS secrets (as aws:access_key_id|secret_access_key)
 # amazon:
