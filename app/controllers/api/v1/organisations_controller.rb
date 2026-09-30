@@ -387,8 +387,6 @@ module Api
       # cheap at that size.
       def serialize(organisation, child_counts: nil, membership_counts: nil)
         organisation.metadata(
-          host: request.host_with_port,
-          protocol: request_protocol,
           editable_ids: editable_organisation_ids,
           editable_all: editable_all?,
           manage_members_ids: manageable_organisation_ids,
@@ -419,9 +417,10 @@ module Api
 
       # The scheme the *browser* used, which is not necessarily the one that reached
       # Rails. Behind the production reverse proxy — and behind the Vite dev proxy —
-      # TLS is terminated upstream, so `request.protocol` can report `http` and every
-      # generated URL would be downgraded. The forwarded header is the browser's own
-      # view of it, so prefer that when present.
+      # TLS is terminated upstream, so `request.protocol` can report `http`. This
+      # was needed back when serialised URLs were absolute; the logo is now a
+      # relative path and nothing else builds a URL from the request, but the
+      # helper stays in case one returns.
       def request_protocol
         request.headers["X-Forwarded-Proto"].presence || request.protocol
       end

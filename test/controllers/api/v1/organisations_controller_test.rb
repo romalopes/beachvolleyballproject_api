@@ -333,7 +333,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     )
   end
 
-  test "an admin attaches a logo and gets an absolute URL back" do
+  test "an admin attaches a logo and gets a same-origin-relative URL back" do
     sign_in_as(@admin)
 
     post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
@@ -341,39 +341,39 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = json
     assert body["logo_attached"]
-    # Absolute, so the SPA can use it directly without knowing its own origin.
-    assert_match %r{\Ahttps?://}, body["logo_url"]
+    # Relative, so the SPA loads it through the same proxy it already trusts
+    # (Vite in development, an edge rewrite in production). An absolute URL
+    # pointing at the API's own host makes the browser contact that host
+    # directly, which a self-siged local certificate breaks.
+    assert_match %r{\A/rails/active_storage/blobs/proxy/}, body["logo_url"]
     assert_predicate @club.reload, :logo_attached?
   end
 
-  test "the logo URL carries the port the request arrived on" do
-    # The port must survive. `request.host` omits it, so a logo was served as
-    # `http://127.0.0.1/...` for a service on `https://127.0.0.1:3001` — every
-    # upload succeeded and no image ever displayed.
-    #
-    # `host!` is the point of this test: integration requests default to port 80,
-    # where `host` and `host_with_port` are the same string, so the ordinary case
-    # cannot tell the two apart and the bug survives it.
+  test "the logo URL is a path and therefore independent of the request host" do
+    # The path must never carry the request's host: a browser on the SPA origin
+    # could not load it without contacting the API directly. `host!` keeps this
+    # honest — it sets the host to something that would leak into the URL if
+    # the implementation still built one.
     sign_in_as(@admin)
     post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
     assert_response :success
 
     get "/api/v1/organisations/#{@club.id}", headers: { "HOST" => "api.example.test:3001" }
 
-    assert_includes json["logo_url"], "api.example.test:3001",
-                    "the logo URL must carry the port, not just the host"
+    assert_match %r{\A/rails/active_storage/blobs/proxy/}, json["logo_url"]
+    assert_not_includes json["logo_url"], "api.example.test"
   end
 
-  test "the logo URL follows the forwarded scheme rather than the one Rails saw" do
-    # TLS is terminated upstream in production, so `request.protocol` reports `http`
-    # and a URL built from it would be downgraded for every browser.
+  test "the logo URL carries the blob's filename for inline display" do
+    # The filename rides in the path so the browser can pick a sensible name if
+    # the image is ever saved, and so the URL stays human-readable.
     sign_in_as(@admin)
     post "/api/v1/organisations/#{@club.id}/logo", params: { logo: png_upload }
     assert_response :success
 
-    get "/api/v1/organisations/#{@club.id}", headers: { "X-Forwarded-Proto" => "https" }
+    get "/api/v1/organisations/#{@club.id}"
 
-    assert_equal "https", json["logo_url"].split("//").first.split(":").first
+    assert_includes json["logo_url"], "/logo.png"
   end
 
   test "an organisation with no logo reports null rather than a broken URL" do

@@ -325,21 +325,24 @@ class Organisation < ApplicationRecord
     logo.attached?
   end
 
-  # An absolute URL for the logo, or nil. Host and protocol are supplied by the
-  # controller because a JSON payload cannot use the view helper `url_for` that the
-  # server-rendered equivalent relies on.
-  #
-  # Both are needed and both were wrong once: `request.host` omits the port, and
-  # `rails_blob_url` otherwise falls back to the app's default protocol. That
-  # produced `http://127.0.0.1/...` for a service actually listening on
-  # `https://127.0.0.1:3001`, so every stored logo failed to load. The host is
-  # `host_with_port` for the same reason — a portless URL points at :80.
-  def logo_url(host = nil, protocol = nil)
+  # The logo is served by Rails' proxy route as a *relative* path. The SPA loads
+  # every API response through a same-origin proxy (Vite in development, an
+  # edge rewrite in production), so an absolute URL pointing at the API's own
+  # host would make the browser contact it directly — which fails in
+  # development because the local TLS certificate is self-signed, and in
+  # production because the API host is not browser-reachable. A relative path
+  # keeps the image on the origin the page already trusts. (The earlier
+  # absolute-URL design had two bugs of its own — port dropped by
+  # `request.host`, scheme downgraded by TLS termination upstream — and both
+  # become moot once the URL no longer carries a host at all.)
+  def logo_url
     return nil unless logo.attached?
 
-    options = { host: host || "localhost:3000" }
-    options[:protocol] = protocol if protocol.present?
-    Rails.application.routes.url_helpers.rails_blob_url(logo, **options)
+    blob = logo.blob
+    Rails.application.routes.url_helpers.rails_service_blob_proxy_path(
+      blob.signed_id,
+      filename: blob.filename.to_s
+    )
   end
 
   # The permission and count arguments are all optional and are supplied in bulk
@@ -347,7 +350,7 @@ class Organisation < ApplicationRecord
   # but doing so costs a query per row, so the controller hoists them into grouped
   # queries and passes them in. A single `show` passes none and pays the two or
   # three queries, which is the right trade at that size.
-  def metadata(host: nil, protocol: nil, editable_ids: nil, editable_all: false,
+  def metadata(editable_ids: nil, editable_all: false,
                manage_members_ids: nil, manage_members_all: false,
                child_counts: nil, membership_counts: nil)
     {
@@ -368,7 +371,7 @@ class Organisation < ApplicationRecord
       depth: depth,
       # The upload ceiling is published with the record so a client can refuse a
       # file before sending it, rather than after a rejected round trip.
-      logo_url: logo_url(host, protocol),
+      logo_url: logo_url,
       logo_attached: logo_attached?,
       # Whether the caller may change this record. Published per row because the
       # answer differs by organisation: a curator can edit all of them, a club's
