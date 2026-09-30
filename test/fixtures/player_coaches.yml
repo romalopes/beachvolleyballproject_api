@@ -1,0 +1,33 @@
+# Coaching relationships (PlayerCoach).
+#
+# Fixtures are inserted with SQL, so the model rules do not run here — but the
+# database constraints do, which is what these pin: at most one *open* period per
+# pair, no overlapping periods, and no end before start.
+#
+# `maria_coach` is the only fixture coach profile (it belongs to `users(:six)`),
+# so every relationship below is Maria's.
+
+# Maria has coached John since the start of the season. `end_date` is NULL, which
+# is the whole definition of "current" — there is no status column to read.
+current:
+  player_profile: john_player
+  coach_profile: maria_coach
+  start_date: 2025-09-01
+
+# The same pair, an earlier period that ended. When they resumed, a NEW row was
+# written (`current` above) rather than this one being reopened, so the earlier
+# stint keeps its own dates. This is the fixture that pins "resume = new period".
+resumed_earlier:
+  player_profile: john_player
+  coach_profile: maria_coach
+  start_date: 2025-01-10
+  end_date: 2025-06-30
+
+# An ended relationship on a different pair. It stays on the record: the
+# assessments recorded while it ran are explained by it, and ending it retracted
+# none of them.
+historical:
+  player_profile: pedro_player
+  coach_profile: maria_coach
+  start_date: 2025-02-01
+  end_date: 2025-11-30

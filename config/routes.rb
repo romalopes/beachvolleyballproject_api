@@ -115,6 +115,19 @@ Rails.application.routes.draw do
       end
       resources :players, only: %i[index show create update]
       resources :coaches, only: %i[index show create update]
+
+      # Who coaches whom: the ongoing coaching relationship between a coach and a
+      # player. Deliberately separate from assessments — a coach needs no row here
+      # to assess a player, and ending a relationship retracts nothing.
+      #
+      # No `destroy`: an ended relationship is the context that makes a past
+      # assessment explicable, so it is retired with `end_date` instead. `end` is a
+      # Ruby keyword, hence `end_relationship` (as `end_member` in organisations).
+      resources :player_coaches, only: %i[index show create update] do
+        member do
+          post :end_relationship
+        end
+      end
       # A coach's assessment of a player. There is deliberately no `destroy`:
       # a rating is retracted with `PATCH status: "withdrawn"`, never deleted,
       # so `DELETE /api/v1/assessments/:id` is a 404 (phase 4, D18).

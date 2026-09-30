@@ -47,6 +47,13 @@ class PlayerProfile < ApplicationRecord
   # archive-not-delete rule), so this only guards a mistake.
   has_many :assessments, dependent: :restrict_with_error
 
+  # Who coaches this player, and who has coached them before. The join is a
+  # period (see PlayerCoach), and `restrict_with_error` rather than `:destroy` for
+  # the same reason assessments use it: a period of coaching is history somebody
+  # else may depend on. A profile leaves the catalogue by becoming `archived`.
+  has_many :player_coaches, dependent: :restrict_with_error
+  has_many :coaches, through: :player_coaches, source: :coach_profile
+
   validates :person_id, uniqueness: true
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }

@@ -33,6 +33,13 @@ class CoachProfile < ApplicationRecord
   # archived rather than deleted anyway.
   has_many :assessments, dependent: :restrict_with_error
 
+  # Who this coach coaches, and who they coached before. See PlayerProfile#player_coaches
+  # for why the rows outlive the profile: a period of coaching is the context that
+  # makes a past assessment explicable. Ending one sets `end_date`; it is never
+  # deleted, and a resumed relationship is a new period.
+  has_many :player_coaches, dependent: :restrict_with_error
+  has_many :players, through: :player_coaches, source: :player_profile
+
   scope :active, -> { where(status: "active") }
 
   # See PlayerProfile.visible_to: soft visibility for the catalogue — shared

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_051000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -419,6 +419,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_051000) do
     t.datetime "updated_at", null: false
     t.index ["full_name"], name: "index_person_aliases_on_full_name"
     t.index ["person_id"], name: "index_person_aliases_on_person_id"
+  end
+
+  create_table "player_coaches", force: :cascade do |t|
+    t.bigint "coach_profile_id", null: false
+    t.datetime "created_at", null: false
+    t.date "end_date"
+    t.bigint "player_profile_id", null: false
+    t.date "start_date", null: false
+    t.datetime "updated_at", null: false
+    t.index ["coach_profile_id", "end_date"], name: "index_player_coaches_on_coach_and_end"
+    t.index ["coach_profile_id"], name: "index_player_coaches_on_coach_profile_id"
+    t.index ["player_profile_id", "coach_profile_id", "start_date"], name: "index_player_coaches_pair_and_start", unique: true
+    t.index ["player_profile_id", "coach_profile_id"], name: "index_player_coaches_single_current_per_pair", unique: true, where: "(end_date IS NULL)"
+    t.index ["player_profile_id", "end_date"], name: "index_player_coaches_on_player_and_end"
+    t.index ["player_profile_id"], name: "index_player_coaches_on_player_profile_id"
+    t.check_constraint "end_date IS NULL OR end_date >= start_date", name: "player_coaches_end_after_start"
   end
 
   create_table "player_profiles", force: :cascade do |t|
@@ -891,6 +907,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_051000) do
   add_foreign_key "people", "people", column: "merged_into_id"
   add_foreign_key "people", "users", column: "created_by_id"
   add_foreign_key "person_aliases", "people"
+  add_foreign_key "player_coaches", "coach_profiles"
+  add_foreign_key "player_coaches", "player_profiles"
   add_foreign_key "player_profiles", "people"
   add_foreign_key "player_profiles", "users", column: "created_by_id"
   add_foreign_key "ranking_consolidation_rows", "player_profiles"
