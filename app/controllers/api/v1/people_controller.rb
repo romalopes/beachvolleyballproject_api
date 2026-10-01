@@ -41,7 +41,11 @@ module Api
       end
 
       def show
-        render json: @person.identity_summary
+        render json: @person.identity_summary.merge(
+          organisation_memberships: @person.organisation_memberships.includes(:organisation).map do |m|
+            { id: m.id, organisation_id: m.organisation_id, role: m.role, status: m.status, organisation: m.organisation&.slice(:id, :name) }
+          end
+        )
       end
 
       def create
@@ -147,9 +151,23 @@ module Api
       # recorded by the server, never chosen by the caller, so a person cannot be
       # written in as though they had signed up.
       def person_params
-        params.require(:person).permit(
-          :first_name, :last_name, :email, :phone, :date_of_birth
-        )
+        permitted = params.require(:person).permit(
+          :first_name, :last_name, :email, :phone, :date_of_birth,
+          organisation_memberships_attributes: [ :id, :organisation_id, :role, :status, :_destroy ]
+        ).to_h
+
+        # Strong parameters unwrap the nested hash, so the permitted result wraps
+        # the row array one level down. Assign the array itself and normalise a
+        # single posted row to a one-element array before it reaches Rails. An
+        # absent key is dropped rather than sent as an empty array, which Rails
+        # would otherwise read as "destroy every membership".
+        rows = permitted["organisation_memberships_attributes"]
+        if rows.present?
+          permitted["organisation_memberships_attributes"] = rows.is_a?(Array) ? rows : [ rows ]
+        else
+          permitted.delete("organisation_memberships_attributes")
+        end
+        permitted
       end
     end
   end

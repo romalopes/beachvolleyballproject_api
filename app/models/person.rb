@@ -36,6 +36,7 @@ class Person < ApplicationRecord
   # member, a parent, a volunteer coach — can belong to a club too.
   has_many :organisation_memberships, dependent: :destroy
   has_many :organisations, through: :organisation_memberships
+  accepts_nested_attributes_for :organisation_memberships, allow_destroy: true, reject_if: :all_blank
 
   belongs_to :merged_into, class_name: "Person", optional: true
   has_many :merged_from, class_name: "Person", foreign_key: :merged_into_id, inverse_of: :merged_into

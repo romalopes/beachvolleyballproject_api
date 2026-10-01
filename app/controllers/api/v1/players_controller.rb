@@ -75,7 +75,15 @@ module Api
         payload = @player.as_json(
           only: PROFILE_ONLY,
           include: {
-            person: { only: PERSON_ONLY },
+            person: {
+              only: PERSON_ONLY,
+              include: {
+                organisation_memberships: {
+                  only: [ :id, :organisation_id, :role, :status ],
+                  include: { organisation: { only: [ :id, :name ] } }
+                }
+              }
+            },
             created_by: { only: %i[id name] },
             training_session_participants: {
               only: %i[id status notes created_at],
@@ -191,7 +199,15 @@ module Api
         payload = profile.as_json(
           only: PROFILE_ONLY,
           include: {
-            person: { only: PERSON_ONLY },
+            person: {
+              only: PERSON_ONLY,
+              include: {
+                organisation_memberships: {
+                  only: [ :id, :organisation_id, :role, :status ],
+                  include: { organisation: { only: [ :id, :name ] } }
+                }
+              }
+            },
             created_by: { only: %i[id name] }
           },
           methods: PROFILE_METHODS
@@ -221,7 +237,11 @@ module Api
           # search); never rewrite that person's provenance.
           profile_attrs[:person_id] = attrs[:person_id]
         else
-          person_attrs = normalize_person_attrs(attrs[:person] || attrs[:person_attributes] || {})
+          person_source = attrs[:person] || attrs[:person_attributes] || {}
+          person_attrs = normalize_person_attrs(person_source)
+          # Allow nested organisation_memberships_attributes
+          memberships = permit_memberships(person_source)
+          person_attrs[:organisation_memberships_attributes] = memberships if memberships.present?
           profile_attrs[:person_attributes] = person_attrs if person_attrs.values.any?(&:present?)
         end
 
@@ -236,7 +256,13 @@ module Api
         profile_attrs = normalize_attrs(attrs[:player_profile] || attrs[:player_profile_attributes] || {}, PROFILE_ATTRS)
 
         person_source = attrs[:person] || attrs[:person_attributes]
-        profile_attrs[:person_attributes] = normalize_person_attrs(person_source) if person_source.present?
+        if person_source.present?
+          person_attrs = normalize_person_attrs(person_source)
+          # Allow nested organisation_memberships_attributes
+          memberships = permit_memberships(person_source)
+          person_attrs[:organisation_memberships_attributes] = memberships if memberships.present?
+          profile_attrs[:person_attributes] = person_attrs
+        end
 
         profile_attrs
       end
@@ -255,6 +281,27 @@ module Api
         normalize_attrs(source, PERSON_ATTRS).transform_values do |value|
           value.is_a?(String) && value.strip.empty? ? nil : value
         end
+      end
+
+      # Permit nested organisation_memberships_attributes for a person hash.
+      # Rails strong-parameters unwrap nested hashes to the parent key, so the
+      # permitted result is a hash of the attribute name to the row array — the
+      # caller assigns that array, not the wrapper, or Rails sees a second hash
+      # where it expects one row per element ("no implicit conversion").
+      def permit_memberships(source)
+        return nil unless source.respond_to?(:permit)
+
+        permitted = source
+                    .permit(organisation_memberships_attributes: [ :id, :organisation_id, :role, :status, :_destroy ])
+                    .to_h["organisation_memberships_attributes"]
+
+        # A single row arrives as a hash, not as a one-element array (that is
+        # how a form posts it), so normalise it before it reaches Rails. An
+        # absent key stays nil, so the caller's `present?` check skips the
+        # assignment rather than sending Rails an empty "destroy all" array.
+        return nil if permitted.blank?
+
+        permitted.is_a?(Array) ? permitted : [ permitted ]
       end
     end
   end
