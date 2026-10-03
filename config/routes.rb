@@ -125,6 +125,14 @@ Rails.application.routes.draw do
           post :cancel
         end
       end
+      resources :player_claim_invitations, only: %i[index create] do
+        collection do
+          post :redeem
+        end
+        member do
+          post :revoke
+        end
+      end
 
       # Who coaches whom: the ongoing coaching relationship between a coach and a
       # player. Deliberately separate from assessments — a coach needs no row here

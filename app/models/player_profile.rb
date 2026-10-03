@@ -22,6 +22,7 @@ class PlayerProfile < ApplicationRecord
   # include it, so neither create nor update can set it from the payload.
   belongs_to :created_by, class_name: "User", optional: true
   belongs_to :person, optional: true
+  has_many :player_claim_invitations, dependent: :restrict_with_error
 
   # `update_only: true` is essential: for a has_one, Rails otherwise *replaces*
   # the person instead of updating it whenever the nested hash carries no id,

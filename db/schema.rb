@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_03_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_03_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -419,6 +419,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_03_000003) do
     t.datetime "updated_at", null: false
     t.index ["full_name"], name: "index_person_aliases_on_full_name"
     t.index ["person_id"], name: "index_person_aliases_on_person_id"
+  end
+
+  create_table "player_claim_invitations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_person_id", null: false
+    t.datetime "expires_at", null: false
+    t.bigint "player_profile_id", null: false
+    t.datetime "revoked_at"
+    t.string "status", default: "active", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "used_at"
+    t.bigint "used_by_person_id"
+    t.index ["created_by_person_id"], name: "index_player_claim_invitations_on_created_by_person_id"
+    t.index ["player_profile_id"], name: "index_player_claim_invitations_on_player_profile_id"
+    t.index ["player_profile_id"], name: "index_player_claim_invitations_one_active_per_profile", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["token_digest"], name: "index_player_claim_invitations_on_token_digest", unique: true
+    t.index ["used_by_person_id"], name: "index_player_claim_invitations_on_used_by_person_id"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying]::text[])", name: "player_claim_invitations_valid_status"
   end
 
   create_table "player_claims", force: :cascade do |t|
@@ -927,6 +946,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_03_000003) do
   add_foreign_key "people", "users", column: "created_by_id"
   add_foreign_key "person_aliases", "people"
   add_foreign_key "player_claims", "people", column: "initiated_by_person_id"
+  add_foreign_key "player_claim_invitations", "people", column: "created_by_person_id"
+  add_foreign_key "player_claim_invitations", "people", column: "used_by_person_id"
+  add_foreign_key "player_claim_invitations", "player_profiles"
   add_foreign_key "player_claims", "people"
   add_foreign_key "player_claims", "player_profiles"
   add_foreign_key "player_claims", "people", column: "reviewed_by_person_id"
