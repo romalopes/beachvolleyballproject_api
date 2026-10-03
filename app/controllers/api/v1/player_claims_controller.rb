@@ -10,6 +10,14 @@ module Api
       before_action :require_content_creator!, only: %i[approve reject]
       before_action :set_claim, only: %i[show approve reject cancel]
 
+      def candidates
+        person = Current.user&.person
+        return render json: { error: "A linked Person is required to search for player profiles" }, status: :unprocessable_entity unless person&.status == "active"
+
+        results = PlayerProfileCandidateFinder.new(person: person, user: Current.user).matches
+        render json: results.map(&:as_json)
+      end
+
       def index
         if Current.user&.admin?
           claims = PlayerClaim.pending.includes(:player_profile).order(:created_at)

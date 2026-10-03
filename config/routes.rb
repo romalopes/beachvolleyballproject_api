@@ -116,6 +116,9 @@ Rails.application.routes.draw do
       resources :players, only: %i[index show create update]
       resources :coaches, only: %i[index show create update]
       resources :player_claims, only: %i[index show create] do
+        collection do
+          get :candidates
+        end
         member do
           post :approve
           post :reject

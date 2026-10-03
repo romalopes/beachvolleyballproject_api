@@ -28,8 +28,8 @@ Reviewed states cannot be replayed. Rejection requires a reason. A partial uniqu
 
 ## Phase boundary
 
-Candidate discovery is not included (Phase 4). A claimant must already know the profile ID; the API does not search for likely matches or claim profiles automatically. Invitation-based claims are not included (Phase 5). The web UI does not yet provide claim/review controls (Phase 12).
+Candidate discovery is implemented in `IDENTITY_PHASE_04_CANDIDATE_DISCOVERY.md`; its results remain suggestions and do not automatically create claims. Invitation-based claims are not included (Phase 5). The web UI does not yet provide claim/review controls (Phase 12).
 
 ## Verification
 
-The backend suite passes: 1,331 tests, 5,283 assertions, 0 failures, 0 errors, 1 existing skip. Frontend tests pass: 850 tests across 76 files. The production build passes with the existing large-chunk advisory.
+The Phase 3 verification run passed before Phase 4 was added; see the Phase 4 document and phase status for current full-suite results.

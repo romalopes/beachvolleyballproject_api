@@ -14,6 +14,105 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_empty PlayerClaim.all
   end
 
+  test "candidate search requires authentication" do
+    get candidates_api_v1_player_claims_path
+
+    assert_response :unauthorized
+  end
+
+  test "candidate search requires a linked active Person" do
+    sign_in_as(users(:one))
+
+    get candidates_api_v1_player_claims_path
+
+    assert_response :unprocessable_entity
+  end
+
+  test "candidate search returns an exact unconfirmed name match with safe fields" do
+    profile = PlayerProfile.create!(display_name: "John Smith", created_by: users(:three))
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path
+
+    assert_response :success
+    candidate = JSON.parse(response.body).find { |row| row["id"] == profile.id }
+    assert_equal "candidate", candidate["result_type"]
+    assert_equal "exact_name", candidate["match_type"]
+    assert_equal "John Smith", candidate["display_name"]
+    assert_equal [ "display_name", "id", "match_type", "player_profile_id", "result_type" ], candidate.keys.sort
+    assert_nil profile.reload.person_id
+    assert_empty PlayerClaim.where(player_profile: profile)
+  end
+
+  test "candidate search includes partial name matches" do
+    profile = PlayerProfile.create!(display_name: "John Q Smith", created_by: users(:three))
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path
+
+    row = JSON.parse(response.body).find { |candidate| candidate["id"] == profile.id }
+    assert_equal "partial_name", row["match_type"]
+  end
+
+  test "candidate search considers a previous name alias" do
+    profile = PlayerProfile.create!(display_name: "Johnny Smith", created_by: users(:three))
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path
+
+    row = JSON.parse(response.body).find { |candidate| candidate["id"] == profile.id }
+    assert_equal "exact_name", row["match_type"]
+  end
+
+  test "candidate search returns multiple candidates and no matches as an empty array" do
+    first = PlayerProfile.create!(display_name: "John Smith Jr", created_by: users(:three))
+    second = PlayerProfile.create!(display_name: "Smith John", created_by: users(:three))
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path
+    ids = JSON.parse(response.body).map { |row| row["id"] }
+    assert_includes ids, first.id
+    assert_includes ids, second.id
+
+    other = Person.create!(first_name: "Zelda", last_name: "Example")
+    user = User.create!(name: "Zelda", email_address: "zelda.candidate@example.com", password: "password123")
+    Account.create!(user: user, person: other)
+    sign_in_as(user)
+    get candidates_api_v1_player_claims_path
+    assert_equal [], JSON.parse(response.body)
+  end
+
+  test "candidate search excludes profiles already claimed by any Person" do
+    linked = people(:one).player_profiles.create!
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path
+
+    ids = JSON.parse(response.body).map { |row| row["id"] }
+    assert_not_includes ids, linked.id
+    assert_not_includes ids, player_profiles(:john_player).id
+  end
+
+  test "candidate search excludes profiles with a pending claim" do
+    pending_profile = PlayerProfile.create!(display_name: "John Smith", created_by: users(:three))
+    PlayerClaim.create!(player_profile: pending_profile, person: people(:two),
+                        initiated_by_person: people(:two), status: "pending")
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path
+
+    assert_not_includes JSON.parse(response.body).map { |row| row["id"] }, pending_profile.id
+  end
+
+  test "candidate search respects private profile visibility" do
+    private_profile = PlayerProfile.create!(display_name: "John Smith", visibility: "private", created_by: users(:six))
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path
+
+    assert_not_includes JSON.parse(response.body).map { |row| row["id"] }, private_profile.id
+  end
+
   test "a linked user can request a claim without changing profile identity" do
     sign_in_as(@claimant)
     old_id = @profile.id
