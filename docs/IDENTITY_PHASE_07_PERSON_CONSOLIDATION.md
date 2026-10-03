@@ -19,7 +19,7 @@ Complete for the administrator-only preview and transactional consolidation API.
 - Existing people merged into the source are pointed directly at the canonical person, keeping merge references shallow.
 - Both people are locked in stable ID order; state and conflicts are rechecked inside the transaction. Audit creation and all reassignment roll back together.
 - Historical actor/provenance IDs on claims, invitations, and organisations are retained. Consolidation does not rewrite who originally initiated, reviewed, created, or used those records.
-- Two accounts or duplicate organisation/group memberships block consolidation and are returned as typed conflicts. No automatic profile deduplication, account choice, membership deletion, or fuzzy-match merge occurs.
+- Two accounts or duplicate organisation/group memberships block ordinary consolidation and are returned as typed conflicts. Phase 8 adds a separate explicit membership resolution endpoint: an administrator chooses the surviving row and records a reason, while the removed row's full pre-removal snapshot is retained in the audit. Account conflicts remain blocking. No automatic profile deduplication, account choice, or fuzzy-match merge occurs.
 - Source and canonical must be distinct; source cannot already be merged/consolidated; canonical cannot be merged.
 
 ## Files

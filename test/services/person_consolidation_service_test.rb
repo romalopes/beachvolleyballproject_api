@@ -50,6 +50,31 @@ class PersonConsolidationServiceTest < ActiveSupport::TestCase
     assert_equal canonical.id, Account.find(account_id).person_id
   end
 
+  test "canonical-only account remains attached to canonical person" do
+    source = create_person("Accountless Source")
+    canonical = people(:two)
+    account_id = accounts(:two).id
+
+    PersonConsolidationService.execute!(source_person: source, canonical_person: canonical, performed_by: users(:two))
+
+    assert_equal canonical.id, Account.find(account_id).person_id
+  end
+
+  test "multiple player and coach profiles are retained as distinct records" do
+    source = people(:accountless_player)
+    canonical = create_person("Profiles Canonical")
+    target_player = PlayerProfile.create!(person: canonical, status: "active", preferred_position: "blocker")
+    source_coach = CoachProfile.create!(person: source, status: "active", coaching_level: "level_1")
+    target_coach = CoachProfile.create!(person: canonical, status: "active", coaching_level: "level_2")
+
+    PersonConsolidationService.execute!(source_person: source, canonical_person: canonical, performed_by: users(:two))
+
+    assert_equal [player_profiles(:pedro_player).id, target_player.id].sort,
+                 PlayerProfile.where(person_id: canonical.id).pluck(:id).sort
+    assert_equal [source_coach.id, target_coach.id].sort,
+                 CoachProfile.where(person_id: canonical.id).pluck(:id).sort
+  end
+
   test "audit failure rolls every reassignment back" do
     source = people(:accountless_player)
     canonical = create_person("Rollback Destination")
@@ -90,6 +115,44 @@ class PersonConsolidationServiceTest < ActiveSupport::TestCase
     assert_not preview[:ready]
     assert_includes preview[:conflicts].map { |item| item[:type] }, "group_membership_conflict"
     assert_equal "active", source.reload.status
+  end
+
+  test "explicit membership resolution keeps the selected rows and audits discarded snapshots" do
+    source = people(:accountless_player)
+    canonical = create_person("Membership Canonical")
+    organisation = organisations(:sydney_club)
+    group = groups(:u19_squad)
+    canonical_org = OrganisationMembership.create!(organisation: organisation, person: canonical,
+                                                    role: "member", status: "active")
+    canonical_group = GroupMembership.create!(group: group, person: canonical, role: "member", status: "active")
+    preview = PersonConsolidationService.preview(source_person: source, canonical_person: canonical)
+    resolutions = preview[:conflicts].map do |conflict|
+      { type: conflict[:type], container_id: conflict[:container_id],
+        keep_record_id: conflict[:source_record_id], reason: "Source record verified against club roster" }
+    end
+
+    audit = PersonConsolidationService.execute!(source_person: source, canonical_person: canonical,
+                                                 performed_by: users(:two), membership_resolutions: resolutions)
+
+    assert_equal canonical.id, organisation_memberships(:accountless_club_member).reload.person_id
+    assert_not OrganisationMembership.exists?(id: canonical_org.id)
+    assert_equal canonical.id, group_memberships(:u19_squad_pedro).reload.person_id
+    assert_not GroupMembership.exists?(id: canonical_group.id)
+    assert_equal 2, audit.result.fetch("membership_resolutions").length
+    discarded_ids = audit.result.fetch("membership_resolutions").map { |item| item.fetch("discarded_record_id") }
+    assert_equal [canonical_org.id, canonical_group.id].sort, discarded_ids.sort
+    assert audit.result.fetch("membership_resolutions").all? { |item| item["discarded_record_snapshot"].present? && item["reason"].present? }
+  end
+
+  test "two-account conflict blocks in either source direction" do
+    [[people(:one), people(:two)], [people(:two), people(:one)]].each do |source, canonical|
+      error = assert_raises(PersonConsolidationService::Conflict) do
+        PersonConsolidationService.execute!(source_person: source, canonical_person: canonical, performed_by: users(:two))
+      end
+      assert_includes error.preview[:conflicts].map { |item| item[:type] }, "account_conflict"
+      assert_equal "active", source.reload.status
+      assert_empty PersonConsolidation.where(source_person_id: source.id)
+    end
   end
 
   test "rejects self consolidation, merged sources, merged targets, and replay" do

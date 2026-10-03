@@ -52,4 +52,36 @@ class Api::V1::PersonConsolidationsControllerTest < ActionDispatch::IntegrationT
     assert_equal "active", source.reload.status
     assert_empty PersonConsolidation.where(source_person_id: source.id)
   end
+
+  test "explicit membership resolution is admin-only and audited" do
+    source = people(:accountless_player)
+    canonical = Person.create!(first_name: "Resolution", last_name: "Target", creation_source: "system")
+    canonical_membership = OrganisationMembership.create!(
+      organisation: organisations(:sydney_club), person: canonical, role: "member", status: "active"
+    )
+    conflict = PersonConsolidationService.preview(source_person: source, canonical_person: canonical)[:conflicts].first
+    params = {
+      person_consolidation: { source_person_id: source.id, canonical_person_id: canonical.id },
+      membership_resolutions: [
+        { type: conflict[:type], container_id: conflict[:container_id],
+          keep_record_id: conflict[:source_record_id], reason: "Verified against the current club roster" }
+      ]
+    }
+
+    sign_in_as(users(:one))
+    post resolve_api_v1_person_consolidations_path, params: params
+    assert_response :forbidden
+
+    sign_in_as(users(:two))
+    post resolve_api_v1_person_consolidations_path, params: params
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    audit = PersonConsolidation.find(body.fetch("id"))
+    resolution = audit.result.fetch("membership_resolutions").first
+    assert_equal canonical_membership.id, resolution.fetch("discarded_record_id")
+    assert_equal "Verified against the current club roster", resolution.fetch("reason")
+    assert_equal canonical.id, organisation_memberships(:accountless_club_member).reload.person_id
+    assert_not OrganisationMembership.exists?(id: canonical_membership.id)
+  end
 end

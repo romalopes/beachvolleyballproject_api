@@ -11,14 +11,11 @@ module Api
       end
 
       def create
-        source, canonical = selected_people
-        audit = PersonConsolidationService.execute!(source_person: source, canonical_person: canonical,
-                                                     performed_by: Current.real_user)
-        render json: audit_payload(audit), status: :created
-      rescue PersonConsolidationService::Conflict => e
-        render json: { error: e.message, preview: e.preview }, status: :conflict
-      rescue PersonConsolidationService::InvalidConsolidation => e
-        render json: { error: e.message }, status: :unprocessable_entity
+        execute_consolidation
+      end
+
+      def resolve
+        execute_consolidation(membership_resolutions: params[:membership_resolutions])
       end
 
       def show
@@ -26,6 +23,18 @@ module Api
       end
 
       private
+
+      def execute_consolidation(membership_resolutions: [])
+        source, canonical = selected_people
+        audit = PersonConsolidationService.execute!(source_person: source, canonical_person: canonical,
+                                                     performed_by: Current.real_user,
+                                                     membership_resolutions: membership_resolutions)
+        render json: audit_payload(audit), status: :created
+      rescue PersonConsolidationService::Conflict => e
+        render json: { error: e.message, preview: e.preview }, status: :conflict
+      rescue PersonConsolidationService::InvalidConsolidation => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
 
       def selected_people
         selection = params.require(:person_consolidation)

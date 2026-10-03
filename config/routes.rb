@@ -114,7 +114,10 @@ Rails.application.routes.draw do
         post :promote, on: :member
       end
       resources :person_consolidations, only: %i[show create] do
-        collection { post :preview }
+        collection do
+          post :preview
+          post :resolve
+        end
       end
       resources :players, only: %i[index show create update]
       resources :coaches, only: %i[index show create update]
