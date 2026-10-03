@@ -2,25 +2,27 @@
 
 ## Status
 
-Planned. Existing organisation and group architecture is Person-keyed and already permits multiple memberships.
+Complete. The existing Person-keyed model supports the planned organisation and group contexts; this phase adds end-to-end regression coverage. No schema or production behavior change was needed.
 
-## Goal
+## Validated invariants
 
-Prove that the identity model allows one Person to belong to multiple organisations and groups, be a player in one context and coach in another, and retain independent CoachProfiles without duplicating Person membership data.
+- Organisation and Group records do not own or create Person identities.
+- A Group can be independent (`organisation_id: nil`) or tied to one Organisation.
+- OrganisationMembership and GroupMembership remain keyed by Person, not Account, User, PlayerProfile, or CoachProfile.
+- One Person can carry a PlayerProfile and multiple independent CoachProfiles while belonging to multiple Organisations and Groups.
+- An Organisation-linked group roster must contain active members of that Organisation. An independent group has no organisation-sharing constraint.
+- Group membership grants neither organisation membership nor organisation management authority. Organisation and group authorization still use their existing membership and role checks.
+- Successful Person consolidation preserves non-duplicate organisation/group membership rows and their IDs, roles, and statuses. Phase 8's explicit collision resolution applies only where the database's Person/container uniqueness rule prevents both rows from being attached to the canonical Person.
 
-## Invariants
+## Verification
 
-- Organisation and Group do not own Person records.
-- Group may be independent or associated with an organisation as the existing model specifies.
-- OrganisationMembership and GroupMembership remain Person-keyed.
-- Membership is not a substitute for attendance, a CoachProfile, or an authorization bypass.
+The focused run passed: 30 tests, 132 assertions, 0 failures, 0 errors. It included all Group API controller tests plus the new combined identity/consolidation scenario.
 
-## Acceptance checks
+The combined scenario gives one Person a PlayerProfile and multiple CoachProfiles, memberships in separate Organisations, and both an organisation-linked and an independent Group; it consolidates that Person into another Person who already has an account, profile, and memberships. It verifies that every distinct profile and membership row remains attached to the canonical Person with its record ID and lifecycle status intact.
 
-- Integration coverage exercises organisation-owned and independent groups, multiple memberships, combined player/coach identity, and several CoachProfiles.
-- Person consolidation does not erase or silently duplicate membership history.
-- Authorization remains based on existing membership and role rules.
+## Added coverage
 
-## Dependencies
+- `test/services/identity_organisation_group_compatibility_test.rb`
+- `test/controllers/api/v1/groups_controller_test.rb`: group membership does not grant standing to create a group for an Organisation.
 
-Phases 6–8 establish profile multiplicity and consolidation behavior. This phase validates existing organization/group contracts without adding redundant membership tables.
+Existing Group and Organisation model/API tests cover the remaining sharing, lifecycle, and role rules.
