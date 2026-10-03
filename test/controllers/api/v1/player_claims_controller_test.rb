@@ -142,18 +142,26 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
   test "only a coach or admin may approve and approval links the existing profile" do
     assessment = assessments(:draft_ready)
     assessment.update!(player_profile: @profile)
+    @profile.update!(visibility: "private", created_by: @claimant)
+    reviewer_person = Person.create!(first_name: "Admin", last_name: "Reviewer", creation_source: "system")
+    Account.create!(user: users(:two), person: reviewer_person)
+    assessment_before_claim = assessment.reload.attributes.slice(
+      "id", "player_profile_id", "coach_profile_id", "score", "reported_value",
+      "scale", "status", "created_at", "updated_at", "notes"
+    )
     sign_in_as(@claimant)
     post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
     claim_id = JSON.parse(response.body).fetch("id")
 
-    sign_in_as(@reviewer)
+    sign_in_as(users(:two)) # admin with a linked Person may review a private profile
     post approve_api_v1_player_claim_path(claim_id)
 
     assert_response :success
     assert_equal "approved", PlayerClaim.find(claim_id).status
     assert_equal people(:one).id, @profile.reload.person_id
+    assert_equal "private", @profile.visibility
     assert_equal @profile.id, PlayerClaim.find(claim_id).player_profile_id
-    assert_equal @profile.id, assessment.reload.player_profile_id
+    assert_equal assessment_before_claim, assessment.reload.attributes.slice(*assessment_before_claim.keys)
   end
 
   test "a claimant cannot approve their own claim" do
