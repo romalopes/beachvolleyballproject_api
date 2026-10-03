@@ -113,6 +113,9 @@ Rails.application.routes.draw do
         # exists is a broader act than creating a new player.
         post :promote, on: :member
       end
+      resources :person_consolidations, only: %i[show create] do
+        collection { post :preview }
+      end
       resources :players, only: %i[index show create update]
       resources :coaches, only: %i[index show create update]
       resources :player_claims, only: %i[index show create] do

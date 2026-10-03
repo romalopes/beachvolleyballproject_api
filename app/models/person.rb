@@ -48,7 +48,10 @@ class Person < ApplicationRecord
   accepts_nested_attributes_for :organisation_memberships, allow_destroy: true, reject_if: :all_blank
 
   belongs_to :merged_into, class_name: "Person", optional: true
+  belongs_to :merged_by, class_name: "User", optional: true
   has_many :merged_from, class_name: "Person", foreign_key: :merged_into_id, inverse_of: :merged_into
+  has_many :consolidations_as_source, class_name: "PersonConsolidation", foreign_key: :source_person_id, dependent: :restrict_with_error
+  has_many :consolidations_as_canonical, class_name: "PersonConsolidation", foreign_key: :canonical_person_id, dependent: :restrict_with_error
 
   belongs_to :created_by, class_name: "User", optional: true
 

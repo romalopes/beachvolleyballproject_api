@@ -10,7 +10,7 @@ The supplied plan has fifteen phases. Phase 1 is documented in `IDENTITY_PHASE_0
 | 4 | Candidate discovery | Complete for authenticated backend/API suggestions and frontend API client; interactive UI remains in Phase 12 |
 | 5 | Secure claim invitations | Complete for backend/API, lifecycle safeguards, frontend API client, and focused tests; invitation UI remains in Phase 12 |
 | 6 | Multiple CoachProfiles | Complete; see `IDENTITY_PHASE_06_MULTIPLE_COACH_PROFILES.md` |
-| 7 | Person consolidation | Planned; see `IDENTITY_PHASE_07_PERSON_CONSOLIDATION.md` |
+| 7 | Person consolidation | Complete; focused tests pass and development migration applied; see `IDENTITY_PHASE_07_PERSON_CONSOLIDATION.md` |
 | 8 | Account/profile conflicts | Planned; see `IDENTITY_PHASE_08_ACCOUNT_CONFLICTS.md` |
 | 9 | Organisation/group validation | Planned; see `IDENTITY_PHASE_09_ORGANISATION_GROUP_VALIDATION.md` |
 | 10 | Assessment compatibility | Planned; see `IDENTITY_PHASE_10_ASSESSMENT_COMPATIBILITY.md` |
@@ -22,4 +22,4 @@ The supplied plan has fifteen phases. Phase 1 is documented in `IDENTITY_PHASE_0
 
 ## Completion gate
 
-Do not describe the identity plan as fully implemented until every phase above is complete, its own documentation records the implementation and risks, and its phase-specific tests pass. The numbered plan is followed here: Phase 6 (CoachProfiles) follows Phase 5 (invitations), even though the supplied implementation-order diagram places coach multiplicity earlier. Phases 7–8 should precede person/account consolidation; Phases 11–15 should follow the finalized domain and conflict rules.
+Do not describe the identity plan as fully implemented until every phase above is complete, its own documentation records the implementation and risks, and its phase-specific tests pass. The numbered plan is followed here: Phase 6 (CoachProfiles) follows Phase 5 (invitations), even though the supplied implementation-order diagram places coach multiplicity earlier. Phase 7 supplies safe person consolidation with blocking conflict detection; Phase 8 will refine account/profile conflict handling. Phases 11–15 should follow the finalized domain and conflict rules.
