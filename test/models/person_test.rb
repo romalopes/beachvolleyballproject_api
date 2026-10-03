@@ -38,7 +38,7 @@ class PersonTest < ActiveSupport::TestCase
   end
 
   test "player profile can exist before a Person is assigned" do
-    profile = PlayerProfile.create!
+    profile = PlayerProfile.create!(display_name: "Unaffiliated")
 
     assert_nil profile.reload.person_id
     assert_equal "profile_only", profile.account_status

@@ -19,10 +19,10 @@ module Api
 
       # Permitted input.
       PERSON_ATTRS = %i[first_name last_name email phone date_of_birth].freeze
-      PROFILE_ATTRS = %i[preferred_position level status visibility].freeze
+      PROFILE_ATTRS = %i[display_name preferred_position level status visibility].freeze
 
       # Serializable output.
-      PROFILE_ONLY = %i[id person_id preferred_position level status visibility created_at updated_at].freeze
+      PROFILE_ONLY = %i[id person_id display_name preferred_position level status visibility created_at updated_at].freeze
       PERSON_ONLY = %i[id first_name last_name email phone date_of_birth creation_source].freeze
       PROFILE_METHODS = %i[full_name account_status player_profile_id].freeze
       DETAIL_METHODS = PROFILE_METHODS + %i[training_session_count]
@@ -38,12 +38,12 @@ module Api
         # scheduling. `?mine=1` narrows to the players this user recorded.
         players = profile_scope
                   .includes(:person, :created_by)
-                  .joins(:person)
+                  .left_joins(:person)
                   .order(people: { last_name: :asc, first_name: :asc }, player_profiles: { id: :asc })
 
         if params[:q].present?
           term = "%#{params[:q]}%"
-          players = players.where("people.last_name ILIKE :t OR people.first_name ILIKE :t OR people.email ILIKE :t",
+          players = players.where("people.last_name ILIKE :t OR people.first_name ILIKE :t OR people.email ILIKE :t OR player_profiles.display_name ILIKE :t",
                                   t: term)
         end
         if params[:email].present?
@@ -97,6 +97,7 @@ module Api
         # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
+        payload["person"] = nil unless payload.key?("person")
 
         # Coaching history (plan 4.2): the count is published rows only, and
         # the history is whatever exists for this caller — drafts and
@@ -217,6 +218,7 @@ module Api
         # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
+        payload["person"] = nil unless payload.key?("person")
         payload
       end
 

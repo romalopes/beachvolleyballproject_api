@@ -115,6 +115,13 @@ Rails.application.routes.draw do
       end
       resources :players, only: %i[index show create update]
       resources :coaches, only: %i[index show create update]
+      resources :player_claims, only: %i[index show create] do
+        member do
+          post :approve
+          post :reject
+          post :cancel
+        end
+      end
 
       # Who coaches whom: the ongoing coaching relationship between a coach and a
       # player. Deliberately separate from assessments — a coach needs no row here

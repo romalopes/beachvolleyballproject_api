@@ -34,10 +34,10 @@ Person 1 ── 0..many OrganisationMemberships
 1. Drop unique indexes and model validations for profile-to-person links; make player `person_id` nullable. Keep coach `person_id` required until a use case for unassigned coaches is designed.
 2. Change Person associations to `has_many`, protect referenced profiles from accidental Person deletion, and provide plural identifiers in API responses while retaining legacy singular identifiers during transition.
 3. Audit every implicit “current profile” lookup. A user's default coach/player profile is ambiguous once multiple profiles are allowed; APIs and UI need an explicit context selection rule.
-4. Design player claim storage and conflict behavior before permitting personless player records in the UI. Current profile tables have no display-name fields independent of Person.
+4. Phase 3 implements claim storage and conflict behavior plus a standalone `display_name` required for unlinked profiles. Claim interaction screens remain for Phase 12.
 5. Treat claims, invitations, and consolidation as audited, authorized transactions. Do not infer merges from names.
 6. Keep all profile ID references and history intact during later consolidation; define duplicate membership behavior before migration.
 
 ## Phase status
 
-Phase 1 audit is complete. The detailed, read-only findings above are based on repository code and schema, not assumptions from the plan. Phase 2 implementation is tracked in `IDENTITY_PHASE_02_CARDINALITY.md`; later workflows require their own design, implementation, and verification.
+Phase 1 audit is complete. The detailed, read-only findings above are based on repository code and schema, not assumptions from the plan. Phase 2 implementation is tracked in `IDENTITY_PHASE_02_CARDINALITY.md`, and Phase 3 in `IDENTITY_PHASE_03_PLAYER_CLAIM.md`; later workflows require their own design, implementation, and verification.

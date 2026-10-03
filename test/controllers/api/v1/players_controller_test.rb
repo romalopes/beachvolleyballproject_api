@@ -396,6 +396,29 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal 2, existing.person.reload.player_profiles.count
   end
 
+  test "create can record an unlinked player profile with a display name" do
+    sign_in_as(@admin)
+
+    post api_v1_players_path, params: { player: { player_profile: { display_name: "Maria Jose" } } }
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_nil body["person_id"]
+    assert_nil body["person"]
+    assert_equal "Maria Jose", body["full_name"]
+    assert_equal "Maria Jose", PlayerProfile.find(body["id"]).display_name
+  end
+
+  test "index includes unlinked player profiles and can search their display name" do
+    sign_in_as(@admin)
+    profile = PlayerProfile.create!(display_name: "Maria Jose")
+
+    get api_v1_players_path, params: { q: "Maria Jose" }
+
+    assert_response :success
+    assert_equal [ profile.id ], JSON.parse(response.body)["data"].map { |row| row["id"] }
+  end
+
   test "create player rejects an unknown person_id" do
     sign_in_as(@admin)
 

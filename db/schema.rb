@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_03_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_03_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -421,6 +421,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_03_000001) do
     t.index ["person_id"], name: "index_person_aliases_on_person_id"
   end
 
+  create_table "player_claims", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "initiated_by_person_id", null: false
+    t.bigint "person_id", null: false
+    t.bigint "player_profile_id", null: false
+    t.text "rejection_reason"
+    t.datetime "reviewed_at"
+    t.bigint "reviewed_by_person_id"
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.index ["initiated_by_person_id"], name: "index_player_claims_on_initiated_by_person_id"
+    t.index ["person_id"], name: "index_player_claims_on_person_id"
+    t.index ["player_profile_id"], name: "index_player_claims_on_player_profile_id"
+    t.index ["player_profile_id"], name: "index_player_claims_one_pending_per_profile", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["reviewed_by_person_id"], name: "index_player_claims_on_reviewed_by_person_id"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'cancelled'::character varying]::text[])", name: "player_claims_valid_status"
+  end
+
   create_table "player_coaches", force: :cascade do |t|
     t.bigint "coach_profile_id", null: false
     t.datetime "created_at", null: false
@@ -440,6 +458,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_03_000001) do
   create_table "player_profiles", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
+    t.string "display_name"
     t.string "level"
     t.bigint "person_id"
     t.string "preferred_position"
@@ -907,6 +926,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_03_000001) do
   add_foreign_key "people", "people", column: "merged_into_id"
   add_foreign_key "people", "users", column: "created_by_id"
   add_foreign_key "person_aliases", "people"
+  add_foreign_key "player_claims", "people", column: "initiated_by_person_id"
+  add_foreign_key "player_claims", "people"
+  add_foreign_key "player_claims", "player_profiles"
+  add_foreign_key "player_claims", "people", column: "reviewed_by_person_id"
   add_foreign_key "player_coaches", "coach_profiles"
   add_foreign_key "player_coaches", "player_profiles"
   add_foreign_key "player_profiles", "people"

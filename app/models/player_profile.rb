@@ -31,6 +31,7 @@ class PlayerProfile < ApplicationRecord
   accepts_nested_attributes_for :person, allow_destroy: false, update_only: true
 
   has_many :training_session_participants, dependent: :destroy, inverse_of: :player_profile
+  has_many :player_claims, dependent: :restrict_with_error
 
   # Group membership is a roster entry, not evidence, and it is keyed on Person
   # (plan §2.2) rather than on this profile — so a squad can hold somebody who
@@ -56,6 +57,7 @@ class PlayerProfile < ApplicationRecord
 
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
+  validates :display_name, presence: true, if: -> { person.nil? }
 
   scope :active, -> { where(status: "active") }
 
@@ -113,7 +115,7 @@ class PlayerProfile < ApplicationRecord
   end
 
   def full_name
-    person&.full_name || "Player ##{id}"
+    person&.full_name || display_name
   end
 
   def account_status

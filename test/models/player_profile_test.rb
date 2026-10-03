@@ -6,7 +6,7 @@ class PlayerProfileTest < ActiveSupport::TestCase
   end
 
   test "may exist before a person is assigned" do
-    profile = PlayerProfile.new
+    profile = PlayerProfile.new(display_name: "Unaffiliated")
     assert profile.valid?
   end
 
