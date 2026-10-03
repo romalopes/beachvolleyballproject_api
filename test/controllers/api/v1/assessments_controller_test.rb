@@ -154,6 +154,45 @@ class Api::V1::AssessmentsControllerTest < ActionDispatch::IntegrationTest
     assert_equal coach_profiles(:maria_coach).id, row["coach_profile_id"]
   end
 
+  test "a coach may attribute an assessment to any of their own profiles" do
+    second_profile = CoachProfile.create!(
+      person: people(:two), coaching_level: "advanced", qualifications: "Beach coach"
+    )
+    sign_in_as(@assessor)
+
+    post api_v1_assessments_path, params: {
+      assessment: {
+        player_profile_id: player_profiles(:pedro_player).id,
+        custom_category: "Context-specific assessment",
+        value: 4,
+        coach_profile_id: second_profile.id
+      }
+    }
+
+    assert_response :created
+    assert_equal second_profile.id, JSON.parse(response.body)["coach_profile_id"]
+  end
+
+  test "a coach mine filter includes assessments attributed to every own profile" do
+    second_profile = CoachProfile.create!(person: people(:two), coaching_level: "advanced")
+    row = Assessment.create!(
+      player_profile: player_profiles(:pedro_player),
+      coach_profile: second_profile,
+      category: categories(:assessment_rubric),
+      score: 70,
+      reported_value: 4,
+      scale: "one_to_five",
+      status: "draft",
+      created_by: users(:three)
+    )
+    sign_in_as(@assessor)
+
+    get api_v1_assessments_path, params: { status: "draft", mine: "1" }
+
+    assert_response :success
+    assert_includes JSON.parse(response.body)["data"].map { |item| item["id"] }, row.id
+  end
+
   test "create defaults to draft status" do
     sign_in_as(@assessor)
     post api_v1_assessments_path, params: {

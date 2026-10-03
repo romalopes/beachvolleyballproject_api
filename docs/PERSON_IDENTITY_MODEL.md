@@ -1,8 +1,9 @@
 # Person / Player / Coach Identity Model
 
-Phases 1–3 are implemented (identity model, training participants, player/coach
-API + SPA), including **3.C — private-to-the-coach visibility** and its
-hardening pass (see *Ownership and visibility* below).
+The identity model supports an optional Account and multiple player and coach
+profiles per Person. Claim, candidate-discovery, and invitation workflows are
+documented in the numbered identity phase documents. This overview reflects the
+current cardinality and should stay aligned as later phases land.
 
 ## Core principle
 
@@ -17,16 +18,16 @@ User (authentication: email + password)
   └── Account (bridge, 1—1)
         └── Person (domain identity)
               ├── 0..1 Account
-              ├── 0..1 PlayerProfile (position, level, status)
-              ├── 0..1 CoachProfile (coaching_level, qualifications)
+              ├── 0..many PlayerProfiles (position, level, status)
+              ├── 0..many CoachProfiles (coaching_level, qualifications)
               └── PersonAlias (nicknames, alternate spellings)
 ```
 
 Invariants (enforced by unique indexes + model validations):
 
 - `accounts.person_id` unique — one Account per Person max
-- `player_profiles.person_id` unique — one PlayerProfile per Person max
-- `coach_profiles.person_id` unique — one CoachProfile per Person max
+- `player_profiles.person_id` indexed, not unique; nullable for unlinked records
+- `coach_profiles.person_id` indexed, not unique; required for every coach record
 - Every Account always has a Person (`Account#ensure_person` runs on create).
   Authentication is optional; domain identity is mandatory.
 
@@ -146,7 +147,7 @@ editable — but an edit can never turn into an identity change:
   a merge, not an edit.
 - Nested person attributes use
   `accepts_nested_attributes_for :person, update_only: true`. Without it Rails
-  *replaces* the person on a `has_one` whenever the nested hash carries no id,
+  *replaces* the associated Person whenever the nested hash carries no id,
   which would silently create a second identity on every contact-detail change.
 - Provenance (`creation_source`, `created_by_id`) is never rewritten by an edit.
 - A blank contact field means "no value" and is stored as NULL, so a wrong phone
@@ -224,12 +225,17 @@ Archiving is the only removal path, and it is a flag:
 - `visibility` defaults to `shared`, and the create form offers the switch
   rather than defaulting a newly recorded profile to private.
 
-## Not yet implemented (future phases)
+## Identity workflow status
 
 - ~~Assessments referencing `player_profile` + `coach_profile`~~ — **implemented in
   Phase 4** (coach-authoritative, canonical 0–100 score). See
   `docs/ASSESSMENT_INTEGRATION_PLAN.md`.
-- `PlayerCoach` join model, groups
-- `PersonClaim` / invitations (invited person claims their existing Person)
-- `PersonMerge` consolidation service
+- `PlayerCoach` and Group membership workflows are implemented in their domain
+  phases; these remain separate from identity ownership.
+- Player claims, candidate discovery, and secure PlayerProfile invitations are
+  implemented in Phases 3–5; see their separate `IDENTITY_PHASE_*.md` files.
+- Multiple CoachProfiles are enabled in Phase 2 and completed in Phase 6; the
+  profile used for an assessment, session, or coaching period is recorded by that
+  domain row. Organisation/group memberships remain Person-level.
+- Person consolidation remains future work in Phases 7–8.
 - Tournament participation, `assertion_source` / dispute states

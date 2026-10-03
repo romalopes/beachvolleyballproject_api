@@ -162,6 +162,14 @@ class AssessmentTest < ActiveSupport::TestCase
     assert_includes visible, assessments(:custom_withdrawn)
   end
 
+  test "a coach sees private rows attributed to any of their coach profiles" do
+    second_profile = CoachProfile.create!(person: people(:two), coaching_level: "advanced")
+    row = build_assessment(coach_profile: second_profile, status: "draft", created_by: @other_coach)
+    row.save!
+
+    assert_includes Assessment.visible_to(@coach_user), row
+  end
+
   test "another coach sees only published rows" do
     visible = Assessment.visible_to(@other_coach)
 

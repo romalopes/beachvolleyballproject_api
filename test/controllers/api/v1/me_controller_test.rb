@@ -47,6 +47,39 @@ class Api::V1::MeControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert_equal people(:two).id, body["person_id"]
     assert_equal coach_profiles(:maria_coach).id, body["coach_profile_id"]
+    assert_equal [ coach_profiles(:maria_coach).id ], body["coach_profile_ids"]
+    assert_equal [ coach_profiles(:maria_coach).id ], body["coach_profiles"].map { |profile| profile["id"] }
     assert_nil body["player_profile_id"]
+  end
+
+  test "returns every coach profile and keeps the first active one as the legacy default" do
+    person = people(:two)
+    second = CoachProfile.create!(
+      person: person,
+      coaching_level: "advanced",
+      qualifications: "Beach coaching",
+      created_by: users(:three)
+    )
+    sign_in_as(users(:six))
+
+    get "/api/v1/me"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal [ coach_profiles(:maria_coach).id, second.id ], body["coach_profile_ids"]
+    assert_equal [ coach_profiles(:maria_coach).id, second.id ], body["coach_profiles"].map { |profile| profile["id"] }
+    assert_equal coach_profiles(:maria_coach).id, body["coach_profile_id"]
+  end
+
+  test "returns no coach context when the Person has no CoachProfiles" do
+    sign_in_as(users(:one))
+
+    get "/api/v1/me"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_nil body["coach_profile_id"]
+    assert_equal [], body["coach_profile_ids"]
+    assert_equal [], body["coach_profiles"]
   end
 end

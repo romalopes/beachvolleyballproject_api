@@ -140,6 +140,48 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "system", person.reload.creation_source, "linking must not rewrite provenance"
   end
 
+  test "a Person may have multiple independently addressable coach profiles" do
+    person = people(:two)
+    original_profile = coach_profiles(:maria_coach)
+    account_id = person.account.id
+    player_profile = PlayerProfile.create!(person: person, display_name: "Maria's player record")
+    player_profile_ids = person.reload.player_profiles.pluck(:id)
+    membership_ids = person.organisation_memberships.pluck(:id)
+    sibling_ids = person.coach_profiles.pluck(:id)
+    sign_in_as(@admin)
+
+    post api_v1_coaches_path, params: {
+      coach: { person_id: person.id, coach_profile: { coaching_level: "national", qualifications: "Beach coach" } }
+    }
+
+    assert_response :created
+    created = JSON.parse(response.body)
+    assert_equal person.id, created["person_id"]
+    assert_not_equal original_profile.id, created["id"]
+    assert_equal sibling_ids + [ created["id"] ], person.reload.coach_profiles.order(:id).pluck(:id)
+    assert_equal account_id, person.account.id
+    assert_equal player_profile_ids, person.player_profiles.pluck(:id)
+    assert_equal membership_ids, person.organisation_memberships.pluck(:id)
+    assert original_profile.reload.persisted?
+  end
+
+  test "archiving one coach profile leaves its Person and sibling profiles intact" do
+    person = people(:two)
+    second = CoachProfile.create!(person: person, coaching_level: "advanced", created_by: @admin)
+    account_id = person.account.id
+    player_profile_ids = person.player_profiles.pluck(:id)
+    sign_in_as(@admin)
+
+    patch api_v1_coach_path(second), params: { coach: { coach_profile: { status: "archived" } } }
+
+    assert_response :success
+    assert_equal "archived", second.reload.status
+    assert_equal "active", coach_profiles(:maria_coach).reload.status
+    assert_equal account_id, person.reload.account.id
+    assert_equal player_profile_ids, person.player_profiles.pluck(:id)
+    assert_equal [ coach_profiles(:maria_coach).id, second.id ], person.coach_profiles.order(:id).pluck(:id)
+  end
+
   test "create coach reports possible duplicates as suggestions only" do
     sign_in_as(@admin)
     existing = Person.create!(first_name: "Existing", last_name: "Coach", email: "dup_coach@example.com",

@@ -7,7 +7,11 @@ module Api
         user = Current.user
         person = user.person
         player_profile = person&.player_profile
-        coach_profile = person&.coach_profile
+        coach_profiles = person ? person.coach_profiles.order(:id).to_a : []
+        active_coach_profiles = coach_profiles.select { |profile| profile.status == "active" }
+        # Keep a deterministic legacy default for older SPA clients. New clients
+        # should use the complete collection and submit the chosen profile ID.
+        coach_profile = active_coach_profiles.first
         payload = {
           id: user.id,
           name: user.name,
@@ -19,7 +23,16 @@ module Api
           # keeps the caller's own player row out of the assessable picker.
           person_id: person&.id,
           player_profile_id: player_profile&.id,
-          coach_profile_id: coach_profile&.id
+          coach_profile_id: coach_profile&.id,
+          coach_profile_ids: coach_profiles.map(&:id),
+          coach_profiles: coach_profiles.map do |profile|
+            {
+              id: profile.id,
+              coaching_level: profile.coaching_level,
+              qualifications: profile.qualifications,
+              status: profile.status
+            }
+          end
         }
         if Current.impersonating? && (admin = Current.real_user)
           payload[:impersonating] = true
