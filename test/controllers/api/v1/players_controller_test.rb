@@ -384,7 +384,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal [], JSON.parse(response.body)["possible_duplicates"]
   end
 
-  test "create player rejects a person who already has a player profile" do
+  test "create player permits another profile for the same person" do
     sign_in_as(@admin)
     existing = player_profiles(:john_player)
 
@@ -392,8 +392,8 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
       player: { person_id: existing.person_id, player_profile: {} }
     }
 
-    assert_response :unprocessable_entity
-    assert_includes JSON.parse(response.body)["errors"], "Person has already been taken"
+    assert_response :created
+    assert_equal 2, existing.person.reload.player_profiles.count
   end
 
   test "create player rejects an unknown person_id" do

@@ -8,8 +8,7 @@
 # A Person may simultaneously be a player and a coach (PlayerProfile +
 # CoachProfile), or neither. The invariants are:
 #   * at most one Account per Person
-#   * at most one PlayerProfile per Person
-#   * at most one CoachProfile per Person
+#   * any number of PlayerProfiles and CoachProfiles per Person
 #
 # Duplicate records are never hard-deleted: when two Person records describe
 # the same individual, one is marked `merged` and points at the canonical
@@ -19,8 +18,18 @@ class Person < ApplicationRecord
   CREATION_SOURCES = %w[signup coach_created player_created system].freeze
 
   has_one :account, foreign_key: :person_id, inverse_of: :person, dependent: :restrict_with_error
-  has_one :player_profile, dependent: :destroy
-  has_one :coach_profile, dependent: :destroy
+  has_many :player_profiles, dependent: :restrict_with_error, inverse_of: :person
+  has_many :coach_profiles, dependent: :restrict_with_error, inverse_of: :person
+  # Legacy singular associations remain read-only conveniences for callers that
+  # have not yet gained an explicit coaching/player context selector.
+  has_one :player_profile, -> { order(:id) }, inverse_of: :person
+  has_one :coach_profile, -> { order(:id) }, inverse_of: :person
+  # Transitional singular readers keep older API and authorization paths
+  # working while callers migrate to an explicit profile selection.
+  def build_player_profile(attributes = {}) = player_profiles.build(attributes)
+  def build_coach_profile(attributes = {}) = coach_profiles.build(attributes)
+  def create_player_profile!(attributes = {}) = player_profiles.create!(attributes)
+  def create_coach_profile!(attributes = {}) = coach_profiles.create!(attributes)
   has_many :person_aliases, dependent: :destroy
 
   # Squad rosters, keyed on Person (§2.2) — the same reason organisation
@@ -132,8 +141,12 @@ class Person < ApplicationRecord
       date_of_birth: date_of_birth,
       creation_source: creation_source,
       account_status: account_status,
-      player_profile_id: player_profile&.id,
-      coach_profile_id: coach_profile&.id,
+      # Keep the singular keys during the API transition for existing clients;
+      # new clients should use the complete profile ID lists.
+      player_profile_id: player_profiles.first&.id,
+      player_profile_ids: player_profiles.map(&:id),
+      coach_profile_id: coach_profiles.first&.id,
+      coach_profile_ids: coach_profiles.map(&:id),
       # Alternate names are not identity evidence, but they are how a coach
       # recognises someone ("Ah, Pedro — I knew him as Peter").
       aliases: person_aliases.map(&:full_name)
@@ -153,11 +166,11 @@ class Person < ApplicationRecord
   # Convenience accessors that create (but do not save) the profile when
   # missing, so callers can do `person.build_player_profile`.
   def player_profile_or_build
-    player_profile || build_player_profile
+    player_profiles.first || player_profiles.build
   end
 
   def coach_profile_or_build
-    coach_profile || build_coach_profile
+    coach_profiles.first || coach_profiles.build
   end
 
   private

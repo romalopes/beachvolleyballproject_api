@@ -11,10 +11,10 @@ class CoachProfileTest < ActiveSupport::TestCase
     assert_includes profile.errors.attribute_names, :person
   end
 
-  test "a person can have only one coach profile" do
-    duplicate = CoachProfile.new(person: people(:two))
-    assert_not duplicate.valid?
-    assert_includes duplicate.errors.attribute_names, :person_id
+  test "a person may have multiple coach profiles" do
+    person = people(:two)
+    assert CoachProfile.new(person: person).valid?
+    assert CoachProfile.new(person: person).valid?
   end
 
   test "validates status" do

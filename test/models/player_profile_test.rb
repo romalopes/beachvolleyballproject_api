@@ -5,16 +5,15 @@ class PlayerProfileTest < ActiveSupport::TestCase
     assert player_profiles(:john_player).valid?
   end
 
-  test "requires a person" do
+  test "may exist before a person is assigned" do
     profile = PlayerProfile.new
-    assert_not profile.valid?
-    assert_includes profile.errors.attribute_names, :person
+    assert profile.valid?
   end
 
-  test "a person can have only one player profile" do
-    duplicate = PlayerProfile.new(person: people(:one))
-    assert_not duplicate.valid?
-    assert_includes duplicate.errors.attribute_names, :person_id
+  test "a person may have multiple player profiles" do
+    person = people(:one)
+    assert PlayerProfile.new(person: person).valid?
+    assert PlayerProfile.new(person: person).valid?
   end
 
   test "different people can each have a player profile" do

@@ -26,6 +26,24 @@ class PersonTest < ActiveSupport::TestCase
     assert person.valid?
   end
 
+  test "can have multiple player and coach profiles" do
+    person = Person.create!(first_name: "Ana")
+    first_player = person.player_profiles.create!
+    second_player = person.player_profiles.create!
+    first_coach = person.coach_profiles.create!
+    second_coach = person.coach_profiles.create!
+
+    assert_equal [ first_player.id, second_player.id ], person.player_profiles.order(:id).pluck(:id)
+    assert_equal [ first_coach.id, second_coach.id ], person.coach_profiles.order(:id).pluck(:id)
+  end
+
+  test "player profile can exist before a Person is assigned" do
+    profile = PlayerProfile.create!
+
+    assert_nil profile.reload.person_id
+    assert_equal "profile_only", profile.account_status
+  end
+
   test "rejects future date of birth" do
     person = Person.new(first_name: "Ana", date_of_birth: 1.day.from_now.to_date)
     assert_not person.valid?

@@ -98,13 +98,8 @@ module Api
                         status: :unprocessable_entity
         end
 
-        association = role == "player" ? :player_profile : :coach_profile
-        if @person.public_send(association)
-          return render json: { error: "#{@person.full_name} is already a #{role}" },
-                        status: :conflict
-        end
-
-        profile = @person.public_send(:"create_#{association}!", created_by: Current.user)
+        profile_class = role == "player" ? PlayerProfile : CoachProfile
+        profile = profile_class.create!(person: @person, created_by: Current.user)
         render json: @person.reload.identity_summary.merge(profile_id: profile.id,
                                                            profile_kind: role),
                status: :created
@@ -120,7 +115,7 @@ module Api
       # duplicate an identity somebody has already reconciled.
       def scoped_people
         people = Person.canonical
-                       .includes(:account, :player_profile, :coach_profile, :person_aliases)
+                       .includes(:account, :player_profiles, :coach_profiles, :person_aliases)
                        .order(:last_name, :first_name, :id)
 
         if params[:q].present?

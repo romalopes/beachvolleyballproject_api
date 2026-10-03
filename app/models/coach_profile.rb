@@ -24,7 +24,6 @@ class CoachProfile < ApplicationRecord
   # person (and creating a second identity) when no id is sent.
   accepts_nested_attributes_for :person, allow_destroy: false, update_only: true
 
-  validates :person_id, uniqueness: true
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
 

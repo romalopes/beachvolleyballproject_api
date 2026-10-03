@@ -301,7 +301,7 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
     assert_nil person.reload.player_profile
   end
 
-  test "promoting somebody who is already a player is a conflict" do
+  test "promoting somebody who is already a player creates another profile" do
     sign_in_as(@admin)
     person = people(:one)
     existing = person.player_profile
@@ -309,8 +309,8 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
 
     post "/api/v1/people/#{person.id}/promote", params: { promotion: { role: "player" } }
 
-    assert_response :conflict
-    # One person may be both a player and a coach, but never two players.
+    assert_response :created
+    assert_equal 2, person.reload.player_profiles.count
     assert_equal existing.id, person.reload.player_profile.id
   end
 

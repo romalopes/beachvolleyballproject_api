@@ -133,6 +133,8 @@ module Api
         else
           render json: { errors: profile.errors.full_messages }, status: :unprocessable_entity
         end
+      rescue ActiveRecord::RecordNotFound
+        render json: { errors: [ "Person not found" ] }, status: :unprocessable_entity
       end
 
       # Editing a profile is a content change: a coach or admin may correct the
@@ -221,6 +223,8 @@ module Api
       # People who may already describe this human, matched by email then name.
       # The person just created is excluded so it never suggests itself.
       def possible_duplicates_for(person)
+        return [] unless person
+
         PersonDuplicateFinder.new(
           first_name: person.first_name,
           last_name: person.last_name,
@@ -235,14 +239,16 @@ module Api
         if attrs[:person_id].present?
           # Link the profile to an existing identity (chosen from the people
           # search); never rewrite that person's provenance.
-          profile_attrs[:person_id] = attrs[:person_id]
+          person = Person.find_by(id: attrs[:person_id])
+          raise ActiveRecord::RecordNotFound, "Person not found" unless person
+          profile_attrs[:person_id] = person.id
         else
           person_source = attrs[:person] || attrs[:person_attributes] || {}
           person_attrs = normalize_person_attrs(person_source)
           # Allow nested organisation_memberships_attributes
           memberships = permit_memberships(person_source)
           person_attrs[:organisation_memberships_attributes] = memberships if memberships.present?
-          profile_attrs[:person_attributes] = person_attrs if person_attrs.values.any?(&:present?)
+          profile_attrs[:person_attributes] = person_attrs if attrs.key?(:person) || attrs.key?(:person_attributes)
         end
 
         profile_attrs

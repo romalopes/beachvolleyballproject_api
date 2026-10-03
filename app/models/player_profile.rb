@@ -21,7 +21,7 @@ class PlayerProfile < ApplicationRecord
   # the client — mass-assignment from `player_params`/`coach_params` does not
   # include it, so neither create nor update can set it from the payload.
   belongs_to :created_by, class_name: "User", optional: true
-  belongs_to :person
+  belongs_to :person, optional: true
 
   # `update_only: true` is essential: for a has_one, Rails otherwise *replaces*
   # the person instead of updating it whenever the nested hash carries no id,
@@ -54,7 +54,6 @@ class PlayerProfile < ApplicationRecord
   has_many :player_coaches, dependent: :restrict_with_error
   has_many :coaches, through: :player_coaches, source: :coach_profile
 
-  validates :person_id, uniqueness: true
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
 
@@ -114,11 +113,11 @@ class PlayerProfile < ApplicationRecord
   end
 
   def full_name
-    person.full_name
+    person&.full_name || "Player ##{id}"
   end
 
   def account_status
-    person.account_status
+    person&.account_status || "profile_only"
   end
 
   # API-facing alias: callers address a profile by `<resource>_profile_id`

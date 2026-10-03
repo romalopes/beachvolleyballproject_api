@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_03_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -235,7 +235,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
     t.datetime "updated_at", null: false
     t.string "visibility", default: "shared", null: false
     t.index ["created_by_id"], name: "index_coach_profiles_on_created_by_id"
-    t.index ["person_id"], name: "index_coach_profiles_on_person_id", unique: true
+    t.index ["person_id"], name: "index_coach_profiles_on_person_id"
     t.index ["status"], name: "index_coach_profiles_on_status"
     t.index ["visibility"], name: "index_coach_profiles_on_visibility"
   end
@@ -441,13 +441,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
     t.string "level"
-    t.bigint "person_id", null: false
+    t.bigint "person_id"
     t.string "preferred_position"
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
     t.string "visibility", default: "shared", null: false
     t.index ["created_by_id"], name: "index_player_profiles_on_created_by_id"
-    t.index ["person_id"], name: "index_player_profiles_on_person_id", unique: true
+    t.index ["person_id"], name: "index_player_profiles_on_person_id"
     t.index ["status"], name: "index_player_profiles_on_status"
     t.index ["visibility"], name: "index_player_profiles_on_visibility"
   end
