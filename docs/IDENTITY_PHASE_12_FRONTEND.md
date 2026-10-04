@@ -16,8 +16,8 @@ Implemented. The new Identity page presents the signed-in account context and th
 - Users can select multiple suggestions and submit claim requests. Partial success is reported without discarding successful requests.
 - The user's own claim statuses are listed, and pending requests may be cancelled.
 - Coaches/admins see pending claims in their review scope and can approve or reject with a required reason. A reviewer cannot review their own claims from this screen.
-- A signed-in user can redeem a one-time invitation token. A `claim_token` query is carried through login, then removed from the URL after redemption.
-- An owner/admin viewing an unlinked player profile can issue a claim invitation. The raw token is shown only in the response screen and can be copied as an `/identity?claim_token=…` link. The server remains the authority for ownership and token validity.
+- A signed-in user can redeem a one-time invitation token. The `claim_token` fragment is carried through login, then removed from the URL after redemption. Legacy query-token links are still accepted.
+- An owner/admin viewing an unlinked player profile can issue a claim invitation. The raw token is shown only in the response screen and can be copied as an `/identity#claim_token=…` link. The server remains the authority for ownership and token validity.
 
 ### Coach profiles and attribution
 
@@ -33,7 +33,7 @@ The claims index previously returned only a coach's review queue or an ordinary 
 
 ## Verification
 
-- Identity page tests: **5 passed**, covering context/empty states, suggestion and multi-select semantics, invitation redemption, authentication handoff, API errors, and blocking account conflicts.
+- Identity page tests: **6 passed**, covering context/empty states, suggestion and multi-select semantics, invitation redemption, authentication handoff, legacy-link parsing, API errors, and blocking account conflicts.
 - Player claims controller tests: **20 tests, 62 assertions, 0 failures, 0 errors, 0 skips**.
 - Frontend production build passed after the new page and routes were added.
 - Ruby syntax and `git diff --check` passed.
