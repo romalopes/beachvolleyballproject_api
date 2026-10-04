@@ -128,6 +128,18 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Maria Jose", @profile.full_name
   end
 
+  test "a coach can see their own claim status alongside their review queue" do
+    sign_in_as(@reviewer)
+    post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
+    claim_id = JSON.parse(response.body).fetch("id")
+
+    get api_v1_player_claims_path
+
+    assert_response :success
+    claim = JSON.parse(response.body).find { |row| row["id"] == claim_id }
+    assert_equal "pending", claim.fetch("status")
+  end
+
   test "a personless profile cannot be claimed without a display name" do
     profile = PlayerProfile.create!(display_name: "No name")
     profile.update_column(:display_name, nil)

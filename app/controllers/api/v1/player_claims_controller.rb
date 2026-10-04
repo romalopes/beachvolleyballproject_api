@@ -19,16 +19,23 @@ module Api
       end
 
       def index
-        if Current.user&.admin?
-          claims = PlayerClaim.pending.includes(:player_profile).order(:created_at)
-          render json: claims.map { |claim| claim.summary(include_profile_name: true) }
-        elsif Current.user&.coach?
-          claims = PlayerClaim.pending.includes(:player_profile)
-                               .where(player_profiles: { created_by_id: Current.user.id }).order(:created_at)
-          render json: claims.map { |claim| claim.summary(include_profile_name: true) }
-        else
-          render json: PlayerClaim.where(person: Current.user.person).order(created_at: :desc).map(&:summary)
-        end
+        own_claims = PlayerClaim.where(person: Current.user&.person).includes(:player_profile).order(created_at: :desc)
+        review_claims = if Current.user&.admin?
+                          PlayerClaim.pending.includes(:player_profile).order(:created_at)
+                        elsif Current.user&.coach?
+                          PlayerClaim.pending.includes(:player_profile)
+                                     .where(player_profiles: { created_by_id: Current.user.id }).order(:created_at)
+                        else
+                          PlayerClaim.none
+                        end
+
+        payloads = own_claims.map do |claim|
+          may_review = Current.user&.admin? ||
+                       (Current.user&.coach? && claim.player_profile.created_by_id == Current.user.id)
+          [ claim.id, claim.summary(include_profile_name: may_review) ]
+        end.to_h
+        review_claims.each { |claim| payloads[claim.id] = claim.summary(include_profile_name: true) }
+        render json: payloads.values
       end
 
       def show
