@@ -78,6 +78,8 @@ The report connected to the database configured as `DATABASE_URL_PROD_neon` and 
 
 This is only evidence about the configured URL. It does not verify that the URL is the intended live customer database. A read-only listing of the configured R2 bucket found no objects under the active Neon backup prefix, so there is no backup object or checksum to validate. No decryption/restore proof or deployment approval was available in the workspace, and no migration was attempted. Confirm the target with the production operator, create and verify a restorable backup, reconcile the missing baseline table through the reviewed migration/release, then rerun the preflight before deployment.
 
+The checked-in Kamal deployment configuration also still points to a private example host (`192.168.0.1`) and a local image registry (`localhost:5555`); it does not identify a reachable production release target. GitHub CLI is unavailable in this workspace, so the repository backup workflow cannot be dispatched here. A production rollout cannot be performed from the current deployment configuration.
+
 ## Remaining operational gate
 
-Production rollout remains incomplete until the intended target is confirmed, a fresh restorable backup is retained, the missing baseline schema is reconciled, migrations are deployed, and a clean post-migration report is retained. The current read-only preflight found a blocker, so deployment is not ready.
+Production rollout remains incomplete until the intended database and deployment targets are confirmed, a fresh restorable backup is retained, the missing baseline schema is reconciled, migrations are deployed, and a clean post-migration report is retained. The current read-only preflight found a blocker, and the checked-in deploy target is a placeholder, so deployment is not ready.

@@ -61,4 +61,4 @@ The frontend build reports the existing large JavaScript chunk advisory; compila
 
 ## Follow-up
 
-Interactive identity workflows and context selection remain in Phase 12. Phase 13 will perform the broader security audit, and Phase 15 will run the full business integration matrix.
+The interactive identity workflows and context selection were completed in Phase 12; the security audit was completed in Phase 13; and the business integration matrix is complete in Phase 15. Production rollout remains gated by Phase 14's backup and migration validation.
