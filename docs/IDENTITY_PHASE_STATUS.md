@@ -14,7 +14,7 @@ The supplied plan has fifteen phases. Phase 1 is documented in `IDENTITY_PHASE_0
 | 8 | Account/profile conflicts | Implemented and focused tests pass; two-account conflicts stay blocking; see `IDENTITY_PHASE_08_ACCOUNT_CONFLICTS.md` |
 | 9 | Organisation/group validation | Complete; compatibility and authorization integration coverage passes; see `IDENTITY_PHASE_09_ORGANISATION_GROUP_VALIDATION.md` |
 | 10 | Assessment compatibility | Complete; claim, profile multiplicity, consolidation, and visibility regression tests pass; see `IDENTITY_PHASE_10_ASSESSMENT_COMPATIBILITY.md` |
-| 11 | Identity APIs | Planned; existing endpoints will be inventoried in `IDENTITY_PHASE_11_API.md` |
+| 11 | Identity APIs | Complete; expanded `/me` context, membership write authorization, invitation status, consolidation client methods, and focused tests; see `IDENTITY_PHASE_11_API.md` |
 | 12 | Frontend identity UI | Planned; see `IDENTITY_PHASE_12_FRONTEND.md` |
 | 13 | Security audit | Planned; invitation-specific coverage exists, full audit in `IDENTITY_PHASE_13_SECURITY_AUDIT.md` |
 | 14 | Production migration | Planned; see `IDENTITY_PHASE_14_PRODUCTION_MIGRATION.md` |

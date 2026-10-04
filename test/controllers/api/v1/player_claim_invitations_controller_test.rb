@@ -143,6 +143,30 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     assert_not Log.where(path: request.path).any? { |log| log.description.include?(raw_token) }
   end
 
+  test "invitation status can be retrieved by its owner without exposing token material" do
+    raw_token, invitation = create_invitation
+    sign_in_as(@owner)
+
+    get api_v1_player_claim_invitation_path(invitation)
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal invitation.id, body["id"]
+    assert_equal "active", body["status"]
+    assert_not_includes response.body, raw_token
+    assert_not_includes response.body, invitation.token_digest
+  end
+
+  test "invitation status is concealed from unrelated coaches" do
+    _raw_token, invitation = create_invitation
+    sign_in_as(@other_coach)
+
+    get api_v1_player_claim_invitation_path(invitation)
+
+    assert_response :not_found
+    assert_not_includes response.body, invitation.token_digest
+  end
+
   private
 
   def create_invitation

@@ -18,6 +18,7 @@ module Api
     class PeopleController < ApplicationController
       include ContentAuthorization
       include Pagination
+      include NestedOrganisationMembershipAuthorization
 
       before_action :require_authentication
       before_action :require_content_creator!
@@ -49,7 +50,10 @@ module Api
       end
 
       def create
-        person = Person.new(person_params)
+        attributes = person_params
+        return unless authorize_nested_organisation_memberships!(person: nil, attributes: attributes)
+
+        person = Person.new(attributes)
         # Provenance is recorded, not chosen: a person created here was created by
         # staff, whatever the caller asked for.
         person.creation_source = "coach_created"
@@ -64,7 +68,10 @@ module Api
       end
 
       def update
-        if @person.update(person_params)
+        attributes = person_params
+        return unless authorize_nested_organisation_memberships!(person: @person, attributes: attributes)
+
+        if @person.update(attributes)
           render json: @person.identity_summary
         else
           render json: { errors: @person.errors.full_messages },

@@ -71,6 +71,42 @@ class Api::V1::MeControllerTest < ActionDispatch::IntegrationTest
     assert_equal coach_profiles(:maria_coach).id, body["coach_profile_id"]
   end
 
+  test "returns the caller's account, all player profiles, and organisation/group memberships" do
+    person = people(:two)
+    second_player = PlayerProfile.create!(person: person, status: "active", preferred_position: "setter")
+    sign_in_as(users(:six))
+
+    get "/api/v1/me"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal accounts(:two).id, body["account_id"]
+    assert_equal [second_player.id], body["player_profile_ids"]
+    assert_equal [second_player.id], body["player_profiles"].map { |profile| profile["id"] }
+    assert_includes body["organisation_memberships"].map { |membership| membership["organisation_id"] },
+                    organisations(:sydney_club).id
+    assert_includes body["organisation_memberships"].map { |membership| membership["organisation_id"] },
+                    organisations(:sydney_academy).id
+    membership = body["group_memberships"].find { |row| row["group_id"] == groups(:u19_squad).id }
+    assert_equal "owner", membership["role"]
+    assert_equal "U19 squad", membership.dig("group", "name")
+  end
+
+  test "does not return another user's context when the authenticated user has no Person" do
+    sign_in_as(users(:two))
+
+    get "/api/v1/me"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_nil body["person_id"]
+    assert_nil body["account_id"]
+    assert_equal [], body["player_profiles"]
+    assert_equal [], body["coach_profiles"]
+    assert_equal [], body["organisation_memberships"]
+    assert_equal [], body["group_memberships"]
+  end
+
   test "returns no coach context when the Person has no CoachProfiles" do
     sign_in_as(users(:one))
 

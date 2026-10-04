@@ -10,6 +10,7 @@ module Api
     class CoachesController < ApplicationController
       include ContentAuthorization
       include Pagination
+      include NestedOrganisationMembershipAuthorization
 
       before_action :require_authentication
       before_action :require_training_manager!
@@ -109,7 +110,12 @@ module Api
       # that already exists (found through /api/v1/people), while nested `person`
       # attributes record a new one.
       def create
-        profile = CoachProfile.new(coach_params)
+        attributes = coach_params
+        return unless authorize_nested_organisation_memberships!(
+          person: nil, attributes: attributes[:person_attributes] || attributes["person_attributes"] || {}
+        )
+
+        profile = CoachProfile.new(attributes)
         profile.created_by ||= Current.user
         PersonCreationService.new(created_by: Current.user).apply(profile.person) if profile.person&.new_record?
 
@@ -137,6 +143,9 @@ module Api
         end
 
         update_params = coach_update_params
+        return unless authorize_nested_organisation_memberships!(
+          person: @coach.person, attributes: update_params[:person_attributes] || update_params["person_attributes"] || {}
+        )
         requested_visibility = update_params[:visibility] || update_params["visibility"]
         if requested_visibility.present? && requested_visibility.to_s != @coach.visibility.to_s &&
            !@coach.visibility_change_permitted?(Current.user)

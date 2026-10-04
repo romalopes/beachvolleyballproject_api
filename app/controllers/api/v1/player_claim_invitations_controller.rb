@@ -10,7 +10,7 @@ module Api
 
       before_action :require_authentication
       before_action :require_content_creator!, only: %i[index create revoke]
-      before_action :set_invitation, only: :revoke
+      before_action :set_invitation, only: %i[show revoke]
 
       def index
         profile = PlayerProfile.find_by(id: params[:player_profile_id])
@@ -45,6 +45,12 @@ module Api
         render json: { claim: claim.summary }, status: :created
       rescue PlayerClaimInvitationService::InvitationError
         invalid_invitation
+      end
+
+      def show
+        return render json: { error: "Invitation not found" }, status: :not_found unless invitation_owner?(@invitation)
+
+        render json: @invitation.summary
       end
 
       def revoke

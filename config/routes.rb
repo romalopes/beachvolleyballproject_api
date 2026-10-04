@@ -131,7 +131,7 @@ Rails.application.routes.draw do
           post :cancel
         end
       end
-      resources :player_claim_invitations, only: %i[index create] do
+      resources :player_claim_invitations, only: %i[index show create] do
         collection do
           post :redeem
         end
