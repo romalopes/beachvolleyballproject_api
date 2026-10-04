@@ -17,7 +17,7 @@ The supplied plan has fifteen phases. Phase 1 is documented in `IDENTITY_PHASE_0
 | 11 | Identity APIs | Complete; expanded `/me` context, membership write authorization, invitation status, consolidation client methods, and focused tests; see `IDENTITY_PHASE_11_API.md` |
 | 12 | Frontend identity UI | Complete; identity context, claim/invitation workflows, coach profile attribution selection, and admin consolidation UI; see `IDENTITY_PHASE_12_FRONTEND.md` |
 | 13 | Security audit | Complete; identity endpoint authorization reviewed, invitation tokens moved to URL fragments, and malicious-request regression suites pass; see `IDENTITY_PHASE_13_SECURITY_AUDIT.md` |
-| 14 | Production migration | Planned; see `IDENTITY_PHASE_14_PRODUCTION_MIGRATION.md` |
+| 14 | Production migration | Implementation complete; production rollout is blocked by a missing expected table and no backup object in the configured active R2 prefix. See `IDENTITY_PHASE_14_PRODUCTION_MIGRATION.md` for the read-only preflight evidence and recovery gate |
 | 15 | Full business integration matrix | Planned; see `IDENTITY_PHASE_15_INTEGRATION_MATRIX.md`; Phase 6 full-suite runs passed, but the complete identity scenario matrix is not yet implemented |
 
 ## Completion gate
