@@ -80,15 +80,36 @@ module Api
       end
 
       def destroy
+        # Checked *before* attempting the destroy so the caller gets a precise
+        # reason instead of a rolled-back transaction, and so no query runs
+        # against a row that was never going to be deletable.
+        blocker = PersonDeletionBlocker.new(@person)
+        if blocker.blocked?
+          return render json: {
+            error: "This person cannot be deleted.",
+            reasons: blocker.messages,
+            details: blocker.details,
+            # `errors` is what the SPA reads (see `throwApiError`), so the full
+            # reason-and-remedy list is carried there too rather than only in
+            # `details`, which nothing currently renders.
+            errors: [ "This person cannot be deleted.", *blocker.details ]
+          }, status: :unprocessable_entity
+        end
+
         @person.destroy!
 
         render json: { message: "Person deleted", id: params[:id] }
       # `dependent: :restrict_with_error` is signalled by `RecordNotDestroyed`, not
       # by `DeleteRestrictionError` (which is what `restrict` without `_with_error`
-      # raises). Catching the wrong one turns a refusal into a 500.
+      # raises). Catching the wrong one turns a refusal into a 500. The pre-flight
+      # check above normally catches these first; this remains the backstop for a
+      # record that becomes blocked between the check and the write.
       rescue ActiveRecord::RecordNotDestroyed => e
-        render json: { errors: e.record.errors.full_messages },
-               status: :unprocessable_entity
+        render json: {
+          error: "This person cannot be deleted.",
+          reasons: e.record.errors.full_messages,
+          errors: [ "This person cannot be deleted.", *e.record.errors.full_messages ]
+        }, status: :unprocessable_entity
       end
 
       # Attach a player or coach profile to somebody who already exists.

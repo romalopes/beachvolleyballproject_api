@@ -261,6 +261,60 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
     assert Person.exists?(person.id)
   end
 
+  # The refusal is correct; what was wrong was the *wording*. These cover the
+  # message an admin actually reads, which is the part that was unusable.
+  test "a refusal explains the block in domain language rather than leaking a table name" do
+    sign_in_as(@admin)
+    person = Person.create!(first_name: "Refused", last_name: "Record", creation_source: "system")
+    CoachProfile.create!(person: person, created_by: @admin)
+
+    delete "/api/v1/people/#{person.id}"
+
+    assert_response :unprocessable_entity
+    body = JSON.parse(response.body)
+    assert_equal "This person cannot be deleted.", body["error"]
+    assert_includes body["reasons"], "They have a coach profile."
+    assert_includes body["details"], "Archive the coach profile instead of deleting it — it holds the coaching history."
+
+    # The old message named the database table; a user-facing message must not.
+    serialized = response.body
+    assert_not_includes serialized, "coach_profiles"
+    assert_not_includes serialized, "Cannot delete record because dependent"
+    assert Person.exists?(person.id)
+  end
+
+  test "the refusal is reported before any write, so nothing is rolled back" do
+    sign_in_as(@admin)
+    person = people(:one) # has an account
+    assert_difference -> { person.reload.updated_at }, 0 do
+      delete "/api/v1/people/#{person.id}"
+    end
+    assert_response :unprocessable_entity
+  end
+
+  test "every blocking reason is listed at once rather than one per attempt" do
+    sign_in_as(@admin)
+    person = people(:one) # account + profiles
+    assert_operator person.player_profiles.count + person.coach_profiles.count, :>=, 1
+
+    delete "/api/v1/people/#{person.id}"
+
+    assert_response :unprocessable_entity
+    body = JSON.parse(response.body)
+    assert_includes body["reasons"], "They are signed in as an account."
+    assert_operator body["reasons"].size, :>=, 2
+  end
+
+  test "a person with no blocking relations deletes cleanly" do
+    sign_in_as(@admin)
+    person = Person.create!(first_name: "Deletable", last_name: "Record", creation_source: "system")
+
+    delete "/api/v1/people/#{person.id}"
+
+    assert_response :success
+    assert_not Person.exists?(person.id)
+  end
+
   # --- promotion: admin only -------------------------------------------------
 
   test "an admin may turn a person into a player" do
