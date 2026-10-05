@@ -127,7 +127,12 @@ module Api
         end
 
         profile_class = role == "player" ? PlayerProfile : CoachProfile
-        profile = profile_class.create!(person: @person, created_by: Current.user)
+        profile = profile_class.transaction do
+          record = profile_class.new(person: @person)
+          ProfileOwnership.stamp!(record, Current.user)
+          record.save!
+          record
+        end
         render json: @person.reload.identity_summary.merge(profile_id: profile.id,
                                                            profile_kind: role),
                status: :created

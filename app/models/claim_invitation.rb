@@ -11,10 +11,9 @@
 #   claimable_type "CoachProfile"  -> the profile adopts a Person
 #   claimable_type "Person"        -> a login Account adopts this identity
 #
-# `emailed_at` decides whether redemption can auto-approve. Only an invitation the
-# club actually *emailed* to the address the recipient controls counts as proof
-# of delivery; a hand-copied link has no `emailed_at` and always requires staff
-# review. See ClaimInvitationService#auto_approvable?.
+# A verified exact-email match permits immediate linking, whether the link was
+# emailed by the application or shared manually. A profile invitation without a
+# specific recipient email remains a request for staff review.
 class ClaimInvitation < ApplicationRecord
   STATUSES = %w[active used revoked expired].freeze
   DEFAULT_EXPIRATION = 7.days
@@ -43,13 +42,10 @@ class ClaimInvitation < ApplicationRecord
     status == "active" && expires_at <= now ? "expired" : status
   end
 
-  # True only when the invitation was genuinely delivered by email to
-  # `user`'s address. Any of these failing means a human must review it.
-  def delivered_to?(user)
-    return false if emailed_at.nil? || invitee_email.blank?
-    return false unless user&.email_address.to_s.strip.downcase == invitee_email
-
-    user.email_verified?
+  # A verified exact-email match is sufficient proof even when staff copied
+  # the link manually instead of using the delivery service.
+  def verified_email_match?(user)
+    invitee_email.present? && user&.email_address.to_s.strip.downcase == invitee_email && user.email_verified?
   end
 
   def summary
@@ -62,7 +58,9 @@ class ClaimInvitation < ApplicationRecord
       person_id: claimable_type == "Person" ? claimable_id : nil,
       invitee_email: invitee_email,
       emailed_at: emailed_at,
-      auto_approvable: emailed_at.present?,
+      # Kept for API compatibility. Delivery telemetry no longer controls
+      # authorization; an exact verified email match is the proof.
+      auto_approvable: invitee_email.present?,
       status: effective_status,
       expires_at: expires_at,
       used_at: used_at,

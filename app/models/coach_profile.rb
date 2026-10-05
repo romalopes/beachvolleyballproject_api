@@ -4,6 +4,8 @@
 # Application permissions remain role-based on the User (see Role/UserRole):
 # being a coach in the domain does not by itself grant administrative access.
 class CoachProfile < ApplicationRecord
+  include ProfileArchiveLifecycle
+
   STATUSES = %w[active archived].freeze
 
   # Visibility dimension (soft variant, same vocabulary as TrainingSession and
@@ -17,6 +19,10 @@ class CoachProfile < ApplicationRecord
   # Who recorded the coach (see PlayerProfile#created_by: the owner is stamped
   # at creation, never accepted from client params).
   belongs_to :created_by, class_name: "User", optional: true
+  belongs_to :created_by_account, class_name: "Account", optional: true
+  belongs_to :merged_into_profile, class_name: "CoachProfile", optional: true
+  belongs_to :merged_by_account, class_name: "Account", optional: true
+  has_many :merged_profiles, class_name: "CoachProfile", foreign_key: :merged_into_profile_id, dependent: :restrict_with_error
   belongs_to :person, optional: true
   # Phase 2 made `person_id` non-null because no unassigned-coach workflow
   # existed. Phase 18 adds one: a coach recorded with only a display name can
@@ -34,6 +40,7 @@ class CoachProfile < ApplicationRecord
   # A profile with no Person has no name of its own, so it requires a display
   # name — the same rule PlayerProfile uses.
   validates :display_name, presence: true, if: -> { person.nil? }
+  validate :merge_state_is_consistent
 
   # The assessments this coach recorded. See PlayerProfile#assessments: the rows
   # are the coach's professional record, so they outlive the profile — which is
@@ -56,9 +63,9 @@ class CoachProfile < ApplicationRecord
     return all if user.nil?
     return all if user.admin? || user.curator?
 
-    where(visibility: "shared").or(where(created_by_id: user.id))
+    where(visibility: "shared").or(ProfileOwnership.account_scope(all, user))
   }
-  scope :owned_by, ->(user) { where(created_by_id: user.id) }
+  scope :owned_by, ->(user) { ProfileOwnership.account_scope(all, user) }
 
   def shared?
     visibility == "shared"
@@ -74,11 +81,11 @@ class CoachProfile < ApplicationRecord
     return true if user.nil?
     return true if user.admin? || user.curator?
 
-    created_by_id.present? && created_by_id == user.id
+    ProfileOwnership.owned_by?(self, user)
   end
 
   def owner?(user)
-    user.present? && created_by_id.present? && created_by_id == user.id
+    ProfileOwnership.owned_by?(self, user)
   end
 
   # Only the owner or an admin may flip the visibility switch.
@@ -91,6 +98,14 @@ class CoachProfile < ApplicationRecord
   # placeholder player profile.
   def full_name
     person&.full_name || display_name
+  end
+
+  def merged?
+    merged_into_profile_id.present?
+  end
+
+  def canonical_profile
+    merged? ? merged_into_profile&.canonical_profile || merged_into_profile : self
   end
 
   def account_status
@@ -137,5 +152,14 @@ class CoachProfile < ApplicationRecord
       created_at: created_at,
       updated_at: updated_at
     }
+  end
+
+  private
+
+  def merge_state_is_consistent
+    errors.add(:merged_into_profile, "cannot be this profile") if merged_into_profile_id.present? && merged_into_profile_id == id
+    if merged_into_profile_id.present? && (status != "archived" || merged_at.nil? || archived_at.nil? || merged_by_account_id.nil?)
+      errors.add(:merged_into_profile, "requires archived status, timestamps, and a merging account")
+    end
   end
 end

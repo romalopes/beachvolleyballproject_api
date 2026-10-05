@@ -12,9 +12,12 @@ module Api
 
       def candidates
         person = Current.user&.person
-        return render json: { error: "A linked Person is required to search for player profiles" }, status: :unprocessable_entity unless person&.status == "active"
+        return render json: { error: "A linked Person is required to search for profiles" }, status: :unprocessable_entity unless person&.status == "active"
 
-        results = PlayerProfileCandidateFinder.new(person: person, user: Current.user).matches
+        type = params[:claimable_type].presence || "PlayerProfile"
+        return render json: { error: "Unsupported profile type" }, status: :unprocessable_entity unless ProfileClaimability::PROFILE_TYPES.include?(type)
+
+        results = ProfileClaimCandidateFinder.new(person: person, user: Current.user, type: type).matches
         render json: results.map(&:as_json)
       end
 
@@ -48,12 +51,17 @@ module Api
         person = Current.user&.person
         return render json: { error: "A linked Person is required to request a claim" }, status: :unprocessable_entity unless person
 
-        profile = PlayerProfile.find_by(id: params.require(:player_profile_id))
-        return render json: { error: "Player profile cannot be claimed" }, status: :not_found unless profile
-        return render json: { error: "Player profile cannot be claimed" }, status: :not_found unless profile.visible_to_user?(Current.user)
+        type = params[:claimable_type].presence || "PlayerProfile"
+        unless ProfileClaimability::PROFILE_TYPES.include?(type)
+          return render json: { error: "Profile cannot be claimed" }, status: :not_found
+        end
+        id = params[:claimable_id].presence || params[:player_profile_id]
+        profile = type.constantize.find_by(id: id)
+        return render json: { error: "Profile cannot be claimed" }, status: :not_found unless profile
+        return render json: { error: "Profile cannot be claimed" }, status: :not_found unless ProfileClaimability.allowed?(profile: profile, user: Current.user)
 
         claim = PlayerClaimService.request!(
-          player_profile: profile,
+          claimable: profile,
           person: person,
           initiated_by_person: person
         )

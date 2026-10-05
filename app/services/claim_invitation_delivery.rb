@@ -8,9 +8,10 @@
 #     already exist and work; the coach can still copy the link, and being able
 #     to invite somebody must not depend on the SMTP relay being up.
 #
-# Returning true is what lets the caller stamp `emailed_at`, which is in turn
-# what allows the invitation to auto-approve. A failure therefore downgrades the
-# invitation to staff review — the safe direction.
+# Returning true lets the caller record `emailed_at` for delivery reporting. It
+# does not affect authorization: only a verified exact email match can link an
+# invitation subject automatically, whether delivery succeeded or the link was
+# shared manually.
 class ClaimInvitationDelivery
   def self.deliver(invitation:, raw_token:)
     return false unless invitation&.invitee_email.present?

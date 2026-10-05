@@ -4,6 +4,15 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
   setup do
     @claimant = users(:five) # linked to people(:one)
     @reviewer = users(:three) # linked coach and profile creator
+    # Claim discovery is scoped to the claimant's active organisation and to
+    # profiles recorded by someone in that same organisation.
+    OrganisationMembership.find_or_create_by!(
+      person: @reviewer.person, organisation: organisations(:sydney_club)
+    ) do |membership|
+      membership.role = "coach"
+      membership.status = "active"
+      membership.joined_at = Time.current
+    end
     @profile = PlayerProfile.create!(display_name: "Maria Jose", created_by: users(:three))
   end
 
@@ -39,7 +48,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "candidate", candidate["result_type"]
     assert_equal "exact_name", candidate["match_type"]
     assert_equal "John Smith", candidate["display_name"]
-    assert_equal [ "display_name", "id", "match_type", "player_profile_id", "result_type" ], candidate.keys.sort
+    assert_equal [ "claimable_id", "claimable_type", "display_name", "id", "match_type", "player_profile_id", "result_type" ], candidate.keys.sort
     assert_nil profile.reload.person_id
     assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id)
   end
@@ -140,14 +149,14 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "pending", claim.fetch("status")
   end
 
-  test "a personless profile cannot be claimed without a display name" do
+  test "a personless profile without a display name is not claimable" do
     profile = PlayerProfile.create!(display_name: "No name")
     profile.update_column(:display_name, nil)
     sign_in_as(@claimant)
 
     post api_v1_player_claims_path, params: { player_profile_id: profile.id }
 
-    assert_response :conflict
+    assert_response :not_found
     assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id)
   end
 

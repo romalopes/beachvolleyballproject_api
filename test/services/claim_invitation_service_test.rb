@@ -38,18 +38,15 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_empty PlayerClaim.pending.where(claimable_type: "PlayerProfile", claimable_id: @subject.id)
   end
 
-  test "a hand-copied link with the same address still requires staff review" do
-    # Same recipient, same verified address, but never emailed. The whole point
-    # of emailed_at is that possession of a link proves nothing on its own.
+  test "a hand-copied link with the same verified address links immediately" do
+    # Email delivery is telemetry; the exact verified account address is proof.
     _invitation, token = issue(invitee_email: @claimer.email_address)
 
     result = ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
 
-    assert_equal :pending_review, result[:outcome]
-    assert_nil @subject.reload.person_id, "the profile must stay unlinked until a human approves"
-    assert_equal @subject.id, result[:claim].claimable_id
-    assert_equal "PlayerProfile", result[:claim].claimable_type
-    assert result[:claim].pending?
+    assert_equal :linked, result[:outcome]
+    assert_equal @claimer.person.id, @subject.reload.person_id
+    assert_equal "used", result[:invitation].status
   end
 
   test "an invitation with no address can never auto-approve" do
@@ -61,20 +58,17 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_nil @subject.reload.person_id
   end
 
-  test "an unverified address cannot auto-approve and goes to review instead" do
+  test "an unverified address cannot redeem an address-restricted invitation" do
     invitation, token = issue(invitee_email: @claimer.email_address)
-    email_it(invitation, token)
     @claimer.update!(email_verified_at: nil)
 
-    result = ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
-
-    # The club did email this address, but the recipient cannot prove they read
-    # it, so it cannot auto-link. It is still a legitimate request for a human
-    # to look at rather than a hard refusal.
-    assert_equal :pending_review, result[:outcome]
+    error = assert_raises(ClaimInvitationService::InvitationError) do
+      ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
+    end
+    assert_equal ClaimInvitationService::VERIFICATION_MESSAGE, error.message
     assert_nil @subject.reload.person_id, "an unverified account must not auto-link"
-    assert result[:claim].pending?
-    assert_equal "used", invitation.reload.status
+    assert_equal "active", invitation.reload.status
+    assert_empty PlayerClaim.pending.where(claimable: @subject)
   end
 
   test "a different address is refused with the generic message" do
@@ -93,10 +87,10 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     other = User.create!(name: "Second", email_address: "second@example.com",
                          password: "password123", email_verified_at: Time.current)
     Account.create!(user: other)
-    _invitation, token = issue(invitee_email: @claimer.email_address)
+    _invitation, token = issue
     ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
 
-    _second, second_token = issue(invitee_email: other.email_address)
+    _second, second_token = issue
     assert_raises(ClaimInvitationService::InvitationError) do
       ClaimInvitationService.redeem!(raw_token: second_token, user: other)
     end
@@ -142,16 +136,17 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_equal person.id, @claimer.reload.account.person_id
   end
 
-  test "a person subject without an emailed link goes to review and keeps the account" do
+  test "a person subject links after exact verified email even without email delivery" do
     person = accountless_person(@claimer.email_address)
     _invitation, token = ClaimInvitationService.issue!(claimable: person, invited_by: @coach)
     placeholder_id = @claimer.account.person_id
 
     result = ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
 
-    assert_equal :pending_review, result[:outcome]
-    assert_equal placeholder_id, @claimer.reload.account.person_id
-    assert_nil person.reload.account
+    assert_equal :linked, result[:outcome]
+    assert_not_equal placeholder_id, @claimer.reload.account.person_id
+    assert_equal person.id, @claimer.account.person_id
+    assert_equal @claimer.id, person.reload.account.user_id
   end
 
   test "a person with an existing account or no email cannot be invited" do

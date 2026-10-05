@@ -48,7 +48,7 @@ class Person < ApplicationRecord
   # Memberships are the *only* place a person's place in an organisation is
   # recorded, and they are keyed on Person so an accountless person — a committee
   # member, a parent, a volunteer coach — can belong to a club too.
-  has_many :organisation_memberships, dependent: :destroy
+  has_many :organisation_memberships, dependent: :restrict_with_error
   has_many :organisations, through: :organisation_memberships
   accepts_nested_attributes_for :organisation_memberships, allow_destroy: true, reject_if: :all_blank
 

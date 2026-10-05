@@ -1,6 +1,6 @@
 # Issue 225 — Phase 2: Profile creator Account ownership
 
-**Status:** Planned. Depends on Phase 0; follows Phase 1 if Account identity is needed for attribution.
+**Status:** Implemented; migrations are applied to the local test and development databases. Creator Account attribution is covered by the full backend suite; production legacy-row backfill remains unverified. Depends on Phases 0–1.
 
 ## Objective
 
@@ -28,3 +28,7 @@ Admin and Curator access is determined by role and configured scope. A Coach can
 ## Verification
 
 Migration tests; profile creation attribution tests; positive/negative authorization tests for Admin, Curator, owner Coach, non-owner Coach, and ordinary User; frontend type/API contract checks after serializer changes.
+
+## Implementation record
+
+Added `created_by_account_id` to both profile tables with a migration that backfills through existing User Accounts. Legacy profiles without an Account retain `created_by_id` as their compatibility owner. `ProfileOwnership` now centralizes owner checks, and new player/coach profile creation (including People promotion) lazily creates the creator's Account and Person in the same transaction as profile persistence. Invitation, visibility, and claim-review authorization support both new Account ownership and legacy User ownership. Migration `20261006100002_add_creator_accounts_to_profiles` is applied in local test and development databases; tests verify new creator attribution. Production legacy-row backfill remains part of the Phase 12 rehearsal.

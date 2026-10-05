@@ -1,5 +1,10 @@
 # Identity Phase 18: One claim workflow
 
+> **Historical verification note (2026-10-05):** The test/build results in this
+> document record the original Phase 18 implementation only. Issue 225 later
+> changed invitation authorization and compatibility controllers; those later
+> changes have not been tested or built in this workspace.
+
 ## What was wrong
 
 Two invitation systems had grown for the same job:
@@ -40,26 +45,26 @@ existing responses and clients are unaffected.
 
 ### The auto-approve gate
 
-**An invitation links an identity immediately only when the club actually
-emailed it to the address the recipient controls.** All four conditions must
+**An invitation links an identity immediately when the signed-in recipient
+proves control of the invitation's exact email address.** These conditions must
 hold:
 
 1. `invitee_email` is set,
-2. `emailed_at` is set (the mailer accepted the message),
-3. the signed-in user's address matches, and
-4. that address is verified.
+2. the signed-in user's address matches, and
+3. that address is verified.
 
-Anything else — a link copied by hand, an invitation whose email never went out,
-an unverified account, a backfilled row — creates a **pending claim for staff
-review** instead. `redeem!` returns `outcome: "linked"` or
+Whether the link was emailed or copied by hand does not affect this proof. An
+unverified matching address is asked to verify and may retry; the invitation
+remains active. A profile invitation without a recipient email creates a
+**pending claim for staff review** instead. `redeem!` returns `outcome: "linked"` or
 `outcome: "pending_review"`, and `/identity` says which happened.
 
-This is fail-closed on purpose. `CLAIM_INVITATION_EMAIL_ENABLED` defaults to
-`false`, so a deployment without SMTP never auto-approves anything, and a mail
-failure downgrades to review rather than granting an identity.
+The verified matching email is the authorization check. `emailed_at` remains
+delivery telemetry, but delivery failure does not turn a verified, matching
+recipient into a staff-review request.
 
-Backfilled invitations have no `emailed_at` and therefore require review, which
-is the safe direction.
+Backfilled invitations follow the same rule: an email-restricted invitation can
+link after verification; an invitation without an address requires review.
 
 ### Coach parity
 
@@ -107,25 +112,24 @@ accountless mode for coaches.
    `PlayerClaimTest` now covers a polymorphically-stored claim end to end — the
    shape a backfill produces, which a fresh fixture row alone would not catch.
 
-## Verification
+## Verification at original Phase 18 completion
 
 Backend `bin/rails test` — **1,429 runs, 5,789 assertions, 0 failures, 0 errors**
 (one pre-existing unrelated skip). Frontend `npm test` — **878 tests across 79
 files, 0 failures**. `tsc -b` clean; RuboCop clean on all touched files.
 
-New coverage: `ClaimInvitationServiceTest` (13 tests) walks every branch of the
-auto-approve gate — emailed auto-link, hand-copied link to review, no address to
-review, unverified address to review, wrong address refused generically, one
-pending claim per subject, reissue revokes, coach profile claimable, coach with a
-Person ineligible, person subject auto-link and review, ineligible persons, and
-expired/unknown tokens. `ClaimInvitationsControllerTest` (7) covers the
-polymorphic endpoints including refusing an unknown subject type.
+Historical coverage at original Phase 18 completion: `ClaimInvitationServiceTest`
+(13 tests) encoded the earlier delivery-based gate, including emailed auto-link
+and hand-copied link review. That expected behavior was superseded by Issue 225's
+verified-email decision and these tests need to be revised. The suite has not
+been run against the current Issue 225 changes. `ClaimInvitationsControllerTest`
+(7) was the original polymorphic endpoint coverage, not current verification.
 
 ## Known limitations
 
-- `emailed_at` means *handed to the mailer*, not *arrived in the inbox*.
-  Confirming real delivery needs a bounce/complaint webhook, which this app has
-  no infrastructure for. A bounce to a recycled address could still auto-approve.
+- `emailed_at` means *handed to the mailer*, not *arrived in the inbox*. It is
+  diagnostic telemetry only; account linking depends on exact verified-email
+  equality. A recycled email address remains a general email-ownership risk.
 - The model and table are still called `PlayerClaim`/`player_claims`. Renaming
   is a follow-up; the subject is polymorphic and `player_profile_id` is
   retained deliberately for compatibility.

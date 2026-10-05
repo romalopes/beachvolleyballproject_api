@@ -38,8 +38,7 @@ class ClaimSubject
   # Can the club issue an invitation for this subject right now?
   def eligible?
     case record
-    when PlayerProfile then record.person_id.nil? && record.status == "active" && record.display_name.present?
-    when CoachProfile  then record.person_id.nil? && record.status == "active"
+    when PlayerProfile, CoachProfile then profile_eligible?
     else person_eligible?
     end
   end
@@ -47,22 +46,28 @@ class ClaimSubject
   # Why not. Kept specific so the coach is told what to fix.
   def ineligibility_reason
     case record
-    when PlayerProfile then "The player profile must be active, unlinked, and have a display name."
-    when CoachProfile  then "The coach profile must be active and unlinked to a Person."
+    when PlayerProfile then "The player profile must be active, named, and not already linked to an account."
+    when CoachProfile  then "The coach profile must be active, named, and not already linked to an account."
     else "The person must be active, have no account yet, and have a valid email address."
     end
   end
 
   # The address an invitation is restricted to, when the subject has one.
-  # A Person always does; a profile only when the club supplies one.
+  # A profile inherits the recorded Person's email when it has one.
   def default_email
-    record.is_a?(Person) ? record.email : nil
+    case record
+    when Person then record.email
+    when PlayerProfile, CoachProfile then record.person&.email
+    end
   end
 
   # Does this subject still need a claim, i.e. is the thing being attached
   # absent? Re-checked at redemption so a subject claimed meanwhile is refused.
   def still_unclaimed?
-    record.is_a?(Person) ? record.account.nil? : record.person_id.nil?
+    case record
+    when Person then record.account.nil?
+    when PlayerProfile, CoachProfile then record.person_id.nil? || record.person&.account.nil?
+    end
   end
 
   # Apply an approved claim: return the Person the subject should end up on, and
@@ -71,10 +76,14 @@ class ClaimSubject
   def effect!(claimant_person:, actor:)
     case record
     when PlayerProfile, CoachProfile
-      record.update!(person: claimant_person)
-      nil
+      if record.person_id.nil?
+        record.update!(person: claimant_person)
+        nil
+      else
+        attach_account!(target_person: record.person, claimant_person: claimant_person, actor: actor)
+      end
     else
-      attach_account!(claimant_person: claimant_person, actor: actor)
+      attach_account!(target_person: record, claimant_person: claimant_person, actor: actor)
     end
   end
 
@@ -85,21 +94,31 @@ class ClaimSubject
       URI::MailTo::EMAIL_REGEXP.match?(record.email.to_s.strip)
   end
 
+  def profile_eligible?
+    return false unless record.status == "active"
+
+    if record.person_id.nil?
+      record.display_name.present?
+    else
+      record.full_name.present? && record.person&.status == "active" && record.person.account.nil?
+    end
+  end
+
   # Moves the claimant's login onto this Person and retires the disposable
   # signup Person it was pointing at.
   #
   # Order matters: the placeholder was loaded through `account.person`, so once
   # the Account is re-pointed that object is stale and saving it afterwards
   # writes the old `person_id` back. Retiring first never touches the inverse.
-  def attach_account!(claimant_person:, actor:)
+  def attach_account!(target_person:, claimant_person:, actor:)
     account = claimant_person.account
     unless account
       raise Ineligible, "This person has no account to connect."
     end
 
     placeholder = account.person
-    unless placeholder && placeholder.id != record.id
-      Account.create!(user: account.user, person: record)
+    unless placeholder && placeholder.id != target_person.id
+      Account.create!(user: account.user, person: target_person)
       return nil
     end
 
@@ -107,8 +126,8 @@ class ClaimSubject
       raise Ineligible, "This account already has an identity that cannot be replaced automatically."
     end
 
-    placeholder.update!(status: "merged", merged_into: record, merged_by: actor)
-    account.update!(person: record)
+    placeholder.update!(status: "merged", merged_into: target_person, merged_by: actor)
+    account.update!(person: target_person)
     placeholder
   end
 

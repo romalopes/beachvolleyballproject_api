@@ -1,6 +1,6 @@
 # Issue 225 — Phase 8: People backend and API transition
 
-**Status:** Planned. Depends on Phase 0 and Phases 3, 6, and 7. Default product direction is to retain People support.
+**Status:** Implemented and verified by the full backend suite. People routes and workflows remain available. Depends on Phase 0 and Phases 3, 6, and 7. Default product direction is to retain People support.
 
 ## Objective
 
@@ -28,3 +28,12 @@ If product requirements later explicitly retire `/people`, first design and ship
 ## Verification
 
 Request tests for create/search/link/update/delete blockers, access control, duplicate handling, profile promotion, consolidation, and existing frontend API contracts. Search all routes and callers before removing any endpoint.
+
+## Implementation record
+
+- `/people` lookup, create, update, delete-blocker, promotion, and consolidation routes remain in place, preserving known-Person recording and profile attachment workflows.
+- The nested `account_invitations` compatibility routes now use the unified invitation service and `claim_invitations` records. Only an admin or the recorded Person creator can list, issue, or revoke the invitation. A matching verified email links the Account; Person and profile history remain attached.
+- No People routes or Person consolidation records were removed. Production migration/readiness logic was not changed because the old tables remain during the compatibility window.
+- `PeopleController` retains authentication and content-creator authorization for lookup/create/update, admin-only delete/promotion, canonical-person filtering, bounded search, and nested membership authorization. `PersonDeletionBlocker` prevents deletion when account, profile, squad or organisation membership, claim/invitation, or consolidation history exists; associations provide a restrictive backstop. Both group and organisation memberships now use restrictive deletion behavior so Person removal cannot erase membership history.
+- Final verification: the complete backend suite passed 1,429 runs and 5,796 assertions with no failures or errors. An earlier sandboxed targeted attempt could not access the PostgreSQL socket; it was superseded by the successful authorized full-suite run recorded in [Phase 11](IDENTITY_225_PHASE_11_FINAL_AUDIT.md).
+- Sensitive contact details are present in `identity_summary`; access remains limited by the content-creator gate, and the typeahead is capped at 25 rows. This is an intentional staff catalogue contract, not public search.

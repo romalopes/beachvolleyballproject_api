@@ -1,8 +1,7 @@
 module Api
   module V1
-    # Invitations for connecting an Account to an already-recorded Person.
-    # PlayerClaimInvitations remain a separate workflow for claiming a
-    # PlayerProfile that has no Person yet.
+    # Compatibility routes for connecting an Account to an already-recorded
+    # Person. Records and lifecycle are delegated to ClaimInvitationService.
     class PersonAccountInvitationsController < ApplicationController
       include ContentAuthorization
 
@@ -15,33 +14,49 @@ module Api
       before_action :set_invitation, only: :revoke
 
       def index
-        render json: @person.person_account_invitations.order(created_at: :desc).map(&:summary)
+        return render json: { error: "Person not found" }, status: :not_found unless person_owner?
+        render json: @person.claim_invitations.order(created_at: :desc).map(&:summary)
       end
 
       def create
-        invitation, raw_token = PersonAccountInvitationService.issue!(person: @person, invited_by: Current.user)
-        delivered = PersonAccountInvitationDelivery.deliver(invitation: invitation, raw_token: raw_token)
+        return render json: { error: "Person not found" }, status: :not_found unless person_owner?
+        invitation, raw_token = ClaimInvitationService.issue!(claimable: @person, invited_by: Current.user)
+        delivered = ClaimInvitationDelivery.deliver(invitation: invitation, raw_token: raw_token)
+        ClaimInvitationService.mark_emailed!(invitation: invitation) if delivered
 
         render json: { invitation: invitation.summary, token: raw_token, email_delivered: delivered }, status: :created
-      rescue PersonAccountInvitationService::InvitationError, ActiveRecord::RecordInvalid => e
+      rescue ClaimInvitationService::InvitationError, ActiveRecord::RecordInvalid => e
         render json: { errors: [ e.message ] }, status: :conflict
       end
 
       def revoke
-        invitation = PersonAccountInvitationService.revoke!(invitation: @invitation)
+        return render json: { error: "Invitation not found" }, status: :not_found unless Current.user.admin? || Current.user.coach?
+        invitation = ClaimInvitationService.revoke!(invitation: @invitation)
         render json: invitation.summary
-      rescue PersonAccountInvitationService::InvitationError => e
+      rescue ClaimInvitationService::InvitationError => e
         render json: { errors: [ e.message ] }, status: :conflict
       end
 
       def redeem
-        invitation = PersonAccountInvitationService.redeem!(raw_token: params[:token].to_s, user: Current.user)
-        account = Current.user.reload.account
-        render json: {
-          invitation: invitation.summary,
-          account_id: account.id,
-          person: account.person.identity_summary
-        }
+        raw_token = params[:token].to_s
+        digest = Digest::SHA256.hexdigest(raw_token.strip)
+
+        if ClaimInvitation.exists?(token_digest: digest, claimable_type: "Person")
+          result = ClaimInvitationService.redeem!(raw_token: raw_token, user: Current.user)
+          account = Current.user.reload.account
+          render json: { invitation: result[:invitation].summary, outcome: result[:outcome].to_s,
+                         account_id: account&.id, person: account&.person&.identity_summary }
+        else
+          # Keep redeeming outstanding links issued before the unified-table
+          # transition. The legacy service enforces the same verified exact
+          # email requirement and retires only a disposable signup placeholder.
+          invitation = PersonAccountInvitationService.redeem!(raw_token: raw_token, user: Current.user)
+          account = Current.user.reload.account
+          render json: { invitation: invitation.summary, outcome: "linked",
+                         account_id: account&.id, person: account&.person&.identity_summary }
+        end
+      rescue ClaimInvitationService::InvitationError => e
+        render json: { error: e.message }, status: :unprocessable_entity
       rescue PersonAccountInvitationService::InvitationError => e
         render json: { error: e.message }, status: :unprocessable_entity
       end
@@ -55,8 +70,12 @@ module Api
       end
 
       def set_invitation
-        @invitation = PersonAccountInvitation.find_by(id: params[:id])
+        @invitation = ClaimInvitation.find_by(id: params[:id], claimable_type: "Person")
         render json: { error: "Invitation not found" }, status: :not_found unless @invitation
+      end
+
+      def person_owner?
+        Current.user.admin? || Current.user.coach?
       end
     end
   end

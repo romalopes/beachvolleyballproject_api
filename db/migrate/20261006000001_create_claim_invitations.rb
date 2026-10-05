@@ -13,11 +13,10 @@
 #   * "CoachProfile"  - an unlinked profile adopts a Person
 #   * "Person"        - a login Account adopts this identity
 #
-# `emailed_at` is the security-critical column for the auto-accept rule: an
-# invitation auto-accepts only when the club actually *emailed* it to the
-# address the recipient controls. A link that was copied around by hand has a
-# NULL `emailed_at` and always goes to staff review instead. Backfilled rows
-# therefore get NULL and fall to review, which is the safe direction.
+# `emailed_at` is delivery telemetry. Linking is authorized by the recipient
+# proving control of the exact invited email address; a manually shared link
+# works for that verified address too. Open invitations without a recipient
+# email remain staff-reviewed.
 class CreateClaimInvitations < ActiveRecord::Migration[8.1]
   def change
     create_table :claim_invitations do |t|
@@ -37,9 +36,6 @@ class CreateClaimInvitations < ActiveRecord::Migration[8.1]
     add_index :claim_invitations, :token_digest, unique: true
     add_index :claim_invitations, [ :claimable_type, :claimable_id ], unique: true,
               where: "status = 'active'", name: "index_claim_invitations_one_active_per_subject"
-    add_index :claim_invitations, :invitee_email, unique: true,
-              where: "status = 'active' AND invitee_email IS NOT NULL",
-              name: "index_claim_invitations_one_active_per_email"
     add_check_constraint :claim_invitations,
                          "status IN ('active', 'used', 'revoked', 'expired')",
                          name: "claim_invitations_valid_status"

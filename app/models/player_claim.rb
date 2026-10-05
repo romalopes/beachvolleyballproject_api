@@ -38,10 +38,10 @@ class PlayerClaim < ApplicationRecord
   scope :pending_for_owner, ->(user) {
     pending.where(
       "(claimable_type = 'PlayerProfile' AND claimable_id IN " \
-      "(SELECT id FROM player_profiles WHERE created_by_id = :uid)) OR " \
+      "(SELECT id FROM player_profiles WHERE created_by_id = :uid OR created_by_account_id = :aid)) OR " \
       "(claimable_type = 'CoachProfile' AND claimable_id IN " \
-      "(SELECT id FROM coach_profiles WHERE created_by_id = :uid))",
-      uid: user.id
+      "(SELECT id FROM coach_profiles WHERE created_by_id = :uid OR created_by_account_id = :aid))",
+      uid: user.id, aid: user.account&.id
     )
   }
 
@@ -71,9 +71,9 @@ class PlayerClaim < ApplicationRecord
   def reviewable_by?(user)
     return false if user.nil?
     return true if user.admin?
+    return false unless subject.is_a?(PlayerProfile) || subject.is_a?(CoachProfile)
 
-    user.coach? && subject.respond_to?(:created_by_id) &&
-      subject.created_by_id.present? && subject.created_by_id == user.id
+    user.coach? && subject.respond_to?(:created_by_id) && ProfileOwnership.owned_by?(subject, user)
   end
 
   # Human label for review queues and audit text.

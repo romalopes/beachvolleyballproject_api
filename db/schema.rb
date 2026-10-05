@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -28,7 +28,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_000004) do
 
   create_table "accounts", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "person_id"
+    t.bigint "person_id", null: false
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.index ["person_id"], name: "index_accounts_on_person_id", unique: true
@@ -242,26 +242,34 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_000004) do
     t.index ["claimable_type", "claimable_id"], name: "index_claim_invitations_on_claimable"
     t.index ["claimable_type", "claimable_id"], name: "index_claim_invitations_one_active_per_subject", unique: true, where: "((status)::text = 'active'::text)"
     t.index ["invited_by_id"], name: "index_claim_invitations_on_invited_by_id"
-    t.index ["invitee_email"], name: "index_claim_invitations_one_active_per_email", unique: true, where: "(((status)::text = 'active'::text) AND (invitee_email IS NOT NULL))"
     t.index ["token_digest"], name: "index_claim_invitations_on_token_digest", unique: true
     t.index ["used_by_id"], name: "index_claim_invitations_on_used_by_id"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying]::text[])", name: "claim_invitations_valid_status"
   end
 
   create_table "coach_profiles", force: :cascade do |t|
+    t.datetime "archived_at"
     t.string "coaching_level"
     t.datetime "created_at", null: false
+    t.bigint "created_by_account_id"
     t.bigint "created_by_id"
     t.string "display_name"
+    t.datetime "merged_at"
+    t.bigint "merged_by_account_id"
+    t.bigint "merged_into_profile_id"
     t.bigint "person_id"
     t.text "qualifications"
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
     t.string "visibility", default: "shared", null: false
+    t.index ["created_by_account_id"], name: "index_coach_profiles_on_created_by_account_id"
     t.index ["created_by_id"], name: "index_coach_profiles_on_created_by_id"
+    t.index ["merged_by_account_id"], name: "index_coach_profiles_on_merged_by_account_id"
+    t.index ["merged_into_profile_id"], name: "index_coach_profiles_on_merged_into_profile_id"
     t.index ["person_id"], name: "index_coach_profiles_on_person_id"
     t.index ["status"], name: "index_coach_profiles_on_status"
     t.index ["visibility"], name: "index_coach_profiles_on_visibility"
+    t.check_constraint "merged_at IS NULL OR merged_into_profile_id IS NOT NULL AND archived_at IS NOT NULL", name: "coach_profiles_merge_state_consistent"
   end
 
   create_table "criteria", force: :cascade do |t|
@@ -542,19 +550,44 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_000004) do
   end
 
   create_table "player_profiles", force: :cascade do |t|
+    t.datetime "archived_at"
     t.datetime "created_at", null: false
+    t.bigint "created_by_account_id"
     t.bigint "created_by_id"
     t.string "display_name"
     t.string "level"
+    t.datetime "merged_at"
+    t.bigint "merged_by_account_id"
+    t.bigint "merged_into_profile_id"
     t.bigint "person_id"
     t.string "preferred_position"
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
     t.string "visibility", default: "shared", null: false
+    t.index ["created_by_account_id"], name: "index_player_profiles_on_created_by_account_id"
     t.index ["created_by_id"], name: "index_player_profiles_on_created_by_id"
+    t.index ["merged_by_account_id"], name: "index_player_profiles_on_merged_by_account_id"
+    t.index ["merged_into_profile_id"], name: "index_player_profiles_on_merged_into_profile_id"
     t.index ["person_id"], name: "index_player_profiles_on_person_id"
     t.index ["status"], name: "index_player_profiles_on_status"
     t.index ["visibility"], name: "index_player_profiles_on_visibility"
+    t.check_constraint "merged_at IS NULL OR merged_into_profile_id IS NOT NULL AND archived_at IS NOT NULL", name: "player_profiles_merge_state_consistent"
+  end
+
+  create_table "profile_merges", force: :cascade do |t|
+    t.bigint "canonical_profile_id", null: false
+    t.string "canonical_profile_type", null: false
+    t.datetime "created_at", null: false
+    t.bigint "merged_by_account_id", null: false
+    t.text "reason", null: false
+    t.jsonb "reference_counts", default: {}, null: false
+    t.bigint "source_profile_id", null: false
+    t.string "source_profile_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["canonical_profile_type", "canonical_profile_id"], name: "index_profile_merges_canonical"
+    t.index ["merged_by_account_id"], name: "index_profile_merges_on_merged_by_account_id"
+    t.index ["source_profile_type", "source_profile_id"], name: "index_profile_merges_unique_source", unique: true
+    t.check_constraint "source_profile_type::text = canonical_profile_type::text AND source_profile_id <> canonical_profile_id", name: "profile_merges_distinct_same_type"
   end
 
   create_table "ranking_consolidation_rows", force: :cascade do |t|
@@ -825,6 +858,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_000004) do
   add_foreign_key "category_customs", "users", column: "created_by_id"
   add_foreign_key "claim_invitations", "users", column: "invited_by_id"
   add_foreign_key "claim_invitations", "users", column: "used_by_id"
+  add_foreign_key "coach_profiles", "accounts", column: "created_by_account_id"
+  add_foreign_key "coach_profiles", "accounts", column: "merged_by_account_id"
+  add_foreign_key "coach_profiles", "coach_profiles", column: "merged_into_profile_id"
   add_foreign_key "coach_profiles", "people"
   add_foreign_key "coach_profiles", "users", column: "created_by_id"
   add_foreign_key "criteria", "assessment_categories"
@@ -859,8 +895,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_000004) do
   add_foreign_key "player_claims", "player_profiles"
   add_foreign_key "player_coaches", "coach_profiles"
   add_foreign_key "player_coaches", "player_profiles"
+  add_foreign_key "player_profiles", "accounts", column: "created_by_account_id"
+  add_foreign_key "player_profiles", "accounts", column: "merged_by_account_id"
   add_foreign_key "player_profiles", "people"
+  add_foreign_key "player_profiles", "player_profiles", column: "merged_into_profile_id"
   add_foreign_key "player_profiles", "users", column: "created_by_id"
+  add_foreign_key "profile_merges", "accounts", column: "merged_by_account_id"
   add_foreign_key "ranking_consolidation_rows", "player_profiles"
   add_foreign_key "ranking_consolidation_rows", "ranking_consolidations"
   add_foreign_key "ranking_consolidation_sessions", "assessment_sessions"

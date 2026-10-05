@@ -16,7 +16,7 @@ The task opens a transaction and issues PostgreSQL `SET TRANSACTION READ ONLY` b
 
 The output records:
 
-- Whether all five identity migrations are applied.
+- Whether all seventeen required identity/Issue 225 migrations through `20261006100006` are applied.
 - Whether required baseline tables are present. A missing expected table is a blocker; its preservation count is `null` rather than causing the report to fail before emitting diagnostics.
 - Row counts for Person, Account, PlayerProfile, CoachProfile, claim/invitation/consolidation, and organisation/group membership tables.
 - Cardinalities: linked/unlinked rows, multiple profiles per Person, and possible duplicate canonical email/name groups. Multiple profiles and unlinked PlayerProfiles are valid outcomes and are reported as counts.
@@ -70,7 +70,7 @@ Deploy the reviewed release during the window. Monitor database connections, loc
 
 ## Evidence from the development rehearsal
 
-The readiness task regression test passed (**1 test, 12 assertions**). The task was run against the configured development database in a transaction explicitly marked read-only. All five required migration versions were present, all reported orphan counts and blockers were zero, and the preservation counts were emitted. It reported two duplicate canonical-email groups and two duplicate canonical-name groups as review warnings; these are development-data observations only and do not describe production. No database values were changed by the report. Ruby syntax and focused RuboCop checks passed.
+The readiness task regression test passed (**1 test, 12 assertions**). The task was run against the configured development database in a transaction explicitly marked read-only. At that time, all five then-required migration versions were present, all reported orphan counts and blockers were zero, and the preservation counts were emitted. It reported two duplicate canonical-email groups and two duplicate canonical-name groups as review warnings; these are development-data observations only and do not describe production. No database values were changed by the report. Ruby syntax and focused RuboCop checks passed.
 
 ## Production read-only preflight (2026-10-04)
 
@@ -83,3 +83,15 @@ The checked-in Kamal deployment configuration also still points to a private exa
 ## Remaining operational gate
 
 Production rollout remains incomplete until the intended database and deployment targets are confirmed, a fresh restorable backup is retained, the missing baseline schema is reconciled, migrations are deployed, and a clean post-migration report is retained. The current read-only preflight found a blocker, and the checked-in deploy target is a placeholder, so deployment is not ready.
+
+## Issue 225 readiness gate update (2026-10-05)
+
+The original readiness task only required the first five identity migrations and did not inspect the unified invitation or profile-merge audit tables. That gate is insufficient for Issue 225. `IdentityProductionReadinessReport` now requires all seventeen identity/Issue 225 migrations, including `20261006100006`, requires the claim/invitation/consolidation/merge tables, reports their row counts, and checks polymorphic claim, invitation, and merge references plus invitation actor/timestamp state. The 2026-10-04 production report is historical evidence and did not evaluate this expanded migration set; rerun the updated report after the target and recovery gates are satisfied.
+
+The last migration removes a global uniqueness rule on active invitation email addresses. The supported invariant is one active invitation per claimable subject. The same verified email may receive links for multiple distinct profiles or People, consistent with the multiple-profiles-per-person model.
+
+## Local development reconciliation (2026-10-06)
+
+After the Phase 11 suite passed, the read-only readiness report was run against the configured local development database before applying pending Issue 225 migrations. It found the final three migrations pending, no missing baseline tables, two used unified invitations without `used_by_id`, and no orphan references. Aggregate-only inspection confirmed both missing actors could be recovered from their retained legacy player invitation rows and claimant Accounts. The report also found two possible duplicate-email groups and one possible duplicate-name group; these remain warnings and were not merged.
+
+Applied `20261006100004_reconcile_legacy_claim_invitations`, `20261006100005_allow_multiple_active_claim_invitees`, and `20261006100006_revoke_archived_profile_invitations` to the local development database. The reconciler's unresolved issuer, claimant, and token-subject mismatch guards all returned zero. Post-migration read-only readiness reports **17/17 migrations applied, zero blockers, and zero orphans**. The two missing actors are now populated from legacy records. The duplicate identity warnings remain for review. This local development result does not establish production readiness.

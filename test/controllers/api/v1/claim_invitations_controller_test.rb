@@ -28,7 +28,7 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal invitation.id, JSON.parse(response.body).first.fetch("id")
   end
 
-  test "redeeming a hand-copied link reports a pending review, not a link" do
+  test "redeeming a hand-copied link with the verified recipient address links immediately" do
     invitation, raw_token = ClaimInvitationService.issue!(
       claimable: @profile, invited_by: @coach, invitee_email: @claimer.email_address
     )
@@ -38,10 +38,8 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :created
     body = JSON.parse(response.body)
-    assert_equal "pending_review", body["outcome"]
-    assert_nil @profile.reload.person_id
-    assert body.dig("claim", "status") == "pending"
-    assert_match(/review/i, body["message"])
+    assert_equal "linked", body["outcome"]
+    assert_equal @claimer.person.id, @profile.reload.person_id
   end
 
   test "redeeming an emailed invitation links immediately" do

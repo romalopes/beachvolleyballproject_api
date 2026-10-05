@@ -338,7 +338,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Minimal", body["person"]["first_name"]
   end
 
-  test "create player links an existing person instead of creating one" do
+  test "create player links the requested Person and provisions the creator Account" do
     sign_in_as(@admin)
     person = Person.create!(first_name: "Linkable", last_name: "Person", creation_source: "system")
     people_before = Person.count
@@ -351,7 +351,9 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert_equal person.id, body["person_id"]
     assert_equal person.id, body["person"]["id"]
-    assert_equal people_before, Person.count, "no new person should be recorded"
+    assert_equal people_before + 1, Person.count, "the creator's Account provisions its Person"
+    assert_equal @admin.id, @admin.reload.account.person.created_by_id
+    assert_equal @admin.account.id, PlayerProfile.find(body["id"]).created_by_account_id
     assert_equal "system", person.reload.creation_source, "linking must not rewrite provenance"
   end
 
@@ -496,15 +498,14 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, player_profiles(:pedro_player).id
   end
 
-  test "there is no hard delete for a player" do
+  test "hard delete refuses to erase a player with protected history" do
     sign_in_as(@admin)
     player = player_profiles(:pedro_player)
 
-    # The route is deliberately absent: archiving is the only removal path, so
-    # attendance history can never be destroyed by an API call.
     delete "/api/v1/players/#{player.id}"
 
-    assert_response :not_found
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["blockers"], "training_session_participants"
     assert PlayerProfile.exists?(player.id)
   end
 

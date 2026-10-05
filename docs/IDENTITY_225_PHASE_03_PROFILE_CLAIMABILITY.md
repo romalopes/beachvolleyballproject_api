@@ -1,6 +1,6 @@
 # Issue 225 — Phase 3: Central profile claimability policy
 
-**Status:** Planned. Depends on Phase 0 and Phase 2.
+**Status:** Implemented and verified by the full backend suite. Tests exercise same-organisation candidate visibility, pending-claim exclusion, private-profile exclusion, and review authorization. Depends on Phases 0 and 2.
 
 ## Objective
 
@@ -31,3 +31,7 @@ Eligibility should be scoped in SQL or a composable relation where practical. Th
 ## Verification
 
 Test same organisation, permitted coach association, former coach, unrelated organisation, unlinked claimant, already-linked profile, admin, curator, and ordinary user. Include request tests proving unauthorized records are not returned, not merely disabled in the UI.
+
+## Implementation record
+
+Added `ProfileClaimability` and `ProfileClaimCandidateFinder`. Discovery is SQL-scoped to active, visible, unlinked profiles created by an Account whose Person shares an active organisation with the claimant, or profiles connected by a current `PlayerCoach` row to the claimant's opposite-kind profiles. Admins/curators may discover all active unlinked profiles. `PlayerClaimsController` uses the policy for both candidate search and direct requests and accepts CoachProfile requests through the polymorphic subject. Explicit staff-issued invitations remain a separate authorization path. The older PlayerProfile finder delegates to the shared finder for compatibility. Existing claim tests mostly expect pre-Phase-3 discovery and request eligibility; no dedicated test matrix currently proves all allowed and denied cases against the approved policy.

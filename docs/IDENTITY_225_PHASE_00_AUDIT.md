@@ -46,4 +46,4 @@ Record the finding with file/line references and distinguish verified facts from
 
 ## Checks
 
-Read-only schema/model/controller/route searches and existing test inspection were completed. The report identifies an unsafe cascading `training_session_participants` association and remaining JSON/reference searches that must be resolved before merge/delete implementation. No production mutations were performed.
+Read-only schema/model/controller/route searches and existing test inspection were completed. The audit identified an unsafe cascading `training_session_participants` association; Phase 5 changed it to restrictive deletion and included JSON ranking snapshots in the blocker. Full reference and migration rehearsals remain Phase 11 gates. No production mutations were performed.

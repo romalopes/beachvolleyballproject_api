@@ -18,8 +18,8 @@ class Api::V1::PersonAccountInvitationsControllerTest < ActionDispatch::Integrat
     assert_response :created
     body = JSON.parse(response.body)
     raw_token = body.fetch("token")
-    invitation = PersonAccountInvitation.find(body.dig("invitation", "id"))
-    assert_equal @person.id, invitation.person_id
+    invitation = ClaimInvitation.find(body.dig("invitation", "id"))
+    assert_equal @person.id, invitation.claimable_id
     assert_equal "known.person@example.com", invitation.invitee_email
     assert_equal Digest::SHA256.hexdigest(raw_token), invitation.token_digest
     assert_not_includes invitation.attributes.values, raw_token
@@ -70,6 +70,6 @@ class Api::V1::PersonAccountInvitationsControllerTest < ActionDispatch::Integrat
     sign_in_as(users(:two))
     post "/api/v1/people/#{people(:two).id}/account_invitations"
     assert_response :conflict
-    assert_empty PersonAccountInvitation.where(person: people(:two))
+    assert_empty ClaimInvitation.where(claimable: people(:two))
   end
 end

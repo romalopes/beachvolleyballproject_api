@@ -7,12 +7,26 @@ class IdentityProductionReadinessReport
     20261003000003
     20261003000004
     20261004000001
+    20261005000001
+    20261005000002
+    20261006000001
+    20261006000002
+    20261006000003
+    20261006000004
+    20261006100001
+    20261006100002
+    20261006100003
+    20261006100004
+    20261006100005
+    20261006100006
   ].freeze
 
   REQUIRED_TABLES = %w[
-    people accounts player_profiles coach_profiles assessments
+    users people accounts player_profiles coach_profiles assessments
     training_session_participants assessment_session_participants
     organisation_memberships group_memberships player_coaches person_aliases
+    player_claims player_claim_invitations person_account_invitations
+    claim_invitations person_consolidations profile_merges
   ].freeze
 
   ORPHAN_CHECKS = {
@@ -26,13 +40,17 @@ class IdentityProductionReadinessReport
     "assessment_participants_without_player_profiles" => [ "assessment_session_participants", "player_profile_id", "player_profiles" ],
     "organisation_memberships_without_people" => [ "organisation_memberships", "person_id", "people" ],
     "group_memberships_without_people" => [ "group_memberships", "person_id", "people" ],
-    "claims_without_player_profiles" => [ "player_claims", "player_profile_id", "player_profiles" ],
     "claims_without_people" => [ "player_claims", "person_id", "people" ],
     "claims_without_initiators" => [ "player_claims", "initiated_by_person_id", "people" ],
     "claims_without_reviewers" => [ "player_claims", "reviewed_by_person_id", "people" ],
     "invitations_without_player_profiles" => [ "player_claim_invitations", "player_profile_id", "player_profiles" ],
     "invitations_without_creators" => [ "player_claim_invitations", "created_by_person_id", "people" ],
     "invitations_without_users" => [ "player_claim_invitations", "used_by_person_id", "people" ],
+    "person_invitations_without_people" => [ "person_account_invitations", "person_id", "people" ],
+    "person_invitations_without_issuers" => [ "person_account_invitations", "invited_by_id", "users" ],
+    "person_invitations_without_users" => [ "person_account_invitations", "used_by_id", "users" ],
+    "claim_invitation_issuers_without_users" => [ "claim_invitations", "invited_by_id", "users" ],
+    "claim_invitation_users_without_users" => [ "claim_invitations", "used_by_id", "users" ],
     "consolidations_without_source_people" => [ "person_consolidations", "source_person_id", "people" ],
     "consolidations_without_canonical_people" => [ "person_consolidations", "canonical_person_id", "people" ],
     "consolidations_without_performers" => [ "person_consolidations", "performed_by_id", "users" ],
@@ -85,11 +103,18 @@ class IdentityProductionReadinessReport
                   PlayerClaim.where.not(status: PlayerClaim::STATUSES).count,
                   "Restore a valid claim lifecycle status before deployment.")
       add_anomaly(anomalies, "pending_claims_on_linked_profiles", "blocker",
-                  PlayerClaim.pending.joins(:player_profile).where.not(player_profiles: { person_id: nil }).count,
+                  PlayerClaim.pending.where(claimable_type: "PlayerProfile",
+                                            claimable_id: PlayerProfile.where.not(person_id: nil).select(:id)).count +
+                    PlayerClaim.pending.where(claimable_type: "CoachProfile",
+                                              claimable_id: CoachProfile.where.not(person_id: nil).select(:id)).count,
                   "Reconcile the claim and existing profile association before enabling claims.")
       add_anomaly(anomalies, "duplicate_pending_claim_profiles", "blocker",
-                  duplicate_count(:player_claims, :player_profile_id, "status = 'pending'"),
+                  duplicate_claimables("player_claims", status: "pending"),
                   "Resolve duplicate pending claims before relying on the partial unique index.")
+      add_anomaly(anomalies, "claims_without_claimables", "blocker",
+                  polymorphic_orphan_count("player_claims", "claimable_type", "claimable_id",
+                                           "PlayerProfile" => "player_profiles", "CoachProfile" => "coach_profiles"),
+                  "Restore each claim's polymorphic subject before enabling claims.")
     end
     if table_exists?(:player_claim_invitations)
       add_anomaly(anomalies, "invalid_invitation_status", "blocker",
@@ -101,6 +126,40 @@ class IdentityProductionReadinessReport
       add_anomaly(anomalies, "duplicate_active_invitations_per_profile", "blocker",
                   duplicate_count(:player_claim_invitations, :player_profile_id, "status = 'active'"),
                   "Resolve duplicate active invitations before relying on the partial unique index.")
+    end
+    if table_exists?(:claim_invitations)
+      add_anomaly(anomalies, "invalid_unified_invitation_status", "blocker",
+                  ClaimInvitation.where.not(status: ClaimInvitation::STATUSES).count,
+                  "Restore a valid unified invitation lifecycle status before deployment.")
+      add_anomaly(anomalies, "used_invitations_without_actor", "blocker",
+                  ClaimInvitation.where(status: "used", used_by_id: nil).count,
+                  "Reconcile the actor for each used invitation before deployment.")
+      add_anomaly(anomalies, "used_invitations_without_timestamp", "blocker",
+                  ClaimInvitation.where(status: "used", used_at: nil).count,
+                  "Restore the redemption timestamp for each used invitation.")
+      add_anomaly(anomalies, "revoked_invitations_without_timestamp", "blocker",
+                  ClaimInvitation.where(status: "revoked", revoked_at: nil).count,
+                  "Restore the revocation timestamp for each revoked invitation.")
+      add_anomaly(anomalies, "duplicate_active_invitations_per_claimable", "blocker",
+                  duplicate_claimables("claim_invitations", status: "active"),
+                  "Resolve duplicate active invitations for the same subject before deployment.")
+      add_anomaly(anomalies, "invitations_without_claimables", "blocker",
+                  polymorphic_orphan_count("claim_invitations", "claimable_type", "claimable_id",
+                                           "PlayerProfile" => "player_profiles", "CoachProfile" => "coach_profiles", "Person" => "people"),
+                  "Restore each invitation's polymorphic subject before deployment.")
+    end
+    if table_exists?(:profile_merges)
+      add_anomaly(anomalies, "profile_merges_without_sources", "blocker",
+                  polymorphic_orphan_count("profile_merges", "source_profile_type", "source_profile_id",
+                                           "PlayerProfile" => "player_profiles", "CoachProfile" => "coach_profiles"),
+                  "Restore each profile merge's source before deployment.")
+      add_anomaly(anomalies, "profile_merges_without_canonicals", "blocker",
+                  polymorphic_orphan_count("profile_merges", "canonical_profile_type", "canonical_profile_id",
+                                           "PlayerProfile" => "player_profiles", "CoachProfile" => "coach_profiles"),
+                  "Restore each profile merge's canonical profile before deployment.")
+      add_anomaly(anomalies, "profile_merges_without_accounts", "blocker",
+                  orphan_count("profile_merges", "merged_by_account_id", "accounts"),
+                  "Restore each profile merge's actor Account before deployment.")
     end
     if @connection.column_exists?(:people, :merged_into_id)
       add_anomaly(anomalies, "merged_people_without_canonical_person", "blocker",
@@ -118,7 +177,7 @@ class IdentityProductionReadinessReport
     end
 
     orphan_counts = ORPHAN_CHECKS.each_with_object({}) do |(name, (table, foreign_key, target)), result|
-      result[name] = orphan_count(table, foreign_key, target) if table_exists?(table) && @connection.column_exists?(table, foreign_key)
+      result[name] = orphan_count(table, foreign_key, target) if table_exists?(table) && table_exists?(target) && @connection.column_exists?(table, foreign_key)
     end
     orphan_counts.each do |name, count|
       add_anomaly(anomalies, name, "blocker", count, "Restore referential integrity before deployment.") if count.positive?
@@ -162,7 +221,10 @@ class IdentityProductionReadinessReport
     }.tap do |result|
       result[:player_claims] = PlayerClaim.count if table_exists?(:player_claims)
       result[:player_claim_invitations] = PlayerClaimInvitation.count if table_exists?(:player_claim_invitations)
+      result[:person_account_invitations] = PersonAccountInvitation.count if table_exists?(:person_account_invitations)
+      result[:claim_invitations] = ClaimInvitation.count if table_exists?(:claim_invitations)
       result[:person_consolidations] = PersonConsolidation.count if table_exists?(:person_consolidations)
+      result[:profile_merges] = ProfileMerge.count if table_exists?(:profile_merges)
     end
   end
 
@@ -186,6 +248,21 @@ class IdentityProductionReadinessReport
     @connection.select_value("SELECT COUNT(*) FROM (SELECT #{field} FROM #{scope} #{where_sql} GROUP BY #{field} HAVING COUNT(*) > 1) duplicates").to_i
   end
 
+  def duplicate_claimables(table, status:)
+    source_table = @connection.quote_table_name(table)
+    @connection.select_value(<<~SQL).to_i
+      SELECT COUNT(*) FROM (
+        SELECT claimable_type, claimable_id
+        FROM #{source_table}
+        WHERE status = #{@connection.quote(status)}
+          AND claimable_type IS NOT NULL
+          AND claimable_id IS NOT NULL
+        GROUP BY claimable_type, claimable_id
+        HAVING COUNT(*) > 1
+      ) duplicate_claimables
+    SQL
+  end
+
   def table_exists?(table)
     @connection.data_source_exists?(table)
   end
@@ -200,6 +277,32 @@ class IdentityProductionReadinessReport
       LEFT JOIN #{target_table} target ON target.id = source.#{foreign_key}
       WHERE source.#{foreign_key} IS NOT NULL AND target.id IS NULL
     SQL
+  end
+
+  def polymorphic_orphan_count(table, type_column, id_column, targets)
+    return 0 unless table_exists?(table)
+
+    source_table = @connection.quote_table_name(table)
+    type_field = @connection.quote_column_name(type_column)
+    id_field = @connection.quote_column_name(id_column)
+    missing_targets = targets.sum do |type, target|
+      next 0 unless table_exists?(target)
+
+      target_table = @connection.quote_table_name(target)
+      @connection.select_value(<<~SQL).to_i
+        SELECT COUNT(*)
+        FROM #{source_table} source
+        LEFT JOIN #{target_table} target ON target.id = source.#{id_field}
+        WHERE source.#{type_field} = #{@connection.quote(type)}
+          AND (source.#{id_field} IS NULL OR target.id IS NULL)
+      SQL
+    end
+    unknown_types = @connection.select_value(<<~SQL).to_i
+      SELECT COUNT(*) FROM #{source_table}
+      WHERE #{type_field} NOT IN (#{targets.keys.map { |type| @connection.quote(type) }.join(', ')})
+         OR #{type_field} IS NULL
+    SQL
+    missing_targets + unknown_types
   end
 
   def multiple_profile_people_count(profile_class)

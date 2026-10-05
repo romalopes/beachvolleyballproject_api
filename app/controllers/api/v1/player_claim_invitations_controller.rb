@@ -1,7 +1,7 @@
 module Api
   module V1
-    # One-time bearer invitations for an unlinked player profile. Raw tokens
-    # are returned only by create and are never serialized from the model.
+    # Compatibility endpoint. New invitations use ClaimInvitationsController;
+    # these routes remain available while existing clients migrate.
     class PlayerClaimInvitationsController < ApplicationController
       include ContentAuthorization
 
@@ -17,36 +17,53 @@ module Api
         return render json: { error: "Player profile not found" }, status: :not_found unless profile
         return render json: { error: "Player profile not found" }, status: :not_found unless profile_owner?(profile)
 
-        render json: profile.player_claim_invitations.order(created_at: :desc).map(&:summary)
+        render json: profile.claim_invitations.order(created_at: :desc).map(&:summary)
       end
 
       def create
-        person = Current.user&.person
-        return render json: { error: "A linked Person is required to create an invitation" }, status: :unprocessable_entity unless person
-
         profile = PlayerProfile.find_by(id: params[:player_profile_id])
         return render json: { error: "Player profile not found" }, status: :not_found unless profile
         return render json: { error: "Player profile not found" }, status: :not_found unless profile_owner?(profile)
 
-        invitation, raw_token = PlayerClaimInvitationService.issue!(
-          player_profile: profile,
-          created_by_person: person,
+        invitation, raw_token = ClaimInvitationService.issue!(
+          claimable: profile,
+          invited_by: Current.user,
           invitee_email: invitation_email
         )
-        ClaimInvitationDelivery.deliver(invitation: invitation, raw_token: raw_token)
-        render json: { invitation: invitation.summary, token: raw_token }, status: :created
-      rescue PlayerClaimInvitationService::InvitationError, ActiveRecord::RecordInvalid => e
+        delivered = ClaimInvitationDelivery.deliver(invitation: invitation, raw_token: raw_token)
+        ClaimInvitationService.mark_emailed!(invitation: invitation) if delivered
+        render json: { invitation: invitation.summary, token: raw_token, email_delivered: delivered }, status: :created
+      rescue ClaimInvitationService::InvitationError, ActiveRecord::RecordInvalid => e
         render json: { errors: [ e.message ] }, status: :conflict
       end
 
       def redeem
-        person = Current.user&.person
-        return invalid_invitation unless person&.status == "active"
+        raw_token = params[:token].to_s
+        digest = Digest::SHA256.hexdigest(raw_token.strip)
 
-        claim = PlayerClaimInvitationService.redeem!(raw_token: params[:token].to_s, person: person)
-        render json: { claim: claim.summary }, status: :created
-      rescue PlayerClaimInvitationService::InvitationError
-        invalid_invitation
+        if ClaimInvitation.exists?(token_digest: digest, claimable_type: "PlayerProfile")
+          result = ClaimInvitationService.redeem!(raw_token: raw_token, user: Current.user)
+          payload = { outcome: result[:outcome].to_s, invitation: result[:invitation].summary }
+          if result[:outcome] == :linked
+            payload[:person] = Current.user.reload.person&.identity_summary
+          else
+            payload[:claim] = result[:claim].summary
+            payload[:message] = "Your request was sent for review. A coach or administrator will approve it."
+          end
+        else
+          # Previously issued legacy links remain redeemable during the
+          # compatibility window. They always create a review request; they
+          # cannot directly attach a profile to a Person.
+          claim = PlayerClaimInvitationService.redeem!(raw_token: raw_token, person: Current.user.person)
+          payload = { outcome: "pending_review", claim: claim.summary,
+                      message: "Your request was sent for review. A coach or administrator will approve it." }
+        end
+        render json: payload, status: :created
+      rescue ClaimInvitationService::InvitationError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      rescue PlayerClaimInvitationService::InvitationError => e
+        message = e.message == PlayerClaimInvitationService::INVALID_MESSAGE ? ClaimInvitationService::INVALID_MESSAGE : e.message
+        render json: { error: message }, status: :unprocessable_entity
       end
 
       def show
@@ -58,18 +75,16 @@ module Api
       def revoke
         return render json: { error: "Invitation not found" }, status: :not_found unless invitation_owner?(@invitation)
 
-        invitation = PlayerClaimInvitationService.revoke!(invitation: @invitation)
+        invitation = ClaimInvitationService.revoke!(invitation: @invitation)
         render json: invitation.summary
-      rescue PlayerClaimInvitationService::InvitationError, ActiveRecord::RecordInvalid => e
+      rescue ClaimInvitationService::InvitationError, ActiveRecord::RecordInvalid => e
         render json: { errors: [ e.message ] }, status: :conflict
       end
 
       private
 
-      # The address an invitation is restricted to. Blank is legitimate and
-      # means an open bearer link, so only a *present* malformed value is an
-      # error. The format itself is validated by the model, which lets the
-      # normal RecordInvalid path report it alongside any other problem.
+      # Retained for compatibility with clients that still create invitations
+      # through this route.
       def invitation_email
         value = params[:invitee_email]
         return nil if value.nil?
@@ -78,16 +93,16 @@ module Api
       end
 
       def set_invitation
-        @invitation = PlayerClaimInvitation.find_by(id: params[:id])
+        @invitation = ClaimInvitation.find_by(id: params[:id], claimable_type: "PlayerProfile")
         render json: { error: "Invitation not found" }, status: :not_found unless @invitation
       end
 
       def profile_owner?(profile)
-        Current.user.admin? || (Current.user.coach? && profile.created_by_id == Current.user.id)
+        Current.user.admin? || (Current.user.coach? && ProfileOwnership.owned_by?(profile, Current.user))
       end
 
       def invitation_owner?(invitation)
-        Current.user.admin? || (Current.user.coach? && invitation.player_profile.created_by_id == Current.user.id)
+        Current.user.admin? || (Current.user.coach? && ProfileOwnership.owned_by?(invitation.claimable, Current.user))
       end
 
       def invalid_invitation

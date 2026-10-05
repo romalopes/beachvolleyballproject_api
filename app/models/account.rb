@@ -8,7 +8,7 @@
 #                                                 └─ 0..1 CoachProfile
 class Account < ApplicationRecord
   belongs_to :user
-  belongs_to :person, optional: true, inverse_of: :account, autosave: true
+  belongs_to :person, inverse_of: :account, autosave: true
   has_one :account_address, dependent: :destroy
 
   accepts_nested_attributes_for :account_address, reject_if: :all_blank

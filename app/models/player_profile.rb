@@ -3,6 +3,8 @@
 # This is a domain descriptor, not an authorization role and not an
 # authentication record: contact and credential data live on Person/Account.
 class PlayerProfile < ApplicationRecord
+  include ProfileArchiveLifecycle
+
   STATUSES = %w[active archived].freeze
 
   # Visibility dimension (soft variant, same vocabulary as TrainingSession):
@@ -21,6 +23,10 @@ class PlayerProfile < ApplicationRecord
   # the client — mass-assignment from `player_params`/`coach_params` does not
   # include it, so neither create nor update can set it from the payload.
   belongs_to :created_by, class_name: "User", optional: true
+  belongs_to :created_by_account, class_name: "Account", optional: true
+  belongs_to :merged_into_profile, class_name: "PlayerProfile", optional: true
+  belongs_to :merged_by_account, class_name: "Account", optional: true
+  has_many :merged_profiles, class_name: "PlayerProfile", foreign_key: :merged_into_profile_id, dependent: :restrict_with_error
   belongs_to :person, optional: true
   has_many :player_claim_invitations, dependent: :restrict_with_error
   # Unified claim workflow (Phase 18). The legacy association above is retained
@@ -34,7 +40,9 @@ class PlayerProfile < ApplicationRecord
   # created without one still builds a new person.
   accepts_nested_attributes_for :person, allow_destroy: false, update_only: true
 
-  has_many :training_session_participants, dependent: :destroy, inverse_of: :player_profile
+  has_many :training_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile
+  has_many :assessment_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile
+  has_many :ranking_consolidation_rows, dependent: :restrict_with_error
   has_many :player_claims, dependent: :restrict_with_error
 
   # Group membership is a roster entry, not evidence, and it is keyed on Person
@@ -62,6 +70,7 @@ class PlayerProfile < ApplicationRecord
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
   validates :display_name, presence: true, if: -> { person.nil? }
+  validate :merge_state_is_consistent
 
   scope :active, -> { where(status: "active") }
 
@@ -75,7 +84,7 @@ class PlayerProfile < ApplicationRecord
     return all if user.nil?
     return all if user.admin? || user.curator?
 
-    base = where(visibility: "shared").or(where(created_by_id: user.id))
+    base = where(visibility: "shared").or(ProfileOwnership.account_scope(all, user))
     # §15: belonging to the same club as a player is itself a reason to see them.
     # This is what a membership is *for* — otherwise a club's roster would have to
     # be restated as a list of coach-player grants and would drift out of date.
@@ -84,7 +93,7 @@ class PlayerProfile < ApplicationRecord
 
     base.or(where(person_id: peer_ids))
   }
-  scope :owned_by, ->(user) { where(created_by_id: user.id) }
+  scope :owned_by, ->(user) { ProfileOwnership.account_scope(all, user) }
 
   def shared?
     visibility == "shared"
@@ -101,7 +110,7 @@ class PlayerProfile < ApplicationRecord
     return true if shared?
     return true if user.nil?
     return true if user.admin? || user.curator?
-    return true if created_by_id.present? && created_by_id == user.id
+    return true if ProfileOwnership.owned_by?(self, user)
     # §15, the single-row counterpart of the `visible_to` scope. Both must agree,
     # or a list and an item can disagree about who may see what.
     return false if person.nil? || user.person.nil?
@@ -110,7 +119,7 @@ class PlayerProfile < ApplicationRecord
   end
 
   def owner?(user)
-    user.present? && created_by_id.present? && created_by_id == user.id
+    ProfileOwnership.owned_by?(self, user)
   end
 
   # Only the owner or an admin may flip the visibility switch.
@@ -120,6 +129,14 @@ class PlayerProfile < ApplicationRecord
 
   def full_name
     person&.full_name || display_name
+  end
+
+  def merged?
+    merged_into_profile_id.present?
+  end
+
+  def canonical_profile
+    merged? ? merged_into_profile&.canonical_profile || merged_into_profile : self
   end
 
   def account_status
@@ -160,6 +177,15 @@ class PlayerProfile < ApplicationRecord
     assessments.active.ordered.includes(:category, :created_by, :coach_profile).group_by(&:rubric_key).map do |_, rows|
       rows.max_by(&:created_at)
     end.sort_by(&:created_at).reverse
+  end
+
+  private
+
+  def merge_state_is_consistent
+    errors.add(:merged_into_profile, "cannot be this profile") if merged_into_profile_id.present? && merged_into_profile_id == id
+    if merged_into_profile_id.present? && (status != "archived" || merged_at.nil? || archived_at.nil? || merged_by_account_id.nil?)
+      errors.add(:merged_into_profile, "requires archived status, timestamps, and a merging account")
+    end
   end
 
   def metadata

@@ -1,18 +1,8 @@
 # Issues, redeems and revokes claim invitations for any subject kind.
 #
-# The single most important rule here is the auto-approve gate. Redemption only
-# links an identity immediately when the invitation was **emailed** to the
-# address the recipient controls:
-#
-#   1. invitee_email is set, and
-#   2. emailed_at is set (the club's mailer accepted the message), and
-#   3. the signed-in user's address matches, and
-#   4. that address is verified.
-#
-# Anything else — a link copied by hand, an invitation whose email never went
-# out, an unverified account, a backfilled row with no emailed_at — becomes a
-# *pending claim* for staff review instead. That is the fail-closed direction:
-# a broken SMTP relay must never turn into a silent identity grant.
+# The authorization rule is a matching verified email. Whether the application
+# sent or the coach manually shared the link does not change ownership proof.
+# An open profile invitation without an email recipient creates a pending claim.
 class ClaimInvitationService
   class InvitationError < StandardError; end
 
@@ -20,6 +10,7 @@ class ClaimInvitationService
   # nothing was written. Raised inside the transaction so the rollback leaves the
   # invitation usable, then translated into `InvitationError` outside it.
   class NotRedeemable < StandardError; end
+  class NeedsVerification < StandardError; end
 
   INVALID_MESSAGE =
     "This invitation is invalid, expired, revoked, already used, or not eligible.".freeze
@@ -92,9 +83,6 @@ class ClaimInvitationService
               # Everything below writes nothing before it succeeds, so raising
               # here rolls the transaction back cleanly and leaves the invitation
               # usable for a later, legitimate attempt.
-              claimant_person = user.person
-              raise NotRedeemable unless claimant_person&.status == "active"
-
               # An address-restricted invitation is refused for anyone else, with
               # the same generic message, so the endpoint never confirms that a
               # given address was invited.
@@ -103,10 +91,25 @@ class ClaimInvitationService
                 raise NotRedeemable
               end
 
-              subject = ClaimSubject.for(invitation.claimable)
-              raise NotRedeemable unless subject.still_unclaimed?
+              if invitation.invitee_email.present? && !user.email_verified?
+                raise NeedsVerification
+              end
 
-              outcome = if invitation.delivered_to?(user)
+              # Some existing Users predate Account provisioning. Create the
+              # authentication-to-identity bridge in this same transaction so
+              # a verified invitee never receives a second Person later.
+              account = user.account || Account.create!(user: user)
+              claimant_person = account.person
+              raise NotRedeemable unless claimant_person&.status == "active"
+
+              subject = ClaimSubject.for(invitation.claimable)
+              # The record may have been archived, cleared of its required
+              # display name, or linked since issuance. Reapply the exact
+              # eligibility check while holding both subject and invitation
+              # locks so stale links cannot revive an ineligible record.
+              raise NotRedeemable unless subject.eligible? && subject.still_unclaimed?
+
+              outcome = if invitation.verified_email_match?(user)
                           auto_link!(invitation: invitation, subject: subject,
                                      claimant_person: claimant_person, user: user)
               else
@@ -119,6 +122,8 @@ class ClaimInvitationService
       end
     rescue NotRedeemable
       raise InvitationError, INVALID_MESSAGE
+    rescue NeedsVerification
+      raise InvitationError, VERIFICATION_MESSAGE
     rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid, ClaimSubject::Ineligible
       raise InvitationError, INVALID_MESSAGE
     end
@@ -148,8 +153,8 @@ class ClaimInvitationService
     invitation
   end
 
-  # Records that the club actually sent the message. Without this the invitation
-  # cannot auto-approve (see the gate in `redeem!`).
+  # Records delivery telemetry for support/audit. It does not control whether a
+  # verified exact-email recipient may link the subject.
   def self.mark_emailed!(invitation:)
     invitation.update!(emailed_at: Time.current)
     invitation
@@ -167,8 +172,8 @@ class ClaimInvitationService
   end
   private_class_method :auto_link!
 
-  # The emailed link did not prove anything on its own, so the claim waits for a
-  # coach or administrator. Possession of an invite authorizes a *request*.
+  # A link by itself does not prove identity. When there is no verified exact
+  # email match, possession of the invite authorizes a request for staff review.
   def self.enqueue_for_review!(invitation:, subject:, claimant_person:, user:)
     raise InvitationError, INVALID_MESSAGE if pending_claim_for?(invitation)
 

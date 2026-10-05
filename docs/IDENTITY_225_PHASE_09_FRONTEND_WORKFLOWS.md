@@ -1,6 +1,6 @@
 # Issue 225 — Phase 9: Frontend identity and profile workflows
 
-**Status:** Planned. Depends on stable Phase 6–8 APIs.
+**Status:** Implemented and verified: all 878 frontend tests pass, ESLint passes, and TypeScript/production build passes. Depends on stable Phase 6–8 APIs.
 
 ## Objective
 
@@ -29,3 +29,12 @@ Organize user actions into profile discovery/claim requests and staff review/inv
 ## Verification
 
 Component and route tests for both creation modes, People management, claim/review, invitation/revoke, token parsing, and accessibility states. Run typecheck, lint, test suite, and production build after implementation.
+
+## Implementation record
+
+- Identity supports typed player and coach suggestions, generic claim requests, typed claim history, invitation redemption outcomes, and legacy account-invitation URL parsing.
+- The staff invitation dashboard lists the viewer's unlinked player and coach profiles, accepts an optional recipient email, shows a one-time link, and supports revoke/reissue. An exact verified email links immediately even when the URL is manually shared; an open link creates a review request.
+- People still supports known-Person creation/editing and account invitation creation. The one-time account invitation URL and copy action are now visible after creation.
+- Profile detail invitation panels use the unified API and explain verified-email versus open-link behavior.
+- Archived profiles reload invitation state, display the revoked history, and disable new invitations until restored. The API remains authoritative and revokes active tokens when the profile is archived.
+- Updated stale assertions to exercise the current redemption button and the supported invitation flow for profile owners without a linked Person. Final Vitest result: 79 files, 878 passed. ESLint and `tsc -b`/production build pass; Vite emits the existing large-chunk warning (885.53 kB minified).

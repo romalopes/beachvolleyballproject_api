@@ -18,7 +18,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     assert_response :created
     body = JSON.parse(response.body)
     raw_token = body.fetch("token")
-    invitation = PlayerClaimInvitation.find(body.dig("invitation", "id"))
+    invitation = ClaimInvitation.find(body.dig("invitation", "id"))
     assert_equal Digest::SHA256.hexdigest(raw_token), invitation.token_digest
     assert_not_includes invitation.attributes.values, raw_token
     assert_operator invitation.expires_at, :>, Time.current
@@ -42,7 +42,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     assert_equal "pending", claim.status
     assert_nil @profile.reload.person_id
     assert_equal "used", invitation.reload.status
-    assert_equal people(:one).id, invitation.used_by_person_id
+    assert_equal @claimant.id, invitation.used_by_id
     assert invitation.used_at
   end
 
@@ -54,7 +54,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     post redeem_api_v1_player_claim_invitations_path, params: { token: raw_token }
 
     assert_response :unprocessable_entity
-    assert_equal PlayerClaimInvitationService::INVALID_MESSAGE, JSON.parse(response.body)["error"]
+    assert_equal ClaimInvitationService::INVALID_MESSAGE, JSON.parse(response.body)["error"]
     assert_equal "expired", invitation.reload.status
     assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: @profile.id)
   end
@@ -92,7 +92,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     post redeem_api_v1_player_claim_invitations_path, params: { token: "not-a-real-token" }
 
     assert_response :unprocessable_entity
-    assert_equal PlayerClaimInvitationService::INVALID_MESSAGE, JSON.parse(response.body)["error"]
+    assert_equal ClaimInvitationService::INVALID_MESSAGE, JSON.parse(response.body)["error"]
   end
 
   test "invitation generation is restricted to the profile creator or an admin" do
@@ -104,7 +104,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     post api_v1_player_claim_invitations_path, params: { player_profile_id: @profile.id }
     assert_response :forbidden
 
-    assert_empty PlayerClaimInvitation.where(player_profile: @profile)
+    assert_empty ClaimInvitation.where(claimable: @profile)
   end
 
   test "redemption requires authentication" do
@@ -114,7 +114,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     post redeem_api_v1_player_claim_invitations_path, params: { token: raw_token }
 
     assert_response :unauthorized
-    assert_equal "active", PlayerClaimInvitation.last.status
+    assert_equal "active", ClaimInvitation.last.status
   end
 
   test "an invitation cannot be redeemed once its profile is already claimed" do
@@ -178,7 +178,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     # Normalized before storage, so the response never echoes stray whitespace
     # or mixed case back to the client.
     assert_equal "maria@example.com", body.dig("invitation", "invitee_email")
-    invitation = PlayerClaimInvitation.find(body.dig("invitation", "id"))
+    invitation = ClaimInvitation.find(body.dig("invitation", "id"))
     assert_equal "maria@example.com", invitation.invitee_email
   end
 
@@ -189,7 +189,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
          params: { player_profile_id: @profile.id, invitee_email: "not-an-email" }
 
     assert_response :conflict
-    assert_empty PlayerClaimInvitation.where(player_profile: @profile)
+    assert_empty ClaimInvitation.where(claimable: @profile)
   end
 
   test "an invitation restricted to another address cannot be redeemed and stays active" do
@@ -201,20 +201,20 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     assert_response :unprocessable_entity
     # Same generic body as any other failure: the endpoint must not confirm
     # that a particular address was invited.
-    assert_equal PlayerClaimInvitationService::INVALID_MESSAGE, JSON.parse(response.body)["error"]
+    assert_equal ClaimInvitationService::INVALID_MESSAGE, JSON.parse(response.body)["error"]
     assert_equal "active", invitation.reload.status
     assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: @profile.id)
   end
 
-  test "the invited address can redeem and gets a pending claim" do
-    raw_token, invitation = create_invitation(invitee_email: "one@example.com")
+  test "a verified matching invited account can link through the compatibility route" do
+    raw_token, invitation = create_invitation(invitee_email: "five@example.com")
     sign_in_as(@claimant)
 
     post redeem_api_v1_player_claim_invitations_path, params: { token: raw_token }
 
     assert_response :created
-    claim = PlayerClaim.find(JSON.parse(response.body).dig("claim", "id"))
-    assert_equal people(:one).id, claim.person_id
+    assert_equal "linked", JSON.parse(response.body).fetch("outcome")
+    assert_equal people(:one).id, @profile.reload.person_id
     assert_equal "used", invitation.reload.status
   end
 
@@ -226,6 +226,6 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
          params: { player_profile_id: @profile.id, invitee_email: invitee_email }.compact
     assert_response :created
     body = JSON.parse(response.body)
-    [ body.fetch("token"), PlayerClaimInvitation.find(body.dig("invitation", "id")) ]
+    [ body.fetch("token"), ClaimInvitation.find(body.dig("invitation", "id")) ]
   end
 end

@@ -20,7 +20,7 @@ User (authentication) 0..1 Account 1..1 Person
 - `ClaimInvitation` is polymorphic across `PlayerProfile`, `CoachProfile`, and `Person`; `ClaimSubject` implements eligibility and link effects for all three.
 - `PlayerClaim` stores a polymorphic subject and retains a compatibility `player_profile_id` column. `player_claims_single_subject` enforces exactly one representation.
 - Legacy `PlayerClaimInvitation` and `PersonAccountInvitation` models/routes still exist. Phase 18 backfills both into `claim_invitations`; the Phase 18 document says legacy endpoints/tables remain for one release.
-- `ClaimInvitationService` currently auto-links only when `ClaimInvitation#delivered_to?` passes (email is present, mail delivery was recorded, and the User email is verified/matches). A manually copied link becomes a pending claim. This conflicts with the later product decision that a verified matching address is sufficient; Phase 6 must change that gate.
+- `ClaimInvitationService` auto-links when the invitation has an exact matching email and the signed-in User has verified it. Whether the app delivered or a coach copied the link is immaterial. An open invitation without an address becomes a pending claim. `emailed_at` is delivery telemetry only.
 - Account linking transfers a signup-only empty placeholder Person and marks it merged. `ClaimSubject` retires the placeholder before updating the Account to avoid a cached inverse reverting the re-point. Preserve this fix and verify its audit semantics.
 
 ## Profile reference inventory
@@ -46,7 +46,7 @@ Group membership is keyed by Person after migration `20260930050001`; it is not 
 - `player_coaches.coach_profile_id` (current and ended periods)
 - `player_claims` and `claim_invitations` polymorphic subjects
 
-Both profile models use restrictive associations for most historical links. PlayerProfile currently has `training_session_participants` with `dependent: :destroy`; this is unsafe for an exposed hard-delete action and must be removed/changed to restriction before deletion can be enabled.
+Both profile models use restrictive associations for most historical links. PlayerProfile's training-session participants previously used `dependent: :destroy`; Phase 5 changed this to `restrict_with_error` and added an explicit deletion blocker.
 
 Tournament and schedule references were not found by the initial schema search; confirm repository-wide, including JSON, ActiveStorage, and external integrations, before approving a merge/delete reference list.
 
@@ -54,8 +54,8 @@ Tournament and schedule references were not found by the initial schema search; 
 
 - Profile visibility and ownership currently use `created_by_id` User IDs.
 - Player and coach visibility rules differ. PlayerProfile includes same-organisation visibility; CoachProfile currently uses shared-or-owner only.
-- There is no central `ProfileClaimability` service. Candidate discovery, visibility, invitation, and claim paths have separate logic.
-- Player/coach destroy routes are absent. Preserve this until Phase 5's reviewed guards exist.
+- `ProfileClaimability` centralizes candidate discovery and direct-claim authorization. Visibility remains a separate read policy, and invitation redemption is a token-authorized path.
+- Player/coach destroy routes now use `ProfileDeletionBlocker`, but authorization/reference regression checks remain pending.
 
 ## Singleton and API compatibility inventory
 
@@ -68,7 +68,7 @@ Tournament and schedule references were not found by the initial schema search; 
 
 **Keep:** People UI/API, Person account invitations/linking, Person consolidation/audit, accountless player/coach placeholders, current API aliases during compatibility, and historical claim records.
 
-**Change:** Account's database Person constraint; creator ownership representation; claimability authorization; Person invitation verified-email gate; profile merge/archive; hard-delete safety; dashboards and clear claim outcomes.
+**Change:** Account's database Person constraint; creator ownership representation; claimability authorization; verified-email invitation gate; profile merge/archive; hard-delete safety; dashboards and clear claim outcomes.
 
 **Remove only after a compatibility window and data review:** duplicate legacy invitation tables/endpoints and truly unused singular readers/client methods. No current evidence authorizes deleting People or Person-claim behavior.
 
@@ -78,7 +78,7 @@ The Phase 14 document reports an unconfirmed configured production target, a mis
 
 ## Outstanding review items
 
-- Validate all profile FKs and JSON snapshots against complete schema and application searches before Phase 4/5.
-- Confirm Account callback validation/transaction behavior before making `accounts.person_id` non-null.
+- Rehearse all identity migrations against production-shaped data, including profile foreign keys and ranking JSON snapshots.
+- Confirm Account callback validation/transaction behavior by applying and rolling forward the account integrity migration on a disposable database.
 - Decide dual-field retirement timing after creator Account attribution is backfilled and deployed.
 - Plan compatibility duration and retention for legacy invitations/claims.

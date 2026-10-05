@@ -27,6 +27,30 @@ class PersonDeletionBlocker
     group_memberships: [
       "They belong to a squad.",
       "End the membership instead of deleting the person."
+    ],
+    organisation_memberships: [
+      "They have an organisation membership on record.",
+      "End the membership and retain its history instead of deleting the person."
+    ],
+    player_claims: [
+      "They have a profile claim request on record.",
+      "Keep the Person so the claimant and review history remain attached."
+    ],
+    claim_invitations: [
+      "They have a profile or account invitation on record.",
+      "Keep the Person so invitation and redemption history remain attached."
+    ],
+    person_account_invitations: [
+      "They have a legacy account invitation on record.",
+      "Keep the Person so the invitation history remains attached during the compatibility period."
+    ],
+    consolidations_as_source: [
+      "They are the source of a Person consolidation audit.",
+      "Keep both identities so the consolidation decision remains auditable."
+    ],
+    consolidations_as_canonical: [
+      "They are the canonical Person in a consolidation audit.",
+      "Keep both identities so the consolidation decision remains auditable."
     ]
   }.freeze
 
@@ -35,7 +59,11 @@ class PersonDeletionBlocker
   # wording for each relation stays deliberate and reviewable — and so a future
   # association cannot silently start blocking deletes with no explanation.
   SINGULAR = %i[account].freeze
-  PLURAL = %i[player_profiles coach_profiles group_memberships].freeze
+  PLURAL = %i[
+    player_profiles coach_profiles group_memberships organisation_memberships
+    player_claims claim_invitations person_account_invitations
+    consolidations_as_source consolidations_as_canonical
+  ].freeze
 
   def initialize(person)
     @person = person

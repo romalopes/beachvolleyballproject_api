@@ -4,10 +4,10 @@
 # and endpoints stay available for one release so an existing client keeps
 # working while the SPA is moved over. A later migration drops them.
 #
-# `emailed_at` is not recoverable from either legacy table (neither recorded it),
-# so every backfilled row gets NULL — which means every pre-existing invitation
-# requires staff review rather than auto-accepting. That is the fail-closed
-# direction and is deliberate.
+# `emailed_at` is not recoverable from either legacy table, so every backfilled
+# row gets NULL. Delivery telemetry does not control linking: a recipient whose
+# email exactly matches and is verified may link, whether the legacy link was
+# emailed or shared manually. Open invitations still require staff review.
 class BackfillClaimInvitations < ActiveRecord::Migration[8.1]
   def up
     # Player-profile invitations. `created_by_person_id` names a Person, so the

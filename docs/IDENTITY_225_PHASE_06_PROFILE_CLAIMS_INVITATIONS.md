@@ -1,6 +1,6 @@
 # Issue 225 — Phase 6: Profile claims and invitations
 
-**Status:** Planned. Depends on Phases 0–3. Preserve Person account-linking behavior per the later product decision.
+**Status:** Implemented and verified by the full backend suite. Existing tests now assert verified exact-email linking and unified invitation records. Depends on Phases 0–3.
 
 ## Objective
 
@@ -14,6 +14,7 @@ Make profile claims and invitations use consistent rules for PlayerProfile and C
 - The exact verified-email match is sufficient to accept the Person account invitation, including a manually shared link. Email delivery status may be recorded for operations, but it must not silently add a staff-review requirement.
 - Wrong email, unverified email, expired/revoked/used token, ineligible subject, and conflicting linked identity fail safely and without leaking which check failed when that would reveal private information.
 - Coach issue/revoke permissions use Phase 2 creator Account ownership.
+- A verified recipient may have active invitations for multiple distinct claimable subjects; the active-invitation uniqueness rule is per subject.
 
 ## Implementation outline
 
@@ -31,3 +32,9 @@ Use stable lock ordering, one-use token digests, expiry, reissue revocation, and
 ## Verification
 
 Cover emailed and manually shared links, matching verified email, unverified/wrong email, existing and new accounts, signup placeholder handling, staff review, owner Coach restrictions, reissue/revoke/expiry, concurrency, and profile-history preservation.
+
+## Implementation record
+
+`ClaimInvitation#verified_email_match?` checks recipient email equality and verification independently of `emailed_at`. Matching but unverified users receive a verification error without consuming the invitation. Matching verified users may link after a manually shared or emailed invitation; invitations with no recipient email remain review requests. Redemption creates the Account/Person bridge transactionally for legacy Users without Accounts. Person invitations use the same unified service through both the new and compatibility routes, while old Person invitation tokens remain redeemable through the compatibility service. Old player-profile invitation tokens remain review-only. Redemption rechecks subject eligibility and unclaimed state while holding the subject/invitation locks; claim approval now performs the same recheck, so links and pending claims cannot attach to an archived or otherwise ineligible profile. Archiving revokes active invitation tokens in the same transaction. Coach placeholders require a display name, matching their model validation. A forward migration removes the global active-recipient email index so one verified email can accept invitations to multiple distinct profiles/People; the existing partial unique index still limits each subject to one active invitation.
+
+The full Rails suite passes; the finalized result and compatibility assertions are recorded in [Phase 11](IDENTITY_225_PHASE_11_FINAL_AUDIT.md).

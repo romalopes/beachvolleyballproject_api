@@ -15,7 +15,7 @@ module Api
       before_action :require_authentication
       before_action :require_training_manager!
       before_action :require_content_creator!, only: %i[create update]
-      before_action :set_player, only: %i[show update]
+      before_action :set_player, only: %i[show update merge destroy]
       before_action :validate_status_filter!, only: :index
 
       # Permitted input.
@@ -23,7 +23,7 @@ module Api
       PROFILE_ATTRS = %i[display_name preferred_position level status visibility].freeze
 
       # Serializable output.
-      PROFILE_ONLY = %i[id person_id display_name preferred_position level status visibility created_at updated_at].freeze
+      PROFILE_ONLY = %i[id person_id display_name preferred_position level status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
       PERSON_ONLY = %i[id first_name last_name email phone date_of_birth creation_source].freeze
       PROFILE_METHODS = %i[full_name account_status player_profile_id].freeze
       DETAIL_METHODS = PROFILE_METHODS + %i[training_session_count]
@@ -131,10 +131,15 @@ module Api
         )
 
         profile = PlayerProfile.new(attributes)
-        profile.created_by ||= Current.user
-        PersonCreationService.new(created_by: Current.user).apply(profile.person) if profile.person&.new_record?
+        saved = PlayerProfile.transaction do
+          ProfileOwnership.stamp!(profile, Current.user)
+          PersonCreationService.new(created_by: Current.user).apply(profile.person) if profile.person&.new_record?
+          next true if profile.save
 
-        if profile.save
+          raise ActiveRecord::Rollback
+        end
+
+        if saved
           render json: serialize(profile).merge("possible_duplicates" => possible_duplicates_for(profile.person)),
                  status: :created
         else
@@ -177,11 +182,40 @@ module Api
           return render json: { errors: @player.errors.full_messages }, status: :forbidden
         end
 
+        if @player.merged?
+          return render json: { errors: [ "A merged profile cannot be edited" ] }, status: :unprocessable_entity
+        end
+
         if @player.update(update_params)
           render json: serialize(@player).merge("possible_duplicates" => possible_duplicates_for(@player.person))
         else
           render json: { errors: @player.errors.full_messages }, status: :unprocessable_entity
         end
+      end
+
+      def merge
+        return render json: { error: "Forbidden" }, status: :forbidden unless Current.user.admin? || Current.user.curator?
+
+        canonical = PlayerProfile.find(params.require(:canonical_profile_id))
+        result = ProfileMergeService.merge!(source: @player, canonical: canonical,
+                                            actor: Current.user, reason: params[:reason])
+        render json: { id: result.id, source_profile_id: result.source_profile_id,
+                       canonical_profile_id: result.canonical_profile_id,
+                       reference_counts: result.reference_counts, merged_at: result.created_at }
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "Profile not found" }, status: :not_found
+      rescue ProfileMergeService::Error => e
+        render json: { errors: [ e.message ] }, status: :conflict
+      end
+
+      def destroy
+        ProfileDeletionBlocker.destroy!(profile: @player, user: Current.user)
+        head :no_content
+      rescue ProfileDeletionBlocker::Blocked => e
+        status = e.message == "Forbidden" ? :forbidden : :unprocessable_entity
+        render json: { error: e.message, blockers: e.references }, status: status
+      rescue ActiveRecord::RecordNotDestroyed
+        render json: { error: "Profile could not be deleted", blockers: @player.errors.full_messages }, status: :unprocessable_entity
       end
 
       private

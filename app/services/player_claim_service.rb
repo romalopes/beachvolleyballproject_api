@@ -1,18 +1,22 @@
 class PlayerClaimService
   class ClaimError < StandardError; end
 
-  def self.request!(player_profile:, person:, initiated_by_person:)
+  def self.request!(person:, initiated_by_person:, claimable: nil, player_profile: nil)
+    profile = claimable || player_profile
+    raise ClaimError, "Profile cannot be claimed" unless profile.is_a?(PlayerProfile) || profile.is_a?(CoachProfile)
+
     PlayerClaim.transaction do
-      player_profile.with_lock do
-        raise ClaimError, "Player profile cannot be claimed" unless player_profile.person_id.nil? && player_profile.status == "active"
-        raise ClaimError, "Player profile needs a display name before it can be claimed" if player_profile.display_name.blank?
-        raise ClaimError, "A pending claim already exists for this profile" if player_profile.player_claims.pending.exists?
+      profile.with_lock do
+        subject = ClaimSubject.for(profile)
+        raise ClaimError, "Profile cannot be claimed" unless subject.eligible?
+        raise ClaimError, "Profile needs a display name before it can be claimed" if profile.full_name.blank?
+        if PlayerClaim.pending.where(claimable: profile).exists?
+          raise ClaimError, "A pending claim already exists for this profile"
+        end
         raise ClaimError, "Person cannot submit a claim" unless person&.status == "active"
 
-        # Stored polymorphically (Phase 18), leaving `player_profile_id` NULL so
-        # the "exactly one subject" constraint holds.
         PlayerClaim.create!(
-          claimable: player_profile,
+          claimable: profile,
           person: person,
           initiated_by_person: initiated_by_person,
           status: "pending"
@@ -30,7 +34,7 @@ class PlayerClaimService
         # `player_profile_id` NULL, so the legacy association is nil.
         subject = ClaimSubject.for(claim.subject)
         claim.subject.with_lock do
-          raise ClaimError, "The profile cannot be claimed" unless subject.still_unclaimed?
+          raise ClaimError, "The profile cannot be claimed" unless subject.eligible? && subject.still_unclaimed?
 
           subject.effect!(claimant_person: claim.person, actor: reviewer)
           claim.update!(status: "approved", reviewed_by_person: reviewer, reviewed_at: Time.current)

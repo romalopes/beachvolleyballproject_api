@@ -5,9 +5,8 @@ module Api
     # controllers this unified; both remain routed for one release.
     #
     # Raw tokens are returned only by create and are never serialized from the
-    # model. Redemption either links immediately (only when the invitation was
-    # genuinely emailed to the address the recipient controls) or creates a
-    # pending claim for staff review.
+    # model. Redemption links immediately for a verified exact-email match;
+    # open invitations without a recipient email create a pending staff claim.
     class ClaimInvitationsController < ApplicationController
       include ContentAuthorization
 
@@ -19,6 +18,10 @@ module Api
       before_action :set_invitation, only: %i[show revoke]
 
       def index
+        if params[:claimable_type].blank? && params[:claimable_id].blank?
+          invitations = Current.user.admin? ? ClaimInvitation.all : ClaimInvitation.where(invited_by: Current.user)
+          return render json: invitations.order(created_at: :desc).limit(200).map(&:summary)
+        end
         return render json: { error: "Claimable not found" }, status: :not_found unless subject
         return render json: { error: "Claimable not found" }, status: :not_found unless subject_owner?
 
@@ -34,8 +37,8 @@ module Api
           invited_by: Current.user,
           invitee_email: invitation_email
         )
-        # Recording that the club really sent the message is what later lets the
-        # invitation auto-approve; a link copied by hand cannot.
+        # Record delivery for audit/reporting. Linking is decided from an exact
+        # verified-email match, whether the recipient got a mail or a copied URL.
         delivered = ClaimInvitationDelivery.deliver(invitation: invitation, raw_token: raw_token)
         ClaimInvitationService.mark_emailed!(invitation: invitation) if delivered
 
@@ -110,14 +113,15 @@ module Api
         value.to_s.strip.presence
       end
 
-      # Mirrors the legacy `profile_owner?`: an admin, or the coach who recorded
-      # the profile. A Person subject has no `created_by`, so only an admin may
-      # issue those.
+      # Profile invitations remain creator-owned. A Person is a club record and
+      # may be invited by any authorized content creator, as in the legacy
+      # Person-account invitation workflow.
       def subject_owner?(record = subject)
         return false if record.nil?
+        return Current.user.admin? || Current.user.coach? if record.is_a?(Person)
         return Current.user.admin? unless record.respond_to?(:created_by_id)
 
-        Current.user.admin? || (Current.user.coach? && record.created_by_id == Current.user.id)
+        Current.user.admin? || (Current.user.coach? && ProfileOwnership.owned_by?(record, Current.user))
       end
 
       # Resolved from the invitation rather than the request params: the member

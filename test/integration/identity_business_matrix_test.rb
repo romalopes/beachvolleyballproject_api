@@ -2,6 +2,13 @@ require "test_helper"
 
 class IdentityBusinessMatrixTest < ActionDispatch::IntegrationTest
   test "claim discovery, review, and approval link the existing profile without rewriting assessment history" do
+    OrganisationMembership.find_or_create_by!(
+      person: users(:three).person, organisation: organisations(:sydney_club)
+    ) do |membership|
+      membership.role = "coach"
+      membership.status = "active"
+      membership.joined_at = Time.current
+    end
     profile = PlayerProfile.create!(display_name: "John Smith", created_by: users(:three))
     assessment = assessments(:draft_ready)
     assessment.update!(player_profile: profile)
