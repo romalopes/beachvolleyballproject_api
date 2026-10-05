@@ -19,6 +19,7 @@ The supplied plan has fifteen phases. Phase 1 is documented in `IDENTITY_PHASE_0
 | 13 | Security audit | Complete; identity endpoint authorization reviewed, invitation tokens moved to URL fragments, and malicious-request regression suites pass; see `IDENTITY_PHASE_13_SECURITY_AUDIT.md` |
 | 14 | Production migration | Runbook and read-only report complete; rollout is blocked by the missing `player_coaches` table, no backup in the active R2 prefix, unconfirmed database target, and placeholder Kamal host/registry configuration. See `IDENTITY_PHASE_14_PRODUCTION_MIGRATION.md` |
 | 15 | Full business integration matrix | Complete; cross-controller route walkthroughs and named scenario map added. Full backend and frontend suites pass; see `IDENTITY_PHASE_15_INTEGRATION_MATRIX.md` |
+| 16 | Invitation accessibility | Complete. The Phase 5 invitation flow was unreachable from the SPA (a recorded player always had a Person, so the invitation branch never rendered) and unrecoverable (no list or revoke UI). Added accountless player recording, a durable invitation panel, address-restricted invitations with optional delivery, and a coach entry point on `/identity`; see `IDENTITY_PHASE_16_INVITATION_ACCESSIBILITY.md` |
 
 ## Completion gate
 

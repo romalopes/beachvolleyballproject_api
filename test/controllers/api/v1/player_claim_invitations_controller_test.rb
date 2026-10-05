@@ -167,11 +167,63 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     assert_not_includes response.body, invitation.token_digest
   end
 
+  test "an invitation may be restricted to a specific address and reports it back" do
+    sign_in_as(@owner)
+
+    post api_v1_player_claim_invitations_path,
+         params: { player_profile_id: @profile.id, invitee_email: "  Maria@Example.COM " }
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    # Normalized before storage, so the response never echoes stray whitespace
+    # or mixed case back to the client.
+    assert_equal "maria@example.com", body.dig("invitation", "invitee_email")
+    invitation = PlayerClaimInvitation.find(body.dig("invitation", "id"))
+    assert_equal "maria@example.com", invitation.invitee_email
+  end
+
+  test "a malformed invitee address is refused" do
+    sign_in_as(@owner)
+
+    post api_v1_player_claim_invitations_path,
+         params: { player_profile_id: @profile.id, invitee_email: "not-an-email" }
+
+    assert_response :conflict
+    assert_empty PlayerClaimInvitation.where(player_profile: @profile)
+  end
+
+  test "an invitation restricted to another address cannot be redeemed and stays active" do
+    raw_token, invitation = create_invitation(invitee_email: "three@example.com")
+    sign_in_as(@claimant) # people(:one) is one@example.com
+
+    post redeem_api_v1_player_claim_invitations_path, params: { token: raw_token }
+
+    assert_response :unprocessable_entity
+    # Same generic body as any other failure: the endpoint must not confirm
+    # that a particular address was invited.
+    assert_equal PlayerClaimInvitationService::INVALID_MESSAGE, JSON.parse(response.body)["error"]
+    assert_equal "active", invitation.reload.status
+    assert_empty PlayerClaim.where(player_profile: @profile)
+  end
+
+  test "the invited address can redeem and gets a pending claim" do
+    raw_token, invitation = create_invitation(invitee_email: "one@example.com")
+    sign_in_as(@claimant)
+
+    post redeem_api_v1_player_claim_invitations_path, params: { token: raw_token }
+
+    assert_response :created
+    claim = PlayerClaim.find(JSON.parse(response.body).dig("claim", "id"))
+    assert_equal people(:one).id, claim.person_id
+    assert_equal "used", invitation.reload.status
+  end
+
   private
 
-  def create_invitation
+  def create_invitation(invitee_email: nil)
     sign_in_as(@owner)
-    post api_v1_player_claim_invitations_path, params: { player_profile_id: @profile.id }
+    post api_v1_player_claim_invitations_path,
+         params: { player_profile_id: @profile.id, invitee_email: invitee_email }.compact
     assert_response :created
     body = JSON.parse(response.body)
     [ body.fetch("token"), PlayerClaimInvitation.find(body.dig("invitation", "id")) ]

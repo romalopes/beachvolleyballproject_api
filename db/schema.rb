@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_04_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_05_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -442,6 +442,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_000001) do
     t.datetime "created_at", null: false
     t.bigint "created_by_person_id", null: false
     t.datetime "expires_at", null: false
+    t.string "invitee_email"
     t.bigint "player_profile_id", null: false
     t.datetime "revoked_at"
     t.string "status", default: "active", null: false
@@ -450,6 +451,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_000001) do
     t.datetime "used_at"
     t.bigint "used_by_person_id"
     t.index ["created_by_person_id"], name: "index_player_claim_invitations_on_created_by_person_id"
+    t.index ["player_profile_id", "invitee_email"], name: "index_player_claim_invitations_one_active_per_email", unique: true, where: "(((status)::text = 'active'::text) AND (invitee_email IS NOT NULL))"
     t.index ["player_profile_id"], name: "index_player_claim_invitations_on_player_profile_id"
     t.index ["player_profile_id"], name: "index_player_claim_invitations_one_active_per_profile", unique: true, where: "((status)::text = 'active'::text)"
     t.index ["token_digest"], name: "index_player_claim_invitations_on_token_digest", unique: true

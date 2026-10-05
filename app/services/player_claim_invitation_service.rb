@@ -4,7 +4,11 @@ class PlayerClaimInvitationService
   EXPIRATION = PlayerClaimInvitation::DEFAULT_EXPIRATION
   INVALID_MESSAGE = "Invitation is invalid, expired, revoked, or already used".freeze
 
-  def self.issue!(player_profile:, created_by_person:)
+  # `invitee_email` is optional. When present it is stored (normalized) and the
+  # invitation can only be redeemed by a Person holding that address; when nil
+  # the invitation stays an open one-time bearer token, which is the only option
+  # for a placeholder profile that has no Person and therefore no email.
+  def self.issue!(player_profile:, created_by_person:, invitee_email: nil)
     raw_token = SecureRandom.urlsafe_base64(32)
     invitation = PlayerClaimInvitation.transaction do
       player_profile.with_lock do
@@ -23,6 +27,7 @@ class PlayerClaimInvitationService
         player_profile.player_claim_invitations.create!(
           created_by_person: created_by_person,
           token_digest: digest(raw_token),
+          invitee_email: invitee_email,
           expires_at: now + EXPIRATION,
           status: "active"
         )
@@ -45,6 +50,11 @@ class PlayerClaimInvitationService
       profile.with_lock do
         invitation.with_lock do
           raise InvitationError, INVALID_MESSAGE unless invitation.status == "active"
+
+          # An address-restricted invitation is refused for anyone else, and the
+          # failure is the same generic message as an invalid token so the
+          # endpoint never reveals that a given address was invited.
+          raise InvitationError, INVALID_MESSAGE unless invitation.redeemable_by?(person)
 
           if invitation.expires_at <= Time.current
             invitation.update!(status: "expired")

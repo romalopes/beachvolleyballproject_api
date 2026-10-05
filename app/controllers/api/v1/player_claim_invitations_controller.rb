@@ -30,8 +30,10 @@ module Api
 
         invitation, raw_token = PlayerClaimInvitationService.issue!(
           player_profile: profile,
-          created_by_person: person
+          created_by_person: person,
+          invitee_email: invitation_email
         )
+        PlayerClaimInvitationDelivery.deliver(invitation: invitation, raw_token: raw_token)
         render json: { invitation: invitation.summary, token: raw_token }, status: :created
       rescue PlayerClaimInvitationService::InvitationError, ActiveRecord::RecordInvalid => e
         render json: { errors: [ e.message ] }, status: :conflict
@@ -63,6 +65,17 @@ module Api
       end
 
       private
+
+      # The address an invitation is restricted to. Blank is legitimate and
+      # means an open bearer link, so only a *present* malformed value is an
+      # error. The format itself is validated by the model, which lets the
+      # normal RecordInvalid path report it alongside any other problem.
+      def invitation_email
+        value = params[:invitee_email]
+        return nil if value.nil?
+
+        value.to_s.strip.presence
+      end
 
       def set_invitation
         @invitation = PlayerClaimInvitation.find_by(id: params[:id])

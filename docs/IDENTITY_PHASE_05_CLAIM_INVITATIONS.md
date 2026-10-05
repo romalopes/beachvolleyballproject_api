@@ -30,6 +30,17 @@ Controller coverage exercises valid, expired, revoked, replayed, and invalid tok
 
 The migration is `20261003000004_create_player_claim_invitations.rb`. A frontend API client is included; invitation and claim screens remain part of Phase 12.
 
+## Later correction
+
+This phase was complete and correct, but for a long time **unreachable**. The UI
+could not create a player profile without a `Person`, and an invitation can only
+exist against one — so the "Create claim invitation" control never rendered for
+any profile a coach could actually record. The list and revoke endpoints added
+here were also never called by any screen, so a lost token was unrecoverable.
+
+Both defects, and the fix, are documented in
+`IDENTITY_PHASE_16_INVITATION_ACCESSIBILITY.md`.
+
 ## Operational note
 
 The local development migration was applied. Production rollout and production data checks belong to Phase 14. The test runner needs local PostgreSQL access; run the invitation controller and service tests in the backend environment.
