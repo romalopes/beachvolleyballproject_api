@@ -19,20 +19,20 @@ module Api
       end
 
       def index
-        own_claims = PlayerClaim.where(person: Current.user&.person).includes(:player_profile).order(created_at: :desc)
+        own_claims = PlayerClaim.where(person: Current.user&.person).order(created_at: :desc)
         review_claims = if Current.user&.admin?
-                          PlayerClaim.pending.includes(:player_profile).order(:created_at)
-                        elsif Current.user&.coach?
-                          PlayerClaim.pending.includes(:player_profile)
-                                     .where(player_profiles: { created_by_id: Current.user.id }).order(:created_at)
-                        else
+                          PlayerClaim.pending.order(:created_at)
+        elsif Current.user&.coach?
+                          # `pending_for_owner` rather than a `player_profiles:` join:
+                          # the Phase 18 migration clears `player_profile_id`, so
+                          # an inner join would hide every migrated claim here.
+                          PlayerClaim.pending_for_owner(Current.user).order(:created_at)
+        else
                           PlayerClaim.none
-                        end
+        end
 
         payloads = own_claims.map do |claim|
-          may_review = Current.user&.admin? ||
-                       (Current.user&.coach? && claim.player_profile.created_by_id == Current.user.id)
-          [ claim.id, claim.summary(include_profile_name: may_review) ]
+          [ claim.id, claim.summary(include_profile_name: claim.reviewable_by?(Current.user)) ]
         end.to_h
         review_claims.each { |claim| payloads[claim.id] = claim.summary(include_profile_name: true) }
         render json: payloads.values
@@ -108,7 +108,7 @@ module Api
       end
 
       def reviewer?
-        Current.user&.admin? || (Current.user&.coach? && @claim.player_profile.created_by_id == Current.user.id)
+        @claim.reviewable_by?(Current.user)
       end
 
       def may_view_claim?
@@ -127,7 +127,7 @@ module Api
           render json: { error: "A claimant cannot review their own claim" }, status: :forbidden
           return false
         end
-        unless Current.user.admin? || (@claim.player_profile.created_by_id == Current.user.id && Current.user.coach?)
+        unless @claim.reviewable_by?(Current.user)
           render json: { error: "Forbidden" }, status: :forbidden
           return false
         end

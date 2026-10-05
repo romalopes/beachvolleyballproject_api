@@ -14,6 +14,24 @@
 
 Migration `20261003000001` removes the unique profile/person indexes and makes the player foreign key nullable. It does not change Account cardinality, profile history foreign keys, or coach nullability.
 
+## Reversed by Phase 18
+
+Two statements above no longer hold:
+
+- *"`CoachProfile` still requires one because the existing coach workflow always
+  creates/selects a Person and no unassigned-coach workflow exists."*
+- *"Player `person_id` is nullable. Coach `person_id` remains non-null."*
+
+Phase 18 creates the missing unassigned-coach workflow. Migration
+`20261006000004_allow_personless_coach_profiles` makes `coach_profiles.person_id`
+nullable and adds a `display_name` column, required exactly when there is no
+Person — the same shape `PlayerProfile` has had since Phase 3.
+
+The original reasoning was sound *given what existed*: there was no way to
+record a coach without a Person, so allowing one would have produced rows that
+nothing could complete. That workflow now exists, so the constraint no longer
+protects anything. See `IDENTITY_PHASE_18_UNIFIED_CLAIMS.md`.
+
 ## Compatibility and follow-up
 
 Legacy singular profile fields remain additive compatibility fields; multi-profile UI and attribution selection are implemented in Phase 12. Phase 3 added a required `display_name` and API support for unlinked profiles. Claim, invitation, context-selection, and consolidation interfaces are now implemented in Phase 12.

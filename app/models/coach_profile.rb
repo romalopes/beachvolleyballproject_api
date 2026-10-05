@@ -17,7 +17,12 @@ class CoachProfile < ApplicationRecord
   # Who recorded the coach (see PlayerProfile#created_by: the owner is stamped
   # at creation, never accepted from client params).
   belongs_to :created_by, class_name: "User", optional: true
-  belongs_to :person
+  belongs_to :person, optional: true
+  # Phase 2 made `person_id` non-null because no unassigned-coach workflow
+  # existed. Phase 18 adds one: a coach recorded with only a display name can
+  # claim their profile later, exactly as a player can.
+  has_many :claim_invitations, as: :claimable, dependent: :restrict_with_error
+  has_many :player_claims, as: :claimable, dependent: :restrict_with_error
   has_many :assessment_sessions, dependent: :restrict_with_error
 
   # See PlayerProfile: update_only keeps a has_one update from replacing the
@@ -26,6 +31,9 @@ class CoachProfile < ApplicationRecord
 
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
+  # A profile with no Person has no name of its own, so it requires a display
+  # name — the same rule PlayerProfile uses.
+  validates :display_name, presence: true, if: -> { person.nil? }
 
   # The assessments this coach recorded. See PlayerProfile#assessments: the rows
   # are the coach's professional record, so they outlive the profile — which is
@@ -78,12 +86,15 @@ class CoachProfile < ApplicationRecord
     user.present? && (user.admin? || owner?(user))
   end
 
+  # Nil-safe now that `person` is optional: a placeholder coach is named by its
+  # display name and reports itself as having no account, exactly like a
+  # placeholder player profile.
   def full_name
-    person.full_name
+    person&.full_name || display_name
   end
 
   def account_status
-    person.account_status
+    person&.account_status || "profile_only"
   end
 
   # API-facing alias: callers address a profile by `<resource>_profile_id`
@@ -115,6 +126,7 @@ class CoachProfile < ApplicationRecord
       id: id,
       coach_profile_id: coach_profile_id,
       person_id: person_id,
+      display_name: display_name,
       coaching_level: coaching_level,
       qualifications: qualifications,
       status: status,

@@ -31,6 +31,11 @@ class Person < ApplicationRecord
   def create_player_profile!(attributes = {}) = player_profiles.create!(attributes)
   def create_coach_profile!(attributes = {}) = coach_profiles.create!(attributes)
   has_many :person_aliases, dependent: :destroy
+  has_many :person_account_invitations, dependent: :restrict_with_error
+  # Unified claim workflow (Phase 18): a Person with no Account can be invited to
+  # connect their login to this identity.
+  has_many :claim_invitations, as: :claimable, dependent: :restrict_with_error
+  has_many :player_claims, as: :claimable, dependent: :restrict_with_error
 
   # Squad rosters, keyed on Person (§2.2) — the same reason organisation
   # memberships are. `restrict_with_error` rather than `:destroy`: a squad row is

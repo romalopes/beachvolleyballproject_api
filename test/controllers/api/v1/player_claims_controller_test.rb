@@ -41,7 +41,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "John Smith", candidate["display_name"]
     assert_equal [ "display_name", "id", "match_type", "player_profile_id", "result_type" ], candidate.keys.sort
     assert_nil profile.reload.person_id
-    assert_empty PlayerClaim.where(player_profile: profile)
+    assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id)
   end
 
   test "candidate search includes partial name matches" do
@@ -123,7 +123,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "pending", claim.status
     assert_equal people(:one).id, claim.person_id
     assert_equal people(:one).id, claim.initiated_by_person_id
-    assert_equal old_id, claim.player_profile_id
+    assert_equal old_id, claim.player_profile_key
     assert_nil @profile.reload.person_id
     assert_equal "Maria Jose", @profile.full_name
   end
@@ -148,7 +148,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     post api_v1_player_claims_path, params: { player_profile_id: profile.id }
 
     assert_response :conflict
-    assert_empty PlayerClaim.where(player_profile: profile)
+    assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id)
   end
 
   test "only a coach or admin may approve and approval links the existing profile" do
@@ -172,7 +172,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "approved", PlayerClaim.find(claim_id).status
     assert_equal people(:one).id, @profile.reload.person_id
     assert_equal "private", @profile.visibility
-    assert_equal @profile.id, PlayerClaim.find(claim_id).player_profile_id
+    assert_equal @profile.id, PlayerClaim.find(claim_id).player_profile_key
     assert_equal assessment_before_claim, assessment.reload.attributes.slice(*assessment_before_claim.keys)
   end
 
@@ -204,7 +204,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
 
     assert_response :conflict
-    assert_equal 1, PlayerClaim.where(player_profile: @profile, status: "pending").count
+    assert_equal 1, PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: @profile.id, status: "pending").count
   end
 
   test "rejection requires a reason and does not change the profile" do

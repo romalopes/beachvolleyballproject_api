@@ -23,7 +23,7 @@ module Api
       PROFILE_ATTRS = %i[coaching_level qualifications status visibility].freeze
 
       # Serializable output.
-      PROFILE_ONLY = %i[id person_id coaching_level qualifications status visibility created_at updated_at].freeze
+      PROFILE_ONLY = %i[id person_id display_name coaching_level qualifications status visibility created_at updated_at].freeze
       PERSON_ONLY = %i[id first_name last_name email phone date_of_birth creation_source].freeze
       PROFILE_METHODS = %i[full_name account_status coach_profile_id].freeze
 
@@ -88,6 +88,9 @@ module Api
         # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
+        # Phase 18 made `person` nullable for coaches, so a coach recorded
+        # without an account also arrives without the key.
+        payload["person"] = nil unless payload.key?("person")
 
         # Attribution history (plan 4.2): the count and a recent slice of the
         # published rows attributed to this coach. Drafts and withdrawn rows

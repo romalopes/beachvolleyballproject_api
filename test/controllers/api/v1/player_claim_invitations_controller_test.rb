@@ -56,7 +56,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     assert_response :unprocessable_entity
     assert_equal PlayerClaimInvitationService::INVALID_MESSAGE, JSON.parse(response.body)["error"]
     assert_equal "expired", invitation.reload.status
-    assert_empty PlayerClaim.where(player_profile: @profile)
+    assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: @profile.id)
   end
 
   test "revoked invitations cannot be redeemed" do
@@ -70,7 +70,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     post redeem_api_v1_player_claim_invitations_path, params: { token: raw_token }
 
     assert_response :unprocessable_entity
-    assert_empty PlayerClaim.where(player_profile: @profile)
+    assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: @profile.id)
   end
 
   test "used invitations cannot be replayed" do
@@ -83,7 +83,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
 
     assert_response :unprocessable_entity
     assert_equal "used", invitation.reload.status
-    assert_equal 1, PlayerClaim.where(player_profile: @profile).count
+    assert_equal 1, PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: @profile.id).count
   end
 
   test "invalid tokens receive the same generic response as expired and revoked invitations" do
@@ -127,7 +127,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     assert_response :unprocessable_entity
     assert_equal people(:two).id, @profile.reload.person_id
     assert_equal "active", invitation.reload.status
-    assert_empty PlayerClaim.where(player_profile: @profile)
+    assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: @profile.id)
   end
 
   test "raw invitation tokens are omitted from management responses and audit logs" do
@@ -203,7 +203,7 @@ class Api::V1::PlayerClaimInvitationsControllerTest < ActionDispatch::Integratio
     # that a particular address was invited.
     assert_equal PlayerClaimInvitationService::INVALID_MESSAGE, JSON.parse(response.body)["error"]
     assert_equal "active", invitation.reload.status
-    assert_empty PlayerClaim.where(player_profile: @profile)
+    assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: @profile.id)
   end
 
   test "the invited address can redeem and gets a pending claim" do

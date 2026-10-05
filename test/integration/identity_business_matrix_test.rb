@@ -28,7 +28,7 @@ class IdentityBusinessMatrixTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal "approved", PlayerClaim.find(claim_id).status
     assert_equal people(:one).id, profile.reload.person_id
-    assert_equal profile.id, PlayerClaim.find(claim_id).player_profile_id
+    assert_equal profile.id, PlayerClaim.find(claim_id).player_profile_key
     assert_equal assessment_snapshot, Assessment.find(assessment_id).attributes.slice(*assessment_snapshot.keys)
     assert_equal people_before, Person.count
   end

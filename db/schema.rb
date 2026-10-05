@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_05_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -225,11 +225,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_000001) do
     t.check_constraint "visibility::text = ANY (ARRAY['shared'::character varying, 'private'::character varying]::text[])", name: "category_customs_visibility"
   end
 
+  create_table "claim_invitations", force: :cascade do |t|
+    t.bigint "claimable_id", null: false
+    t.string "claimable_type", null: false
+    t.datetime "created_at", null: false
+    t.datetime "emailed_at"
+    t.datetime "expires_at", null: false
+    t.bigint "invited_by_id", null: false
+    t.string "invitee_email"
+    t.datetime "revoked_at"
+    t.string "status", default: "active", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "used_at"
+    t.bigint "used_by_id"
+    t.index ["claimable_type", "claimable_id"], name: "index_claim_invitations_on_claimable"
+    t.index ["claimable_type", "claimable_id"], name: "index_claim_invitations_one_active_per_subject", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["invited_by_id"], name: "index_claim_invitations_on_invited_by_id"
+    t.index ["invitee_email"], name: "index_claim_invitations_one_active_per_email", unique: true, where: "(((status)::text = 'active'::text) AND (invitee_email IS NOT NULL))"
+    t.index ["token_digest"], name: "index_claim_invitations_on_token_digest", unique: true
+    t.index ["used_by_id"], name: "index_claim_invitations_on_used_by_id"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying]::text[])", name: "claim_invitations_valid_status"
+  end
+
   create_table "coach_profiles", force: :cascade do |t|
     t.string "coaching_level"
     t.datetime "created_at", null: false
     t.bigint "created_by_id"
-    t.bigint "person_id", null: false
+    t.string "display_name"
+    t.bigint "person_id"
     t.text "qualifications"
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
@@ -414,6 +438,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_000001) do
     t.index ["status"], name: "index_people_on_status"
   end
 
+  create_table "person_account_invitations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.bigint "invited_by_id", null: false
+    t.string "invitee_email", null: false
+    t.bigint "person_id", null: false
+    t.datetime "revoked_at"
+    t.string "status", default: "active", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "used_at"
+    t.bigint "used_by_id"
+    t.index ["invited_by_id"], name: "index_person_account_invitations_on_invited_by_id"
+    t.index ["person_id"], name: "index_person_account_invitations_on_person_id"
+    t.index ["person_id"], name: "index_person_account_invitations_one_active_per_person", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["token_digest"], name: "index_person_account_invitations_on_token_digest", unique: true
+    t.index ["used_by_id"], name: "index_person_account_invitations_on_used_by_id"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying]::text[])", name: "person_account_invitations_valid_status"
+  end
+
   create_table "person_aliases", force: :cascade do |t|
     t.string "alias_type"
     t.datetime "created_at", null: false
@@ -460,20 +504,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_000001) do
   end
 
   create_table "player_claims", force: :cascade do |t|
+    t.bigint "claimable_id"
+    t.string "claimable_type"
     t.datetime "created_at", null: false
     t.bigint "initiated_by_person_id", null: false
     t.bigint "person_id", null: false
-    t.bigint "player_profile_id", null: false
+    t.bigint "player_profile_id"
     t.text "rejection_reason"
     t.datetime "reviewed_at"
     t.bigint "reviewed_by_person_id"
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
+    t.index ["claimable_type", "claimable_id"], name: "index_player_claims_on_claimable"
+    t.index ["claimable_type", "claimable_id"], name: "index_player_claims_one_pending_per_claimable", unique: true, where: "((status)::text = 'pending'::text)"
     t.index ["initiated_by_person_id"], name: "index_player_claims_on_initiated_by_person_id"
     t.index ["person_id"], name: "index_player_claims_on_person_id"
     t.index ["player_profile_id"], name: "index_player_claims_on_player_profile_id"
-    t.index ["player_profile_id"], name: "index_player_claims_one_pending_per_profile", unique: true, where: "((status)::text = 'pending'::text)"
     t.index ["reviewed_by_person_id"], name: "index_player_claims_on_reviewed_by_person_id"
+    t.check_constraint "claimable_id IS NOT NULL AND player_profile_id IS NULL OR claimable_id IS NULL AND player_profile_id IS NOT NULL", name: "player_claims_single_subject"
     t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'cancelled'::character varying]::text[])", name: "player_claims_valid_status"
   end
 
@@ -775,6 +823,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_000001) do
   add_foreign_key "assessments", "training_sessions", on_delete: :nullify
   add_foreign_key "assessments", "users", column: "created_by_id"
   add_foreign_key "category_customs", "users", column: "created_by_id"
+  add_foreign_key "claim_invitations", "users", column: "invited_by_id"
+  add_foreign_key "claim_invitations", "users", column: "used_by_id"
   add_foreign_key "coach_profiles", "people"
   add_foreign_key "coach_profiles", "users", column: "created_by_id"
   add_foreign_key "criteria", "assessment_categories"
@@ -793,6 +843,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_000001) do
   add_foreign_key "people", "people", column: "merged_into_id"
   add_foreign_key "people", "users", column: "created_by_id"
   add_foreign_key "people", "users", column: "merged_by_id"
+  add_foreign_key "person_account_invitations", "people"
+  add_foreign_key "person_account_invitations", "users", column: "invited_by_id"
+  add_foreign_key "person_account_invitations", "users", column: "used_by_id"
   add_foreign_key "person_aliases", "people"
   add_foreign_key "person_consolidations", "people", column: "canonical_person_id"
   add_foreign_key "person_consolidations", "people", column: "source_person_id"

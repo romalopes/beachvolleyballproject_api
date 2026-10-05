@@ -20,6 +20,9 @@ The supplied plan has fifteen phases. Phase 1 is documented in `IDENTITY_PHASE_0
 | 14 | Production migration | Runbook and read-only report complete; rollout is blocked by the missing `player_coaches` table, no backup in the active R2 prefix, unconfirmed database target, and placeholder Kamal host/registry configuration. See `IDENTITY_PHASE_14_PRODUCTION_MIGRATION.md` |
 | 15 | Full business integration matrix | Complete; cross-controller route walkthroughs and named scenario map added. Full backend and frontend suites pass; see `IDENTITY_PHASE_15_INTEGRATION_MATRIX.md` |
 | 16 | Invitation accessibility | Complete. The Phase 5 invitation flow was unreachable from the SPA (a recorded player always had a Person, so the invitation branch never rendered) and unrecoverable (no list or revoke UI). Added accountless player recording, a durable invitation panel, address-restricted invitations with optional delivery, and a coach entry point on `/identity`; see `IDENTITY_PHASE_16_INVITATION_ACCESSIBILITY.md` |
+| 17 | Claiming a known Person | Complete. Linking a login Account to an accountless Person; fixed a silent revert of the account re-point; see `IDENTITY_PHASE_17_PERSON_ACCOUNT_CLAIMS.md` |
+| 18 | One claim workflow | Complete. Collapsed the two parallel invitation systems into one polymorphic `claim_invitations` subject (player profile, coach profile, person), gated auto-approval on the club actually having emailed the invitation, and reversed Phase 2's coach-requires-a-Person rule. See `IDENTITY_PHASE_18_UNIFIED_CLAIMS.md` |
+| 17 | Claiming a known Person | Implemented: staff can invite the Person's verified email to connect an Account to the already recorded Person; see `IDENTITY_PHASE_17_PERSON_ACCOUNT_CLAIMS.md` |
 
 ## Completion gate
 

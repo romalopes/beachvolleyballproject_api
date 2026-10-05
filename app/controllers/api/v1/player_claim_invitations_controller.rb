@@ -33,7 +33,7 @@ module Api
           created_by_person: person,
           invitee_email: invitation_email
         )
-        PlayerClaimInvitationDelivery.deliver(invitation: invitation, raw_token: raw_token)
+        ClaimInvitationDelivery.deliver(invitation: invitation, raw_token: raw_token)
         render json: { invitation: invitation.summary, token: raw_token }, status: :created
       rescue PlayerClaimInvitationService::InvitationError, ActiveRecord::RecordInvalid => e
         render json: { errors: [ e.message ] }, status: :conflict

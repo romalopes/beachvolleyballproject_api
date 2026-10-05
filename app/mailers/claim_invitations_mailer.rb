@@ -7,20 +7,20 @@
 #
 # Delivery is always optional. The invitation exists and its link works the
 # moment it is created, whether or not this mail ever leaves the outbox.
-class PlayerClaimInvitationsMailer < ApplicationMailer
-  # @param invitation [PlayerClaimInvitation] the persisted invitation (metadata only)
+class ClaimInvitationsMailer < ApplicationMailer
+  # @param invitation [ClaimInvitation] the persisted invitation (metadata only)
   # @param raw_token [String] the one-time token to embed in the link
-  # @param inviter_name [String] the coach or admin who issued it
-  def invitation(invitation, raw_token, inviter_name)
+  def invitation(invitation, raw_token)
     @invitation = invitation
     @token = raw_token
-    @inviter_name = inviter_name
-    @expires_in = PlayerClaimInvitation::DEFAULT_EXPIRATION
+    @subject = ClaimSubject.for(invitation.claimable)
+    @inviter_name = invitation.invited_by&.person&.full_name || invitation.invited_by&.name
+    @expires_in = ClaimInvitation::DEFAULT_EXPIRATION
     @claim_url = claim_url(raw_token)
 
     mail(
       to: invitation.invitee_email,
-      subject: "You have been invited to claim your player profile"
+      subject: "You have been invited to claim your #{@subject.label}"
     )
   end
 

@@ -9,7 +9,10 @@ class PlayerClaimService
         raise ClaimError, "A pending claim already exists for this profile" if player_profile.player_claims.pending.exists?
         raise ClaimError, "Person cannot submit a claim" unless person&.status == "active"
 
-        player_profile.player_claims.create!(
+        # Stored polymorphically (Phase 18), leaving `player_profile_id` NULL so
+        # the "exactly one subject" constraint holds.
+        PlayerClaim.create!(
+          claimable: player_profile,
           person: person,
           initiated_by_person: initiated_by_person,
           status: "pending"
@@ -22,11 +25,14 @@ class PlayerClaimService
     PlayerClaim.transaction do
       claim.with_lock do
         ensure_pending!(claim)
-        profile = claim.player_profile
-        profile.with_lock do
-          raise ClaimError, "Player profile cannot be claimed" unless profile.person_id.nil? && profile.status == "active"
+        # `subject`, not `player_profile`: after the Phase 18 migration every
+        # claim stores its subject polymorphically and leaves
+        # `player_profile_id` NULL, so the legacy association is nil.
+        subject = ClaimSubject.for(claim.subject)
+        claim.subject.with_lock do
+          raise ClaimError, "The profile cannot be claimed" unless subject.still_unclaimed?
 
-          profile.update!(person: claim.person)
+          subject.effect!(claimant_person: claim.person, actor: reviewer)
           claim.update!(status: "approved", reviewed_by_person: reviewer, reviewed_at: Time.current)
         end
       end

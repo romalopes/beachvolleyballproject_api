@@ -109,6 +109,8 @@ Rails.application.routes.draw do
         collection do
           get :search
         end
+        resources :account_invitations, only: %i[index create],
+                  controller: "person_account_invitations"
         # Admin-only: attaching a player or coach profile to somebody who already
         # exists is a broader act than creating a new player.
         post :promote, on: :member
@@ -131,7 +133,30 @@ Rails.application.routes.draw do
           post :cancel
         end
       end
+      # Unified claim workflow (Phase 18). One polymorphic invitation serves a
+      # player profile, a coach profile, or a Person with no account.
+      #
+      # `player_claim_invitations` and `person_account_invitations` stay routed
+      # for one release so an existing client keeps working; they delegate to the
+      # same services.
+      resources :claim_invitations, only: %i[index show create] do
+        collection do
+          post :redeem
+        end
+        member do
+          post :revoke
+        end
+      end
+
       resources :player_claim_invitations, only: %i[index show create] do
+        collection do
+          post :redeem
+        end
+        member do
+          post :revoke
+        end
+      end
+      resources :person_account_invitations, only: [] do
         collection do
           post :redeem
         end

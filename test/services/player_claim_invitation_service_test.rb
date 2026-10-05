@@ -32,10 +32,10 @@ class PlayerClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_equal 1, results.count(:redeemed)
     assert_equal 1, results.count(:rejected)
     assert_equal "used", invitation.reload.status
-    assert_equal 1, PlayerClaim.where(player_profile: profile).count
+    assert_equal 1, PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id).count
   ensure
     if profile&.persisted?
-      PlayerClaim.where(player_profile: profile).delete_all
+      PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id).delete_all
       PlayerClaimInvitation.where(player_profile: profile).delete_all
       PlayerProfile.where(id: profile.id).delete_all
     end
@@ -60,7 +60,7 @@ class PlayerClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_equal people(:one).id, claim.person_id
   ensure
     if profile&.persisted?
-      PlayerClaim.where(player_profile: profile).delete_all
+      PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id).delete_all
       PlayerClaimInvitation.where(player_profile: profile).delete_all
       PlayerProfile.where(id: profile.id).delete_all
     end
@@ -81,14 +81,14 @@ class PlayerClaimInvitationServiceTest < ActiveSupport::TestCase
     # invalid token, or the endpoint becomes an address oracle.
     assert_equal PlayerClaimInvitationService::INVALID_MESSAGE, error.message
     assert_equal "active", invitation.reload.status
-    assert_empty PlayerClaim.where(player_profile: profile)
+    assert_empty PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id)
 
     # Still redeemable by the invited address — a failed attempt must not burn it.
     PlayerClaimInvitationService.redeem!(raw_token: token, person: people(:one))
     assert_equal "used", invitation.reload.status
   ensure
     if profile&.persisted?
-      PlayerClaim.where(player_profile: profile).delete_all
+      PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id).delete_all
       PlayerClaimInvitation.where(player_profile: profile).delete_all
       PlayerProfile.where(id: profile.id).delete_all
     end
@@ -108,7 +108,7 @@ class PlayerClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_equal people(:two).id, claim.person_id
   ensure
     if profile&.persisted?
-      PlayerClaim.where(player_profile: profile).delete_all
+      PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id).delete_all
       PlayerClaimInvitation.where(player_profile: profile).delete_all
       PlayerProfile.where(id: profile.id).delete_all
     end
@@ -127,7 +127,7 @@ class PlayerClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_empty PlayerClaimInvitation.where(player_profile: profile)
   ensure
     if profile&.persisted?
-      PlayerClaim.where(player_profile: profile).delete_all
+      PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: profile.id).delete_all
       PlayerClaimInvitation.where(player_profile: profile).delete_all
       PlayerProfile.where(id: profile.id).delete_all
     end
