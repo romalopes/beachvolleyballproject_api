@@ -338,7 +338,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Minimal", body["person"]["first_name"]
   end
 
-  test "create player links an existing person instead of creating one" do
+  test "create player links the requested Person and provisions the creator Account" do
     sign_in_as(@admin)
     person = Person.create!(first_name: "Linkable", last_name: "Person", creation_source: "system")
     people_before = Person.count
@@ -351,7 +351,9 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert_equal person.id, body["person_id"]
     assert_equal person.id, body["person"]["id"]
-    assert_equal people_before, Person.count, "no new person should be recorded"
+    assert_equal people_before + 1, Person.count, "the creator's Account provisions its Person"
+    assert_equal @admin.id, @admin.reload.account.person.created_by_id
+    assert_equal @admin.account.id, PlayerProfile.find(body["id"]).created_by_account_id
     assert_equal "system", person.reload.creation_source, "linking must not rewrite provenance"
   end
 
@@ -384,7 +386,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal [], JSON.parse(response.body)["possible_duplicates"]
   end
 
-  test "create player rejects a person who already has a player profile" do
+  test "create player permits another profile for the same person" do
     sign_in_as(@admin)
     existing = player_profiles(:john_player)
 
@@ -392,8 +394,31 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
       player: { person_id: existing.person_id, player_profile: {} }
     }
 
-    assert_response :unprocessable_entity
-    assert_includes JSON.parse(response.body)["errors"], "Person has already been taken"
+    assert_response :created
+    assert_equal 2, existing.person.reload.player_profiles.count
+  end
+
+  test "create can record an unlinked player profile with a display name" do
+    sign_in_as(@admin)
+
+    post api_v1_players_path, params: { player: { player_profile: { display_name: "Maria Jose" } } }
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_nil body["person_id"]
+    assert_nil body["person"]
+    assert_equal "Maria Jose", body["full_name"]
+    assert_equal "Maria Jose", PlayerProfile.find(body["id"]).display_name
+  end
+
+  test "index includes unlinked player profiles and can search their display name" do
+    sign_in_as(@admin)
+    profile = PlayerProfile.create!(display_name: "Maria Jose")
+
+    get api_v1_players_path, params: { q: "Maria Jose" }
+
+    assert_response :success
+    assert_equal [ profile.id ], JSON.parse(response.body)["data"].map { |row| row["id"] }
   end
 
   test "create player rejects an unknown person_id" do
@@ -473,15 +498,49 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, player_profiles(:pedro_player).id
   end
 
-  test "there is no hard delete for a player" do
+  test "hard delete refuses to erase a player with protected history" do
     sign_in_as(@admin)
     player = player_profiles(:pedro_player)
 
-    # The route is deliberately absent: archiving is the only removal path, so
-    # attendance history can never be destroyed by an API call.
     delete "/api/v1/players/#{player.id}"
 
-    assert_response :not_found
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["blockers"], "training_session_participants"
+    assert PlayerProfile.exists?(player.id)
+  end
+
+  test "admin can hard delete an unused player profile linked to a Person while retaining the Person" do
+    person = Person.create!(first_name: "Unused", last_name: "Player", creation_source: "system")
+    player = PlayerProfile.create!(person: person, display_name: "Unused player")
+    sign_in_as(@admin)
+
+    delete "/api/v1/players/#{player.id}"
+
+    assert_response :no_content
+    assert_not PlayerProfile.exists?(player.id)
+    assert Person.exists?(person.id)
+  end
+
+  test "hard delete is admin only" do
+    person = Person.create!(first_name: "Owned", last_name: "Player", creation_source: "system")
+    player = PlayerProfile.create!(person: person, display_name: "Owned player", created_by: @trainer)
+    sign_in_as(@trainer)
+
+    delete "/api/v1/players/#{player.id}"
+
+    assert_response :forbidden
+    assert PlayerProfile.exists?(player.id)
+  end
+
+  test "hard delete refuses a player whose linked Person has an account" do
+    person = people(:one)
+    player = PlayerProfile.create!(person: person, display_name: "Connected player")
+    sign_in_as(@admin)
+
+    delete "/api/v1/players/#{player.id}"
+
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["blockers"], "person_account"
     assert PlayerProfile.exists?(player.id)
   end
 

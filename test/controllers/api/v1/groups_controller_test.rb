@@ -301,6 +301,25 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/active member/, json["errors"].first)
   end
 
+  test "being a group member does not grant organisation membership authority" do
+    # users(:three) owns the independent private_squad but is not a member of
+    # Sydney Beach Volleyball Club.
+    sign_in_as(@other_coach)
+    assert @private_group.group_memberships.exists?(person_id: @other_coach.person.id)
+    assert_not @other_coach.person.member_of?(organisations(:sydney_club))
+
+    assert_no_difference "Group.count" do
+      post_json api_v1_groups_path, {
+        group: {
+          name: "Group Member Without Club Standing",
+          organisation_id: organisations(:sydney_club).id
+        }
+      }
+    end
+
+    assert_response :forbidden
+  end
+
   test "a person outside the group's organisation cannot be added to it" do
     sign_in_as(@owner)
     @u19.update!(organisation: organisations(:sydney_club))

@@ -15,6 +15,8 @@ class NestedMembershipsReproTest < ActionDispatch::IntegrationTest
     person = Person.create!(first_name: "Nested", last_name: "Repro",
                             creation_source: "coach_created", created_by: coach_user)
     profile = CoachProfile.create!(person: person, created_by: coach_user)
+    OrganisationMembership.create!(organisation: other, person: coach_user.person,
+                                   role: "administrator", status: "active")
 
     # Start from one existing membership so the payload mixes an update and a create.
     existing = person.organisation_memberships.create!(
@@ -45,5 +47,57 @@ class NestedMembershipsReproTest < ActionDispatch::IntegrationTest
     assert_equal 2, rows.count
     assert_equal [ club.id, other.id ], rows.map(&:organisation_id)
     assert_equal %w[coach member], rows.map(&:role)
+  end
+
+  test "a content creator cannot grant themselves roster control through nested person attributes" do
+    coach_user = users(:three)
+    club = organisations(:sydney_club)
+    sign_in_as(coach_user)
+
+    assert_not coach_user.person.member_of?(club)
+    assert_no_difference ["Person.count", "OrganisationMembership.count"] do
+      post "/api/v1/people",
+           params: {
+             person: {
+               first_name: "Forged",
+               last_name: "Officer",
+               organisation_memberships_attributes: [
+                 { organisation_id: club.id, role: "owner", status: "active" }
+               ]
+             }
+           }.to_json,
+           headers: { "Content-Type" => "application/json" }
+    end
+
+    assert_response :forbidden
+    assert_match(/owner or administrator/, JSON.parse(response.body)["errors"].first)
+  end
+
+  test "an admin ends a saved organisation membership without deleting its history" do
+    admin = users(:two)
+    organisation = organisations(:sydney_club)
+    person = Person.create!(first_name: "Leaving", last_name: "Coach", creation_source: "system")
+    profile = CoachProfile.create!(person: person, created_by: admin)
+    membership = OrganisationMembership.create!(person: person, organisation: organisation,
+                                                role: "coach", status: "active")
+
+    sign_in_as(admin)
+    patch "/api/v1/coaches/#{profile.id}",
+          params: {
+            coach: {
+              person: {
+                first_name: person.first_name,
+                organisation_memberships_attributes: [
+                  { id: membership.id, organisation_id: organisation.id,
+                    role: "coach", status: "ended" }
+                ]
+              }
+            }
+          }.to_json,
+          headers: { "Content-Type" => "application/json" }
+
+    assert_response :success, "#{response.status}: #{response.body}"
+    assert_equal "ended", membership.reload.status
+    assert_not_nil membership.left_at
   end
 end

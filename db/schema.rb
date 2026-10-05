@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -28,7 +28,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
 
   create_table "accounts", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "person_id"
+    t.bigint "person_id", null: false
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.index ["person_id"], name: "index_accounts_on_person_id", unique: true
@@ -225,19 +225,51 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
     t.check_constraint "visibility::text = ANY (ARRAY['shared'::character varying, 'private'::character varying]::text[])", name: "category_customs_visibility"
   end
 
+  create_table "claim_invitations", force: :cascade do |t|
+    t.bigint "claimable_id", null: false
+    t.string "claimable_type", null: false
+    t.datetime "created_at", null: false
+    t.datetime "emailed_at"
+    t.datetime "expires_at", null: false
+    t.bigint "invited_by_id", null: false
+    t.string "invitee_email"
+    t.datetime "revoked_at"
+    t.string "status", default: "active", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "used_at"
+    t.bigint "used_by_id"
+    t.index ["claimable_type", "claimable_id"], name: "index_claim_invitations_on_claimable"
+    t.index ["claimable_type", "claimable_id"], name: "index_claim_invitations_one_active_per_subject", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["invited_by_id"], name: "index_claim_invitations_on_invited_by_id"
+    t.index ["token_digest"], name: "index_claim_invitations_on_token_digest", unique: true
+    t.index ["used_by_id"], name: "index_claim_invitations_on_used_by_id"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying]::text[])", name: "claim_invitations_valid_status"
+  end
+
   create_table "coach_profiles", force: :cascade do |t|
+    t.datetime "archived_at"
     t.string "coaching_level"
     t.datetime "created_at", null: false
+    t.bigint "created_by_account_id"
     t.bigint "created_by_id"
-    t.bigint "person_id", null: false
+    t.string "display_name"
+    t.datetime "merged_at"
+    t.bigint "merged_by_account_id"
+    t.bigint "merged_into_profile_id"
+    t.bigint "person_id"
     t.text "qualifications"
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
     t.string "visibility", default: "shared", null: false
+    t.index ["created_by_account_id"], name: "index_coach_profiles_on_created_by_account_id"
     t.index ["created_by_id"], name: "index_coach_profiles_on_created_by_id"
-    t.index ["person_id"], name: "index_coach_profiles_on_person_id", unique: true
+    t.index ["merged_by_account_id"], name: "index_coach_profiles_on_merged_by_account_id"
+    t.index ["merged_into_profile_id"], name: "index_coach_profiles_on_merged_into_profile_id"
+    t.index ["person_id"], name: "index_coach_profiles_on_person_id"
     t.index ["status"], name: "index_coach_profiles_on_status"
     t.index ["visibility"], name: "index_coach_profiles_on_visibility"
+    t.check_constraint "merged_at IS NULL OR merged_into_profile_id IS NOT NULL AND archived_at IS NOT NULL", name: "coach_profiles_merge_state_consistent"
   end
 
   create_table "criteria", force: :cascade do |t|
@@ -400,6 +432,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
     t.string "email"
     t.string "first_name", null: false
     t.string "last_name"
+    t.datetime "merged_at"
+    t.bigint "merged_by_id"
     t.bigint "merged_into_id"
     t.string "phone"
     t.string "status", default: "active", null: false
@@ -407,8 +441,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
     t.index ["created_by_id"], name: "index_people_on_created_by_id"
     t.index ["creation_source"], name: "index_people_on_creation_source"
     t.index ["email"], name: "index_people_on_email"
+    t.index ["merged_by_id"], name: "index_people_on_merged_by_id"
     t.index ["merged_into_id"], name: "index_people_on_merged_into_id"
     t.index ["status"], name: "index_people_on_status"
+  end
+
+  create_table "person_account_invitations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.bigint "invited_by_id", null: false
+    t.string "invitee_email", null: false
+    t.bigint "person_id", null: false
+    t.datetime "revoked_at"
+    t.string "status", default: "active", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "used_at"
+    t.bigint "used_by_id"
+    t.index ["invited_by_id"], name: "index_person_account_invitations_on_invited_by_id"
+    t.index ["person_id"], name: "index_person_account_invitations_on_person_id"
+    t.index ["person_id"], name: "index_person_account_invitations_one_active_per_person", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["token_digest"], name: "index_person_account_invitations_on_token_digest", unique: true
+    t.index ["used_by_id"], name: "index_person_account_invitations_on_used_by_id"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying]::text[])", name: "person_account_invitations_valid_status"
   end
 
   create_table "person_aliases", force: :cascade do |t|
@@ -419,6 +474,63 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
     t.datetime "updated_at", null: false
     t.index ["full_name"], name: "index_person_aliases_on_full_name"
     t.index ["person_id"], name: "index_person_aliases_on_person_id"
+  end
+
+  create_table "person_consolidations", force: :cascade do |t|
+    t.bigint "canonical_person_id", null: false
+    t.datetime "completed_at", null: false
+    t.datetime "created_at", null: false
+    t.bigint "performed_by_id", null: false
+    t.jsonb "result", default: {}, null: false
+    t.bigint "source_person_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["canonical_person_id"], name: "index_person_consolidations_on_canonical_person_id"
+    t.index ["performed_by_id"], name: "index_person_consolidations_on_performed_by_id"
+    t.index ["source_person_id"], name: "index_person_consolidations_on_source_person_id", unique: true
+    t.check_constraint "source_person_id <> canonical_person_id", name: "person_consolidations_distinct_people"
+  end
+
+  create_table "player_claim_invitations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_person_id", null: false
+    t.datetime "expires_at", null: false
+    t.string "invitee_email"
+    t.bigint "player_profile_id", null: false
+    t.datetime "revoked_at"
+    t.string "status", default: "active", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "used_at"
+    t.bigint "used_by_person_id"
+    t.index ["created_by_person_id"], name: "index_player_claim_invitations_on_created_by_person_id"
+    t.index ["player_profile_id", "invitee_email"], name: "index_player_claim_invitations_one_active_per_email", unique: true, where: "(((status)::text = 'active'::text) AND (invitee_email IS NOT NULL))"
+    t.index ["player_profile_id"], name: "index_player_claim_invitations_on_player_profile_id"
+    t.index ["player_profile_id"], name: "index_player_claim_invitations_one_active_per_profile", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["token_digest"], name: "index_player_claim_invitations_on_token_digest", unique: true
+    t.index ["used_by_person_id"], name: "index_player_claim_invitations_on_used_by_person_id"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying]::text[])", name: "player_claim_invitations_valid_status"
+  end
+
+  create_table "player_claims", force: :cascade do |t|
+    t.bigint "claimable_id"
+    t.string "claimable_type"
+    t.datetime "created_at", null: false
+    t.bigint "initiated_by_person_id", null: false
+    t.bigint "person_id", null: false
+    t.bigint "player_profile_id"
+    t.text "rejection_reason"
+    t.datetime "reviewed_at"
+    t.bigint "reviewed_by_person_id"
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.index ["claimable_type", "claimable_id"], name: "index_player_claims_on_claimable"
+    t.index ["claimable_type", "claimable_id"], name: "index_player_claims_one_pending_per_claimable", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["initiated_by_person_id"], name: "index_player_claims_on_initiated_by_person_id"
+    t.index ["person_id"], name: "index_player_claims_on_person_id"
+    t.index ["player_profile_id"], name: "index_player_claims_on_player_profile_id"
+    t.index ["reviewed_by_person_id"], name: "index_player_claims_on_reviewed_by_person_id"
+    t.check_constraint "claimable_id IS NOT NULL AND player_profile_id IS NULL OR claimable_id IS NULL AND player_profile_id IS NOT NULL", name: "player_claims_single_subject"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'cancelled'::character varying]::text[])", name: "player_claims_valid_status"
   end
 
   create_table "player_coaches", force: :cascade do |t|
@@ -438,18 +550,44 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
   end
 
   create_table "player_profiles", force: :cascade do |t|
+    t.datetime "archived_at"
     t.datetime "created_at", null: false
+    t.bigint "created_by_account_id"
     t.bigint "created_by_id"
+    t.string "display_name"
     t.string "level"
-    t.bigint "person_id", null: false
+    t.datetime "merged_at"
+    t.bigint "merged_by_account_id"
+    t.bigint "merged_into_profile_id"
+    t.bigint "person_id"
     t.string "preferred_position"
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
     t.string "visibility", default: "shared", null: false
+    t.index ["created_by_account_id"], name: "index_player_profiles_on_created_by_account_id"
     t.index ["created_by_id"], name: "index_player_profiles_on_created_by_id"
-    t.index ["person_id"], name: "index_player_profiles_on_person_id", unique: true
+    t.index ["merged_by_account_id"], name: "index_player_profiles_on_merged_by_account_id"
+    t.index ["merged_into_profile_id"], name: "index_player_profiles_on_merged_into_profile_id"
+    t.index ["person_id"], name: "index_player_profiles_on_person_id"
     t.index ["status"], name: "index_player_profiles_on_status"
     t.index ["visibility"], name: "index_player_profiles_on_visibility"
+    t.check_constraint "merged_at IS NULL OR merged_into_profile_id IS NOT NULL AND archived_at IS NOT NULL", name: "player_profiles_merge_state_consistent"
+  end
+
+  create_table "profile_merges", force: :cascade do |t|
+    t.bigint "canonical_profile_id", null: false
+    t.string "canonical_profile_type", null: false
+    t.datetime "created_at", null: false
+    t.bigint "merged_by_account_id", null: false
+    t.text "reason", null: false
+    t.jsonb "reference_counts", default: {}, null: false
+    t.bigint "source_profile_id", null: false
+    t.string "source_profile_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["canonical_profile_type", "canonical_profile_id"], name: "index_profile_merges_canonical"
+    t.index ["merged_by_account_id"], name: "index_profile_merges_on_merged_by_account_id"
+    t.index ["source_profile_type", "source_profile_id"], name: "index_profile_merges_unique_source", unique: true
+    t.check_constraint "source_profile_type::text = canonical_profile_type::text AND source_profile_id <> canonical_profile_id", name: "profile_merges_distinct_same_type"
   end
 
   create_table "ranking_consolidation_rows", force: :cascade do |t|
@@ -532,177 +670,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
     t.index ["slug"], name: "index_skills_on_slug", unique: true
   end
 
-  create_table "solid_cable_messages", force: :cascade do |t|
-    t.binary "channel", null: false
-    t.bigint "channel_hash", null: false
-    t.datetime "created_at", null: false
-    t.binary "payload", null: false
-    t.index ["channel"], name: "index_solid_cable_messages_on_channel"
-    t.index ["channel_hash"], name: "index_solid_cable_messages_on_channel_hash"
-    t.index ["created_at"], name: "index_solid_cable_messages_on_created_at"
-  end
-
-  create_table "solid_cache_entries", force: :cascade do |t|
-    t.integer "byte_size", null: false
-    t.datetime "created_at", null: false
-    t.binary "key", null: false
-    t.bigint "key_hash", null: false
-    t.binary "value", null: false
-    t.index ["byte_size"], name: "index_solid_cache_entries_on_byte_size"
-    t.index ["key_hash", "byte_size"], name: "index_solid_cache_entries_on_key_hash_and_byte_size"
-    t.index ["key_hash"], name: "index_solid_cache_entries_on_key_hash", unique: true
-  end
-
-  create_table "solid_queue_batch_executions", force: :cascade do |t|
-    t.bigint "batch_id", null: false
-    t.datetime "created_at", null: false
-    t.bigint "job_id", null: false
-    t.index ["batch_id"], name: "index_solid_queue_batch_executions_on_batch_id"
-    t.index ["job_id"], name: "index_solid_queue_batch_executions_on_job_id", unique: true
-  end
-
-  create_table "solid_queue_batches", force: :cascade do |t|
-    t.string "active_job_batch_id"
-    t.integer "completed_jobs", default: 0, null: false
-    t.datetime "created_at", null: false
-    t.string "description"
-    t.datetime "enqueued_at"
-    t.datetime "failed_at"
-    t.integer "failed_jobs", default: 0, null: false
-    t.datetime "finished_at"
-    t.text "metadata"
-    t.text "on_failure"
-    t.text "on_finish"
-    t.text "on_success"
-    t.integer "total_jobs", default: 0, null: false
-    t.datetime "updated_at", null: false
-    t.index ["active_job_batch_id"], name: "index_solid_queue_batches_on_active_job_batch_id", unique: true
-    t.index ["finished_at"], name: "index_solid_queue_batches_on_finished_at"
-  end
-
-  create_table "solid_queue_blocked_executions", force: :cascade do |t|
-    t.string "concurrency_key", null: false
-    t.datetime "created_at", null: false
-    t.datetime "expires_at", null: false
-    t.bigint "job_id", null: false
-    t.integer "priority", default: 0, null: false
-    t.string "queue_name", null: false
-    t.index ["concurrency_key", "priority", "job_id"], name: "index_solid_queue_blocked_executions_for_release"
-    t.index ["expires_at", "concurrency_key"], name: "index_solid_queue_blocked_executions_for_maintenance"
-    t.index ["job_id"], name: "index_solid_queue_blocked_executions_on_job_id", unique: true
-  end
-
-  create_table "solid_queue_claimed_executions", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.bigint "job_id", null: false
-    t.bigint "process_id"
-    t.index ["job_id"], name: "index_solid_queue_claimed_executions_on_job_id", unique: true
-    t.index ["process_id", "job_id"], name: "index_solid_queue_claimed_executions_on_process_id_and_job_id"
-  end
-
-  create_table "solid_queue_failed_executions", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.text "error"
-    t.bigint "job_id", null: false
-    t.index ["job_id"], name: "index_solid_queue_failed_executions_on_job_id", unique: true
-  end
-
-  create_table "solid_queue_jobs", force: :cascade do |t|
-    t.string "active_job_id"
-    t.text "arguments"
-    t.bigint "batch_id"
-    t.string "class_name", null: false
-    t.string "concurrency_key"
-    t.datetime "created_at", null: false
-    t.datetime "finished_at"
-    t.integer "priority", default: 0, null: false
-    t.string "queue_name", null: false
-    t.datetime "scheduled_at"
-    t.datetime "updated_at", null: false
-    t.index ["active_job_id"], name: "index_solid_queue_jobs_on_active_job_id"
-    t.index ["batch_id"], name: "index_solid_queue_jobs_on_batch_id"
-    t.index ["class_name"], name: "index_solid_queue_jobs_on_class_name"
-    t.index ["finished_at"], name: "index_solid_queue_jobs_on_finished_at"
-    t.index ["queue_name", "finished_at"], name: "index_solid_queue_jobs_for_filtering"
-    t.index ["scheduled_at", "finished_at"], name: "index_solid_queue_jobs_for_alerting"
-  end
-
-  create_table "solid_queue_pauses", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.string "queue_name", null: false
-    t.index ["queue_name"], name: "index_solid_queue_pauses_on_queue_name", unique: true
-  end
-
-  create_table "solid_queue_processes", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.string "hostname"
-    t.string "kind", null: false
-    t.datetime "last_heartbeat_at", null: false
-    t.text "metadata"
-    t.string "name", null: false
-    t.integer "pid", null: false
-    t.bigint "supervisor_id"
-    t.index ["last_heartbeat_at"], name: "index_solid_queue_processes_on_last_heartbeat_at"
-    t.index ["name", "supervisor_id"], name: "index_solid_queue_processes_on_name_and_supervisor_id", unique: true
-    t.index ["supervisor_id"], name: "index_solid_queue_processes_on_supervisor_id"
-  end
-
-  create_table "solid_queue_ready_executions", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.bigint "job_id", null: false
-    t.integer "priority", default: 0, null: false
-    t.string "queue_name", null: false
-    t.index ["job_id"], name: "index_solid_queue_ready_executions_on_job_id", unique: true
-    t.index ["priority", "job_id"], name: "index_solid_queue_poll_all"
-    t.index ["queue_name", "priority", "job_id"], name: "index_solid_queue_poll_by_queue"
-  end
-
-  create_table "solid_queue_recurring_executions", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.bigint "job_id", null: false
-    t.datetime "run_at", null: false
-    t.string "task_key", null: false
-    t.index ["job_id"], name: "index_solid_queue_recurring_executions_on_job_id", unique: true
-    t.index ["task_key", "run_at"], name: "index_solid_queue_recurring_executions_on_task_key_and_run_at", unique: true
-  end
-
-  create_table "solid_queue_recurring_tasks", force: :cascade do |t|
-    t.text "arguments"
-    t.string "class_name"
-    t.string "command", limit: 2048
-    t.datetime "created_at", null: false
-    t.text "description"
-    t.string "key", null: false
-    t.integer "priority", default: 0
-    t.string "queue_name"
-    t.string "schedule", null: false
-    t.boolean "static", default: true, null: false
-    t.datetime "updated_at", null: false
-    t.index ["key"], name: "index_solid_queue_recurring_tasks_on_key", unique: true
-    t.index ["static"], name: "index_solid_queue_recurring_tasks_on_static"
-  end
-
-  create_table "solid_queue_scheduled_executions", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.bigint "job_id", null: false
-    t.integer "priority", default: 0, null: false
-    t.string "queue_name", null: false
-    t.datetime "scheduled_at", null: false
-    t.index ["job_id"], name: "index_solid_queue_scheduled_executions_on_job_id", unique: true
-    t.index ["scheduled_at", "priority", "job_id"], name: "index_solid_queue_dispatch_all"
-  end
-
-  create_table "solid_queue_semaphores", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.datetime "expires_at", null: false
-    t.string "key", null: false
-    t.datetime "updated_at", null: false
-    t.integer "value", default: 1, null: false
-    t.index ["expires_at"], name: "index_solid_queue_semaphores_on_expires_at"
-    t.index ["key", "value"], name: "index_solid_queue_semaphores_on_key_and_value"
-    t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
-  end
-
   create_table "training_focuses", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "custom_focus"
@@ -712,7 +679,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
     t.bigint "training_session_id", null: false
     t.datetime "updated_at", null: false
     t.index ["skill_id"], name: "index_training_focuses_on_skill_id"
-    t.index ["training_session_id", "position"], name: "index_training_focuses_on_session_and_position"
+    t.index ["training_session_id", "position"], name: "index_training_focuses_on_training_session_id_and_position"
     t.index ["training_session_id", "skill_id"], name: "index_training_focuses_on_session_and_skill", unique: true
     t.index ["training_session_id"], name: "index_training_focuses_on_training_session_id"
     t.check_constraint "\"position\" >= 0", name: "training_focuses_position_non_negative"
@@ -889,6 +856,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
   add_foreign_key "assessments", "training_sessions", on_delete: :nullify
   add_foreign_key "assessments", "users", column: "created_by_id"
   add_foreign_key "category_customs", "users", column: "created_by_id"
+  add_foreign_key "claim_invitations", "users", column: "invited_by_id"
+  add_foreign_key "claim_invitations", "users", column: "used_by_id"
+  add_foreign_key "coach_profiles", "accounts", column: "created_by_account_id"
+  add_foreign_key "coach_profiles", "accounts", column: "merged_by_account_id"
+  add_foreign_key "coach_profiles", "coach_profiles", column: "merged_into_profile_id"
   add_foreign_key "coach_profiles", "people"
   add_foreign_key "coach_profiles", "users", column: "created_by_id"
   add_foreign_key "criteria", "assessment_categories"
@@ -906,11 +878,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
   add_foreign_key "organisations", "people", column: "created_by_person_id"
   add_foreign_key "people", "people", column: "merged_into_id"
   add_foreign_key "people", "users", column: "created_by_id"
+  add_foreign_key "people", "users", column: "merged_by_id"
+  add_foreign_key "person_account_invitations", "people"
+  add_foreign_key "person_account_invitations", "users", column: "invited_by_id"
+  add_foreign_key "person_account_invitations", "users", column: "used_by_id"
   add_foreign_key "person_aliases", "people"
+  add_foreign_key "person_consolidations", "people", column: "canonical_person_id"
+  add_foreign_key "person_consolidations", "people", column: "source_person_id"
+  add_foreign_key "person_consolidations", "users", column: "performed_by_id"
+  add_foreign_key "player_claim_invitations", "people", column: "created_by_person_id"
+  add_foreign_key "player_claim_invitations", "people", column: "used_by_person_id"
+  add_foreign_key "player_claim_invitations", "player_profiles"
+  add_foreign_key "player_claims", "people"
+  add_foreign_key "player_claims", "people", column: "initiated_by_person_id"
+  add_foreign_key "player_claims", "people", column: "reviewed_by_person_id"
+  add_foreign_key "player_claims", "player_profiles"
   add_foreign_key "player_coaches", "coach_profiles"
   add_foreign_key "player_coaches", "player_profiles"
+  add_foreign_key "player_profiles", "accounts", column: "created_by_account_id"
+  add_foreign_key "player_profiles", "accounts", column: "merged_by_account_id"
   add_foreign_key "player_profiles", "people"
+  add_foreign_key "player_profiles", "player_profiles", column: "merged_into_profile_id"
   add_foreign_key "player_profiles", "users", column: "created_by_id"
+  add_foreign_key "profile_merges", "accounts", column: "merged_by_account_id"
   add_foreign_key "ranking_consolidation_rows", "player_profiles"
   add_foreign_key "ranking_consolidation_rows", "ranking_consolidations"
   add_foreign_key "ranking_consolidation_sessions", "assessment_sessions"
@@ -922,14 +912,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
   add_foreign_key "sessions", "users", column: "impersonated_user_id"
   add_foreign_key "skills", "categories"
   add_foreign_key "skills", "users", column: "created_by_id"
-  add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
-  add_foreign_key "solid_queue_batch_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
-  add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
-  add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
-  add_foreign_key "solid_queue_failed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
-  add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
-  add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
-  add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "training_focuses", "skills"
   add_foreign_key "training_focuses", "training_sessions"
   add_foreign_key "training_session_drills", "drills"

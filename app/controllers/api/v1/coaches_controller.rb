@@ -10,11 +10,12 @@ module Api
     class CoachesController < ApplicationController
       include ContentAuthorization
       include Pagination
+      include NestedOrganisationMembershipAuthorization
 
       before_action :require_authentication
       before_action :require_training_manager!
       before_action :require_content_creator!, only: %i[create update]
-      before_action :set_coach, only: %i[show update]
+      before_action :set_coach, only: %i[show update merge destroy]
       before_action :validate_status_filter!, only: :index
 
       # Permitted input.
@@ -22,7 +23,7 @@ module Api
       PROFILE_ATTRS = %i[coaching_level qualifications status visibility].freeze
 
       # Serializable output.
-      PROFILE_ONLY = %i[id person_id coaching_level qualifications status visibility created_at updated_at].freeze
+      PROFILE_ONLY = %i[id person_id display_name coaching_level qualifications status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
       PERSON_ONLY = %i[id first_name last_name email phone date_of_birth creation_source].freeze
       PROFILE_METHODS = %i[full_name account_status coach_profile_id].freeze
 
@@ -35,12 +36,12 @@ module Api
         # reveals them and `?mine=1` narrows to the ones this user recorded.
         coaches = profile_scope
                   .includes(:person, :created_by)
-                  .joins(:person)
+                  .left_joins(:person)
                   .order(people: { last_name: :asc, first_name: :asc }, coach_profiles: { id: :asc })
 
         if params[:q].present?
           term = "%#{params[:q]}%"
-          coaches = coaches.where("people.last_name ILIKE :t OR people.first_name ILIKE :t OR people.email ILIKE :t",
+          coaches = coaches.where("people.last_name ILIKE :t OR people.first_name ILIKE :t OR people.email ILIKE :t OR coach_profiles.display_name ILIKE :t",
                                   t: term)
         end
         if params[:email].present?
@@ -87,6 +88,9 @@ module Api
         # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
+        # Phase 18 made `person` nullable for coaches, so a coach recorded
+        # without an account also arrives without the key.
+        payload["person"] = nil unless payload.key?("person")
 
         # Attribution history (plan 4.2): the count and a recent slice of the
         # published rows attributed to this coach. Drafts and withdrawn rows
@@ -109,11 +113,21 @@ module Api
       # that already exists (found through /api/v1/people), while nested `person`
       # attributes record a new one.
       def create
-        profile = CoachProfile.new(coach_params)
-        profile.created_by ||= Current.user
-        PersonCreationService.new(created_by: Current.user).apply(profile.person) if profile.person&.new_record?
+        attributes = coach_params
+        return unless authorize_nested_organisation_memberships!(
+          person: nil, attributes: attributes[:person_attributes] || attributes["person_attributes"] || {}
+        )
 
-        if profile.save
+        profile = CoachProfile.new(attributes)
+        saved = CoachProfile.transaction do
+          ProfileOwnership.stamp!(profile, Current.user)
+          PersonCreationService.new(created_by: Current.user).apply(profile.person) if profile.person&.new_record?
+          next true if profile.save
+
+          raise ActiveRecord::Rollback
+        end
+
+        if saved
           render json: serialize(profile).merge("possible_duplicates" => possible_duplicates_for(profile.person)),
                  status: :created
         else
@@ -137,6 +151,9 @@ module Api
         end
 
         update_params = coach_update_params
+        return unless authorize_nested_organisation_memberships!(
+          person: @coach.person, attributes: update_params[:person_attributes] || update_params["person_attributes"] || {}
+        )
         requested_visibility = update_params[:visibility] || update_params["visibility"]
         if requested_visibility.present? && requested_visibility.to_s != @coach.visibility.to_s &&
            !@coach.visibility_change_permitted?(Current.user)
@@ -144,11 +161,40 @@ module Api
           return render json: { errors: @coach.errors.full_messages }, status: :forbidden
         end
 
+        if @coach.merged?
+          return render json: { errors: [ "A merged profile cannot be edited" ] }, status: :unprocessable_entity
+        end
+
         if @coach.update(update_params)
           render json: serialize(@coach).merge("possible_duplicates" => possible_duplicates_for(@coach.person))
         else
           render json: { errors: @coach.errors.full_messages }, status: :unprocessable_entity
         end
+      end
+
+      def merge
+        return render json: { error: "Forbidden" }, status: :forbidden unless Current.user.admin? || Current.user.curator?
+
+        canonical = CoachProfile.find(params.require(:canonical_profile_id))
+        result = ProfileMergeService.merge!(source: @coach, canonical: canonical,
+                                            actor: Current.user, reason: params[:reason])
+        render json: { id: result.id, source_profile_id: result.source_profile_id,
+                       canonical_profile_id: result.canonical_profile_id,
+                       reference_counts: result.reference_counts, merged_at: result.created_at }
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "Profile not found" }, status: :not_found
+      rescue ProfileMergeService::Error => e
+        render json: { errors: [ e.message ] }, status: :conflict
+      end
+
+      def destroy
+        ProfileDeletionBlocker.destroy!(profile: @coach, user: Current.user)
+        head :no_content
+      rescue ProfileDeletionBlocker::Blocked => e
+        status = e.message == "Forbidden" ? :forbidden : :unprocessable_entity
+        render json: { error: e.message, blockers: e.references }, status: status
+      rescue ActiveRecord::RecordNotDestroyed
+        render json: { error: "Profile could not be deleted", blockers: @coach.errors.full_messages }, status: :unprocessable_entity
       end
 
       private

@@ -75,25 +75,25 @@ Rails.application.routes.draw do
         resources :video_references, only: %i[create update destroy]
       end
       resources :drill_skills
-      resources :video_categories, only: [:index, :show]
+      resources :video_categories, only: [ :index, :show ]
       namespace :admin do
         # index is used by the SPA settings pages (usage counts per category).
         # reorder persists the drag-and-drop order.
-        resources :video_categories, only: [:index, :create, :update, :destroy] do
+        resources :video_categories, only: [ :index, :create, :update, :destroy ] do
           collection { patch :reorder }
         end
       end
 
-      resources :video_tags, only: [:index, :show]
+      resources :video_tags, only: [ :index, :show ]
       namespace :admin do
         # index is used by the SPA settings pages (usage counts per tag).
         # reorder persists the drag-and-drop order.
-        resources :video_tags, only: [:index, :create, :update, :destroy] do
+        resources :video_tags, only: [ :index, :create, :update, :destroy ] do
           collection { patch :reorder }
         end
       end
 
-      resources :videos, only: [:index, :create, :show, :update, :destroy]
+      resources :videos, only: [ :index, :create, :show, :update, :destroy ]
 
       # Identity search used by the "create player/coach" flow before a new
       # Person is created (possible-duplicate lookup). Staff-only.
@@ -109,12 +109,65 @@ Rails.application.routes.draw do
         collection do
           get :search
         end
+        resources :account_invitations, only: %i[index create],
+                  controller: "person_account_invitations"
         # Admin-only: attaching a player or coach profile to somebody who already
         # exists is a broader act than creating a new player.
         post :promote, on: :member
       end
-      resources :players, only: %i[index show create update]
-      resources :coaches, only: %i[index show create update]
+      resources :person_consolidations, only: %i[show create] do
+        collection do
+          post :preview
+          post :resolve
+        end
+      end
+      resources :players, only: %i[index show create update destroy] do
+        member { post :merge }
+      end
+      resources :coaches, only: %i[index show create update destroy] do
+        member { post :merge }
+      end
+      resources :player_claims, only: %i[index show create] do
+        collection do
+          get :candidates
+        end
+        member do
+          post :approve
+          post :reject
+          post :cancel
+        end
+      end
+      # Unified claim workflow (Phase 18). One polymorphic invitation serves a
+      # player profile, a coach profile, or a Person with no account.
+      #
+      # `player_claim_invitations` and `person_account_invitations` stay routed
+      # for one release so an existing client keeps working; they delegate to the
+      # same services.
+      resources :claim_invitations, only: %i[index show create] do
+        collection do
+          post :redeem
+        end
+        member do
+          post :revoke
+        end
+      end
+
+      resources :player_claim_invitations, only: %i[index show create] do
+        collection do
+          post :redeem
+        end
+        member do
+          post :revoke
+        end
+      end
+      resources :person_account_invitations, only: [] do
+        collection do
+          post :redeem
+        end
+        member do
+          post :revoke
+        end
+      end
 
       # Who coaches whom: the ongoing coaching relationship between a coach and a
       # player. Deliberately separate from assessments — a coach needs no row here
@@ -238,33 +291,33 @@ Rails.application.routes.draw do
 
       # Admin role management
       namespace :admin do
-        resources :users, only: [:index, :show] do
+        resources :users, only: [ :index, :show ] do
           post "roles", to: "users#add_role", as: :add_role
           delete "roles/:role", to: "users#remove_role", as: :remove_role
         end
 
         # Admin Settings CRUD (JSON for the React SPA)
-        resources :skills, only: [:index, :show, :create, :update, :destroy]
-        resources :categories, only: [:index, :show, :create, :update, :destroy]
-        resources :drills, only: [:index, :show, :create, :update, :destroy]
+        resources :skills, only: [ :index, :show, :create, :update, :destroy ]
+        resources :categories, only: [ :index, :show, :create, :update, :destroy ]
+        resources :drills, only: [ :index, :show, :create, :update, :destroy ]
 
         # Admin audit logs (read-only)
-        resources :logs, only: [:index, :show]
+        resources :logs, only: [ :index, :show ]
 
-                # Admin "Act as User" impersonation
+        # Admin "Act as User" impersonation
         resource :impersonations, only: %i[create destroy], controller: "impersonations"
 
         # Global configuration (admin only): singleton settings for the
         # Configuration page — log persistence toggle, test-mode email
         # notifications.
-        resource :configuration, controller: "configurations", only: [:show, :update]
+        resource :configuration, controller: "configurations", only: [ :show, :update ]
 
         # Generic app_settings rows (key/value) for the Configuration page's
         # custom-settings table. Uses the setting key as the identifier.
-        resources :app_settings, param: :key, only: [:index, :create, :update, :destroy]
+        resources :app_settings, param: :key, only: [ :index, :create, :update, :destroy ]
 
         # Tail of the application's Rails log file
-        resources :system_logs, only: [:index], defaults: { format: :json }
+        resources :system_logs, only: [ :index ], defaults: { format: :json }
       end
 
       resource :account, only: %i[show update], controller: "accounts"

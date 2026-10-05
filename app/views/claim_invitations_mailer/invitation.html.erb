@@ -1,0 +1,27 @@
+<h1>Claim your <%= @subject.label %></h1>
+
+<p>
+  <%= @inviter_name || "Your coach" %> recorded a <%= @subject.label %> for you
+  at Beach Volleyball Project and invited you to link it to your account.
+</p>
+
+<p>
+  Sign in to the account you use, then open this link to request the claim:
+</p>
+
+<p><%= link_to "Claim my player profile", @claim_url %></p>
+
+<p>Or paste this address into your browser:</p>
+
+<p><%= @claim_url %></p>
+
+<p>
+  The link expires in <%= pluralize(@expires_in.inspect, "day") %> and can only
+  be used once. The profile stays unlinked until a coach or administrator
+  approves your request, so nothing changes before then.
+</p>
+
+<p>
+  If you were not expecting this, you can ignore this email — the invitation
+  expires on its own.
+</p>

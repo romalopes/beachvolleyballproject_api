@@ -18,6 +18,7 @@ module Api
     class PeopleController < ApplicationController
       include ContentAuthorization
       include Pagination
+      include NestedOrganisationMembershipAuthorization
 
       before_action :require_authentication
       before_action :require_content_creator!
@@ -49,7 +50,10 @@ module Api
       end
 
       def create
-        person = Person.new(person_params)
+        attributes = person_params
+        return unless authorize_nested_organisation_memberships!(person: nil, attributes: attributes)
+
+        person = Person.new(attributes)
         # Provenance is recorded, not chosen: a person created here was created by
         # staff, whatever the caller asked for.
         person.creation_source = "coach_created"
@@ -64,7 +68,10 @@ module Api
       end
 
       def update
-        if @person.update(person_params)
+        attributes = person_params
+        return unless authorize_nested_organisation_memberships!(person: @person, attributes: attributes)
+
+        if @person.update(attributes)
           render json: @person.identity_summary
         else
           render json: { errors: @person.errors.full_messages },
@@ -73,15 +80,36 @@ module Api
       end
 
       def destroy
+        # Checked *before* attempting the destroy so the caller gets a precise
+        # reason instead of a rolled-back transaction, and so no query runs
+        # against a row that was never going to be deletable.
+        blocker = PersonDeletionBlocker.new(@person)
+        if blocker.blocked?
+          return render json: {
+            error: "This person cannot be deleted.",
+            reasons: blocker.messages,
+            details: blocker.details,
+            # `errors` is what the SPA reads (see `throwApiError`), so the full
+            # reason-and-remedy list is carried there too rather than only in
+            # `details`, which nothing currently renders.
+            errors: [ "This person cannot be deleted.", *blocker.details ]
+          }, status: :unprocessable_entity
+        end
+
         @person.destroy!
 
         render json: { message: "Person deleted", id: params[:id] }
       # `dependent: :restrict_with_error` is signalled by `RecordNotDestroyed`, not
       # by `DeleteRestrictionError` (which is what `restrict` without `_with_error`
-      # raises). Catching the wrong one turns a refusal into a 500.
+      # raises). Catching the wrong one turns a refusal into a 500. The pre-flight
+      # check above normally catches these first; this remains the backstop for a
+      # record that becomes blocked between the check and the write.
       rescue ActiveRecord::RecordNotDestroyed => e
-        render json: { errors: e.record.errors.full_messages },
-               status: :unprocessable_entity
+        render json: {
+          error: "This person cannot be deleted.",
+          reasons: e.record.errors.full_messages,
+          errors: [ "This person cannot be deleted.", *e.record.errors.full_messages ]
+        }, status: :unprocessable_entity
       end
 
       # Attach a player or coach profile to somebody who already exists.
@@ -98,13 +126,13 @@ module Api
                         status: :unprocessable_entity
         end
 
-        association = role == "player" ? :player_profile : :coach_profile
-        if @person.public_send(association)
-          return render json: { error: "#{@person.full_name} is already a #{role}" },
-                        status: :conflict
+        profile_class = role == "player" ? PlayerProfile : CoachProfile
+        profile = profile_class.transaction do
+          record = profile_class.new(person: @person)
+          ProfileOwnership.stamp!(record, Current.user)
+          record.save!
+          record
         end
-
-        profile = @person.public_send(:"create_#{association}!", created_by: Current.user)
         render json: @person.reload.identity_summary.merge(profile_id: profile.id,
                                                            profile_kind: role),
                status: :created
@@ -120,7 +148,7 @@ module Api
       # duplicate an identity somebody has already reconciled.
       def scoped_people
         people = Person.canonical
-                       .includes(:account, :player_profile, :coach_profile, :person_aliases)
+                       .includes(:account, :player_profiles, :coach_profiles, :person_aliases)
                        .order(:last_name, :first_name, :id)
 
         if params[:q].present?

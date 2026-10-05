@@ -118,7 +118,7 @@ class Assessment < ApplicationRecord
     return published if user.nil?
 
     own = where(created_by_id: user.id)
-    attributed = where(coach_profile_id: user.person&.coach_profile&.id)
+    attributed = where(coach_profile_id: user.person&.coach_profiles&.select(:id))
     own.or(attributed).or(published)
   }
 

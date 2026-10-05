@@ -31,7 +31,7 @@ class PersonDuplicateFinder
 
     scopes
       .reduce { |combined, scope| combined.or(scope) }
-      .includes(:account, :player_profile, :coach_profile, :person_aliases)
+      .includes(:account, :player_profiles, :coach_profiles, :person_aliases)
       .order(:last_name, :first_name, :id)
       .limit(LIMIT)
       .to_a
