@@ -38,6 +38,12 @@ service, controller and UI carry one code path instead of three. Existing rows
 from both legacy tables are backfilled; **the legacy tables and their endpoints
 are kept for one release** so an existing client keeps working.
 
+Player and coach profile invitations cover both recorded states: a profile
+without a Person adopts the claimant's Person after approval, while a profile
+already linked to an accountless Person connects the claimant's Account to that
+existing Person. When that Person has an email address, the invitation is
+restricted to that address and a verified match can connect immediately.
+
 `player_claims` gained the same polymorphic subject and a partial unique index
 across all types. `player_profile_id` is retained and a check constraint
 (`player_claims_single_subject`) guarantees a claim names exactly one subject, so

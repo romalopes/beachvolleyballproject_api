@@ -12,6 +12,22 @@ class ProfileDeletionBlocker
 
   def self.blockers(profile)
     blockers = []
+    person = profile.person
+    # A profile is only disposable while its linked identity is still an
+    # unclaimed, unused record. History can be attached to a sibling profile,
+    # so check every profile for the Person as well as the target profile.
+    if person
+      blockers << "person_account" if person.account.present?
+      person.player_profiles.each do |player|
+        blockers << "person_training_session_participants" if player.training_session_participants.exists?
+        blockers << "person_assessment_session_participants" if player.assessment_session_participants.exists?
+        blockers << "person_assessments" if player.assessments.exists?
+      end
+      person.coach_profiles.each do |coach|
+        blockers << "person_assessments" if coach.assessments.exists?
+        blockers << "person_assessment_sessions" if coach.assessment_sessions.exists?
+      end
+    end
     if profile.is_a?(PlayerProfile)
       blockers << "assessments" if profile.assessments.exists?
       blockers << "training_session_participants" if profile.training_session_participants.exists?
@@ -36,14 +52,7 @@ class ProfileDeletionBlocker
 
   def self.authorized?(profile:, user:)
     return true if user&.admin?
-    return false unless user
-    return true if user.coach? && profile.owner?(user)
-    return false unless user.curator?
-
-    return true if ProfileOwnership.owned_by?(profile, user)
-    viewer = user.person
-    creator_person = profile.created_by_account&.person || profile.created_by&.person
-    viewer.present? && creator_person.present? && viewer.shares_organisation_with?(creator_person)
+    false
   end
 
   def self.destroy!(profile:, user:)

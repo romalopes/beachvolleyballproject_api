@@ -509,6 +509,41 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert PlayerProfile.exists?(player.id)
   end
 
+  test "admin can hard delete an unused player profile linked to a Person while retaining the Person" do
+    person = Person.create!(first_name: "Unused", last_name: "Player", creation_source: "system")
+    player = PlayerProfile.create!(person: person, display_name: "Unused player")
+    sign_in_as(@admin)
+
+    delete "/api/v1/players/#{player.id}"
+
+    assert_response :no_content
+    assert_not PlayerProfile.exists?(player.id)
+    assert Person.exists?(person.id)
+  end
+
+  test "hard delete is admin only" do
+    person = Person.create!(first_name: "Owned", last_name: "Player", creation_source: "system")
+    player = PlayerProfile.create!(person: person, display_name: "Owned player", created_by: @trainer)
+    sign_in_as(@trainer)
+
+    delete "/api/v1/players/#{player.id}"
+
+    assert_response :forbidden
+    assert PlayerProfile.exists?(player.id)
+  end
+
+  test "hard delete refuses a player whose linked Person has an account" do
+    person = people(:one)
+    player = PlayerProfile.create!(person: person, display_name: "Connected player")
+    sign_in_as(@admin)
+
+    delete "/api/v1/players/#{player.id}"
+
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["blockers"], "person_account"
+    assert PlayerProfile.exists?(player.id)
+  end
+
   test "update player as coach changes profile and person attributes" do
     sign_in_as(@trainer)
     player = player_profiles(:pedro_player)

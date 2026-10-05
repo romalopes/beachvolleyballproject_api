@@ -115,14 +115,30 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_equal coach.id, invitation.claimable_id
   end
 
-  test "a coach profile with a Person is not eligible" do
-    coach = CoachProfile.create!(person: people(:two), created_by: @coach)
+  test "a coach profile linked to an accountless Person invites that Person's account" do
+    person = accountless_person(@claimer.email_address)
+    coach = CoachProfile.create!(person: person, created_by: @coach)
+    invitation, token = ClaimInvitationService.issue!(claimable: coach, invited_by: @coach)
 
-    error = assert_raises(ClaimInvitationService::InvitationError) do
-      ClaimInvitationService.issue!(claimable: coach, invited_by: @coach)
-    end
+    assert_equal @claimer.email_address, invitation.invitee_email
+    result = ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
 
-    assert_match(/active and unlinked/i, error.message)
+    assert_equal :linked, result[:outcome]
+    assert_equal person.id, @claimer.reload.account.person_id
+    assert_equal person.id, coach.reload.person_id
+  end
+
+  test "a player profile linked to an accountless Person invites that Person's account" do
+    person = accountless_person(@claimer.email_address)
+    player = PlayerProfile.create!(person: person, created_by: @coach)
+    invitation, token = ClaimInvitationService.issue!(claimable: player, invited_by: @coach)
+
+    assert_equal @claimer.email_address, invitation.invitee_email
+    result = ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
+
+    assert_equal :linked, result[:outcome]
+    assert_equal person.id, @claimer.reload.account.person_id
+    assert_equal person.id, player.reload.person_id
   end
 
   test "a person subject auto-links the account when emailed" do

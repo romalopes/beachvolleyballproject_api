@@ -72,4 +72,32 @@ class NestedMembershipsReproTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
     assert_match(/owner or administrator/, JSON.parse(response.body)["errors"].first)
   end
+
+  test "an admin ends a saved organisation membership without deleting its history" do
+    admin = users(:two)
+    organisation = organisations(:sydney_club)
+    person = Person.create!(first_name: "Leaving", last_name: "Coach", creation_source: "system")
+    profile = CoachProfile.create!(person: person, created_by: admin)
+    membership = OrganisationMembership.create!(person: person, organisation: organisation,
+                                                role: "coach", status: "active")
+
+    sign_in_as(admin)
+    patch "/api/v1/coaches/#{profile.id}",
+          params: {
+            coach: {
+              person: {
+                first_name: person.first_name,
+                organisation_memberships_attributes: [
+                  { id: membership.id, organisation_id: organisation.id,
+                    role: "coach", status: "ended" }
+                ]
+              }
+            }
+          }.to_json,
+          headers: { "Content-Type" => "application/json" }
+
+    assert_response :success, "#{response.status}: #{response.body}"
+    assert_equal "ended", membership.reload.status
+    assert_not_nil membership.left_at
+  end
 end

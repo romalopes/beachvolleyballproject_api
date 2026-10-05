@@ -314,6 +314,30 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert CoachProfile.exists?(coach.id)
   end
 
+  test "admin can hard delete an unused coach profile linked to a Person while retaining the Person" do
+    person = Person.create!(first_name: "Unused", last_name: "Coach", creation_source: "system")
+    coach = CoachProfile.create!(person: person, display_name: "Unused coach")
+    sign_in_as(@admin)
+
+    delete "/api/v1/coaches/#{coach.id}"
+
+    assert_response :no_content
+    assert_not CoachProfile.exists?(coach.id)
+    assert Person.exists?(person.id)
+  end
+
+  test "hard delete refuses a coach whose linked Person has an account" do
+    person = people(:two)
+    coach = CoachProfile.create!(person: person, display_name: "Maria secondary coach")
+    sign_in_as(@admin)
+
+    delete "/api/v1/coaches/#{coach.id}"
+
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["blockers"], "person_account"
+    assert CoachProfile.exists?(coach.id)
+  end
+
   test "visibility: owned, shared and private rows" do
     sign_in_as(@admin)
     private_coach = private_coach_owned_by(users(:three))
