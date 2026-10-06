@@ -90,6 +90,12 @@ The original readiness task only required the first five identity migrations and
 
 The last migration removes a global uniqueness rule on active invitation email addresses. The supported invariant is one active invitation per claimable subject. The same verified email may receive links for multiple distinct profiles or People, consistent with the multiple-profiles-per-person model.
 
+## Issue 228 readiness gate update (2026-10-06)
+
+[Issue 228 Phase 12](IDENTITY_228_PHASE_12_PRODUCTION_ROLLOUT_CLEANUP.md) extends the aggregate readiness gate through migrations `20261006100008`–`20261006100010`, checks that each Account has its required ContactDetail, verifies Account-backed profile/claim references, and includes ContactDetails in preservation counts. The earlier 17-migration result above is historical and does not represent the current Issue 228 gate.
+
+The updated task was run read-only against the local development database: all 21 required identity migrations were applied, required tables were present, and the report emitted zero blockers/orphans with two duplicate-identity warning groups. This is not production evidence and does not clear the existing target/backup/deployment blockers.
+
 ## Local development reconciliation (2026-10-06)
 
 After the Phase 11 suite passed, the read-only readiness report was run against the configured local development database before applying pending Issue 225 migrations. It found the final three migrations pending, no missing baseline tables, two used unified invitations without `used_by_id`, and no orphan references. Aggregate-only inspection confirmed both missing actors could be recovered from their retained legacy player invitation rows and claimant Accounts. The report also found two possible duplicate-email groups and one possible duplicate-name group; these remain warnings and were not merged.

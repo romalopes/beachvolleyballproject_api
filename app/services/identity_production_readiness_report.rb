@@ -20,6 +20,9 @@ class IdentityProductionReadinessReport
     20261006100005
     20261006100006
     20261006100007
+    20261006100008
+    20261006100009
+    20261006100010
   ].freeze
 
   REQUIRED_TABLES = %w[
@@ -33,6 +36,11 @@ class IdentityProductionReadinessReport
   ORPHAN_CHECKS = {
     "accounts_without_users" => [ "accounts", "user_id", "users" ],
     "accounts_without_people" => [ "accounts", "person_id", "people" ],
+    "contact_details_without_accounts" => [ "contact_details", "account_id", "accounts" ],
+    "player_profiles_without_accounts" => [ "player_profiles", "account_id", "accounts" ],
+    "player_profile_creators_without_accounts" => [ "player_profiles", "created_by_account_id", "accounts" ],
+    "coach_profiles_without_accounts" => [ "coach_profiles", "account_id", "accounts" ],
+    "coach_profile_creators_without_accounts" => [ "coach_profiles", "created_by_account_id", "accounts" ],
     "player_profiles_without_people" => [ "player_profiles", "person_id", "people" ],
     "coach_profiles_without_people" => [ "coach_profiles", "person_id", "people" ],
     "assessments_without_player_profiles" => [ "assessments", "player_profile_id", "player_profiles" ],
@@ -44,6 +52,8 @@ class IdentityProductionReadinessReport
     "claims_without_people" => [ "player_claims", "person_id", "people" ],
     "claims_without_initiators" => [ "player_claims", "initiated_by_person_id", "people" ],
     "claims_without_reviewers" => [ "player_claims", "reviewed_by_person_id", "people" ],
+    "claims_without_claimant_accounts" => [ "player_claims", "claimant_account_id", "accounts" ],
+    "claims_without_reviewer_accounts" => [ "player_claims", "reviewed_by_account_id", "accounts" ],
     "invitations_without_player_profiles" => [ "player_claim_invitations", "player_profile_id", "player_profiles" ],
     "invitations_without_creators" => [ "player_claim_invitations", "created_by_person_id", "people" ],
     "invitations_without_users" => [ "player_claim_invitations", "used_by_person_id", "people" ],
@@ -81,6 +91,11 @@ class IdentityProductionReadinessReport
                 "Resolve account ownership explicitly; do not auto-merge accounts.")
     add_anomaly(anomalies, "accounts_without_person", "warning", Account.where(person_id: nil).count,
                 "Review unlinked accounts and confirm they are expected onboarding records.")
+    if table_exists?(:contact_details)
+      missing_contact_details = Account.left_outer_joins(:contact_detail).where(contact_details: { id: nil }).count
+      add_anomaly(anomalies, "accounts_without_contact_details", "blocker", missing_contact_details,
+                  "Create and validate a ContactDetail for every Account before deploying the account-centric contract.")
+    end
     add_anomaly(anomalies, "coach_profiles_without_person", "blocker", CoachProfile.where(person_id: nil).count,
                 "CoachProfiles require a Person; investigate before deployment.")
     add_anomaly(anomalies, "duplicate_canonical_emails", "warning", duplicate_canonical_email_groups,
@@ -215,6 +230,7 @@ class IdentityProductionReadinessReport
     {
       people: Person.count,
       accounts: Account.count,
+      contact_details: table_exists?(:contact_details) ? ContactDetail.count : nil,
       player_profiles: PlayerProfile.count,
       coach_profiles: CoachProfile.count,
       organisation_memberships: OrganisationMembership.count,
@@ -226,6 +242,8 @@ class IdentityProductionReadinessReport
       result[:claim_invitations] = ClaimInvitation.count if table_exists?(:claim_invitations)
       result[:person_consolidations] = PersonConsolidation.count if table_exists?(:person_consolidations)
       result[:profile_merges] = ProfileMerge.count if table_exists?(:profile_merges)
+      result[:player_profiles_with_accounts] = PlayerProfile.where.not(account_id: nil).count if @connection.column_exists?(:player_profiles, :account_id)
+      result[:coach_profiles_with_accounts] = CoachProfile.where.not(account_id: nil).count if @connection.column_exists?(:coach_profiles, :account_id)
     end
   end
 
@@ -237,7 +255,8 @@ class IdentityProductionReadinessReport
       player_coach_relationships: [ "player_coaches", PlayerCoach ],
       organisation_memberships: [ "organisation_memberships", OrganisationMembership ],
       group_memberships: [ "group_memberships", GroupMembership ],
-      person_aliases: [ "person_aliases", PersonAlias ]
+      person_aliases: [ "person_aliases", PersonAlias ],
+      contact_details: [ "contact_details", ContactDetail ]
     }.transform_values { |table, model| table_exists?(table) ? model.count : nil }
   end
 
