@@ -11,7 +11,7 @@ class RegistrationsController < ApplicationController
     if contact_name_present? && User.transaction { @user.save && create_account! }
       @user.add_role(:player)
       start_new_session_for @user
-      redirect_to root_path, notice: "Welcome to BVB Project!"
+      redirect_to root_path, notice: "Welcome to BVB Hub"
     else
       render :new, status: :unprocessable_entity
     end

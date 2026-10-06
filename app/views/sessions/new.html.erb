@@ -2,16 +2,14 @@
   <div class="auth-card">
     <div class="auth-logo">
       <span class="sidebar-logo-icon">
-<img src="/ball.png" width="28" height="28" alt="" />
+        <img src="/ball.png" width="28" height="28" alt="" />
       </span>
-      BVB Project
+      BVB Hub
     </div>
     <h2>Sign in</h2>
     <p class="auth-subtitle">Welcome back. Sign in to access your training database.</p>
-
     <%= tag.div(flash[:alert], class: "auth-flash auth-flash-error") if flash[:alert] %>
     <%= tag.div(flash[:notice], class: "auth-flash auth-flash-notice") if flash[:notice] %>
-
     <%= form_with url: session_path, class: "auth-form" do |form| %>
       <div class="auth-field">
         <%= form.label :email_address, "Email" %>
@@ -23,11 +21,9 @@
       </div>
       <%= form.submit "Sign in", class: "auth-submit" %>
     <% end %>
-
     <div class="auth-links">
       <%= link_to "Forgot your password?", new_password_path %>
       <%= link_to "Create an account", new_registration_path %>
     </div>
   </div>
 </div>
-
