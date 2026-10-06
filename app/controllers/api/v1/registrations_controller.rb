@@ -6,7 +6,11 @@ module Api
       rate_limit to: 10, within: 1.hour, only: :create
 
       def create
-        user = User.new(registration_params)
+        unless contact_name_present?
+          return render json: { errors: [ "First name and last name are required." ] }, status: :unprocessable_entity
+        end
+
+        user = User.new(user_params)
 
         registered = User.transaction do
           next false unless user.save
@@ -15,7 +19,14 @@ module Api
           # Every newly registered authentication identity receives its
           # Account and required ContactDetail atomically. Email verification
           # still gates session creation and invitation acceptance.
-          Account.create!(user: user) unless user.account
+          Account.create!(
+            user: user,
+            contact_detail: ContactDetail.new(
+              first_name: registration_params[:first_name],
+              last_name: registration_params[:last_name],
+              email: user.email_address
+            )
+          ) unless user.account
           true
         end
 
@@ -46,6 +57,8 @@ module Api
         else
           render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
         end
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
       end
 
       private
@@ -59,7 +72,15 @@ module Api
       end
 
       def registration_params
-        params.require(:user).permit(:name, :email_address, :password, :password_confirmation)
+        params.require(:user).permit(:first_name, :last_name, :email_address, :password, :password_confirmation)
+      end
+
+      def user_params
+        registration_params.slice(:email_address, :password, :password_confirmation)
+      end
+
+      def contact_name_present?
+        registration_params[:first_name].to_s.strip.present? && registration_params[:last_name].to_s.strip.present?
       end
     end
   end

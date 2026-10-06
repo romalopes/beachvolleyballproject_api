@@ -4,7 +4,8 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
   test "registers a new user with a cookie session by default" do
     assert_difference([ "User.count", "Account.count", "ContactDetail.count" ]) do
       post "/api/v1/registrations", params: { user: {
-        name: "New Player",
+        first_name: "New",
+        last_name: "Player",
         email_address: "newbie@example.com",
         password: "password123",
         password_confirmation: "password123"
@@ -22,6 +23,7 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
     account = User.find(body.fetch("id")).account
     assert account
     assert_equal "New", account.contact_detail.first_name
+    assert_equal "Player", account.contact_detail.last_name
     assert_equal "newbie@example.com", account.contact_detail.email
   end
 
@@ -32,7 +34,8 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
       assert_no_difference("Session.count") do
         post "/api/v1/registrations", params: {
           user: {
-            name: "API Player",
+            first_name: "API",
+            last_name: "Player",
             email_address: "apiplayer@example.com",
             password: "password123",
             password_confirmation: "password123"
@@ -57,7 +60,8 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
       assert_difference([ "User.count", "Account.count", "ContactDetail.count", "Session.count" ]) do
         post "/api/v1/registrations", params: {
           user: {
-            name: "Token Check",
+            first_name: "Token",
+            last_name: "Check",
             email_address: "tokencheck@example.com",
             password: "password123",
             password_confirmation: "password123"
@@ -86,7 +90,8 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
   test "returns 422 when the email is already taken" do
     assert_no_difference("User.count") do
       post "/api/v1/registrations", params: { user: {
-        name: "Dupe",
+        first_name: "Dupe",
+        last_name: "Player",
         email_address: "one@example.com",
         password: "password123",
         password_confirmation: "password123"
@@ -98,7 +103,8 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
 
   test "returns 422 when the password is too short" do
     post "/api/v1/registrations", params: { user: {
-      name: "Shorty",
+      first_name: "Shorty",
+      last_name: "Player",
       email_address: "shorty@example.com",
       password: "short",
       password_confirmation: "short"
@@ -109,7 +115,8 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
 
   test "returns 422 when password confirmation does not match" do
     post "/api/v1/registrations", params: { user: {
-      name: "Mismatch",
+      first_name: "Mismatch",
+      last_name: "Player",
       email_address: "mismatch@example.com",
       password: "password123",
       password_confirmation: "different123"

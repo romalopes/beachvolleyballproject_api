@@ -10,8 +10,18 @@ class User < ApplicationRecord
   validates :email_address, presence: true,
     uniqueness: { case_sensitive: false },
     format: { with: URI::MailTo::EMAIL_REGEXP, message: "is not a valid email address" }
-  validates :name, presence: true
   validates :password, length: { minimum: 8 }, allow_nil: true
+
+  # Display labels come from the Account's private contact details. `name` is
+  # retained as a method because activity, audit, and API payloads need a
+  # human-readable label, but it is no longer a persisted User attribute.
+  def name
+    account&.full_name.presence || email_address
+  end
+
+  # Accept legacy fixture and import assignments while the old column is being
+  # removed. The value is deliberately not persisted.
+  def name=(_value); end
 
   # Role checks
   def has_role?(role_name)

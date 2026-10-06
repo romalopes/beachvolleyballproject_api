@@ -22,8 +22,12 @@
         </div>
       <% end %>
       <div class="auth-field">
-        <%= form.label :name, "Name" %>
-        <%= form.text_field :name, required: true, autofocus: true, autocomplete: "name", placeholder: "Your name", maxlength: 100 %>
+        <%= label_tag "user[first_name]", "First name" %>
+        <%= text_field_tag "user[first_name]", params.dig(:user, :first_name), required: true, autofocus: true, autocomplete: "given-name", placeholder: "First name", maxlength: 50 %>
+      </div>
+      <div class="auth-field">
+        <%= label_tag "user[last_name]", "Last name" %>
+        <%= text_field_tag "user[last_name]", params.dig(:user, :last_name), required: true, autocomplete: "family-name", placeholder: "Last name", maxlength: 50 %>
       </div>
       <div class="auth-field">
         <%= form.label :email_address, "Email" %>

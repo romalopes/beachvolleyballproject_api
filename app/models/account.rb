@@ -41,9 +41,10 @@ class Account < ApplicationRecord
     return if contact_detail
 
     contact = build_contact_detail
-    name = user&.name.to_s.strip.split(/\s+/, 2)
-    contact.first_name = name.first if contact.first_name.blank? && name.first.present?
-    contact.last_name = name.second if contact.last_name.blank? && name.second.present?
+    # Legacy programmatic account creation may not provide contact details.
+    # Signup always does; this fallback keeps old records valid without adding a
+    # second name field to User.
+    contact.first_name = user&.email_address.to_s.split("@", 2).first.presence if contact.first_name.blank?
     contact.email = user.email_address if contact.email.blank? && user&.email_address.present?
   end
 end
