@@ -1,9 +1,7 @@
 # Central ownership rules for PlayerProfile and CoachProfile.
 #
-# `created_by_id` remains the compatibility attribution to User. New records
-# also carry `created_by_account_id`, the stable domain owner used by identity
-# operations. Account provisioning is lazy in this application, so recording a
-# profile creates the creator's Account/Person in the same transaction.
+# `created_by_id` remains a legacy attribution to User. Application ownership
+# resolves through Account, which is distinct from the profile's creator.
 class ProfileOwnership
   def self.account_for(user)
     user.with_lock do
@@ -22,19 +20,40 @@ class ProfileOwnership
     return false unless profile && user_or_account
 
     account = user_or_account.is_a?(Account) ? user_or_account : user_or_account.account
-    if account && profile.respond_to?(:created_by_account_id) && profile.created_by_account_id == account.id
-      return true
-    end
+    return true if account && [profile.account_id, profile.created_by_account_id].compact.include?(account.id)
 
     user = user_or_account.is_a?(User) ? user_or_account : user_or_account.user
-    user && profile.respond_to?(:created_by_id) && profile.created_by_id == user.id
+    user && profile.created_by_id == user.id
+  end
+
+  def self.created_by?(profile, user_or_account)
+    return false unless profile && user_or_account
+
+    account = user_or_account.is_a?(Account) ? user_or_account : user_or_account.account
+    return true if account && profile.created_by_account_id == account.id
+
+    user = user_or_account.is_a?(User) ? user_or_account : user_or_account.user
+    user && profile.created_by_id == user.id
   end
 
   def self.account_scope(relation, user)
     return relation.none unless user
 
-    legacy = relation.where(created_by_id: user.id)
-    account_id = user.account&.id
-    account_id ? legacy.or(relation.where(created_by_account_id: account_id)) : legacy
+    account_id = user.is_a?(Account) ? user.id : user.account&.id
+    legacy_user_id = user.is_a?(User) ? user.id : user.user_id
+    if account_id
+      relation.where(account_id: account_id)
+      .or(relation.where(created_by_account_id: account_id))
+      .or(relation.where(created_by_id: legacy_user_id))
+    else
+      relation.where(created_by_id: legacy_user_id)
+    end
+  end
+
+  def self.linked_to?(profile, user_or_account)
+    return false unless profile && user_or_account
+
+    account = user_or_account.is_a?(Account) ? user_or_account : user_or_account.account
+    account && profile.account_id == account.id
   end
 end

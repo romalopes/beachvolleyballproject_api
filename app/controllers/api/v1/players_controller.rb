@@ -13,8 +13,7 @@ module Api
       include NestedOrganisationMembershipAuthorization
 
       before_action :require_authentication
-      before_action :require_training_manager!
-      before_action :require_content_creator!, only: %i[create update]
+      before_action :require_profile_creator!, only: :create
       before_action :set_player, only: %i[show update merge destroy]
       before_action :validate_status_filter!, only: :index
 
@@ -37,7 +36,7 @@ module Api
         # hidden from the listing, but the training form's picker must still
         # see everyone (`?include_private=1`) because visibility never blocks
         # scheduling. `?mine=1` narrows to the players this user recorded.
-        players = profile_scope
+        players = ProfilePolicy.scope(profile_scope, actor: Current.user)
                   .includes(:person, :created_by)
                   .left_joins(:person)
                   .order(people: { last_name: :asc, first_name: :asc }, player_profiles: { id: :asc })
@@ -69,7 +68,7 @@ module Api
       # them nor is a curator/admin (the same as not existing, so the catalogue
       # and the detail can never disagree).
       def show
-        unless @player.visible_to_user?(Current.user)
+        unless ProfilePolicy.new(actor: Current.user, profile: @player).view?
           return render json: { error: "Player not found" }, status: :not_found
         end
 
@@ -161,8 +160,12 @@ module Api
       # player they cannot see (404, same as show), and the visibility switch
       # itself may be flipped only by the owner or an admin.
       def update
-        unless @player.visible_to_user?(Current.user)
+        policy = ProfilePolicy.new(actor: Current.user, profile: @player)
+        unless policy.view?
           return render json: { error: "Player not found" }, status: :not_found
+        end
+        unless policy.update?
+          return render json: { error: "Forbidden" }, status: :forbidden
         end
 
         if params.require(:player)[:person_id].present? &&
@@ -194,7 +197,7 @@ module Api
       end
 
       def merge
-        return render json: { error: "Forbidden" }, status: :forbidden unless Current.user.admin? || Current.user.curator?
+        return render json: { error: "Forbidden" }, status: :forbidden unless ProfilePolicy.new(actor: Current.user, profile: @player).merge?
 
         canonical = PlayerProfile.find(params.require(:canonical_profile_id))
         result = ProfileMergeService.merge!(source: @player, canonical: canonical,

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_100007) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -248,6 +248,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
   end
 
   create_table "coach_profiles", force: :cascade do |t|
+    t.bigint "account_id"
     t.datetime "archived_at"
     t.string "coaching_level"
     t.datetime "created_at", null: false
@@ -262,6 +263,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
     t.string "visibility", default: "shared", null: false
+    t.index ["account_id"], name: "index_coach_profiles_on_account_id"
     t.index ["created_by_account_id"], name: "index_coach_profiles_on_created_by_account_id"
     t.index ["created_by_id"], name: "index_coach_profiles_on_created_by_id"
     t.index ["merged_by_account_id"], name: "index_coach_profiles_on_merged_by_account_id"
@@ -270,6 +272,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
     t.index ["status"], name: "index_coach_profiles_on_status"
     t.index ["visibility"], name: "index_coach_profiles_on_visibility"
     t.check_constraint "merged_at IS NULL OR merged_into_profile_id IS NOT NULL AND archived_at IS NOT NULL", name: "coach_profiles_merge_state_consistent"
+  end
+
+  create_table "contact_details", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.date "date_of_birth"
+    t.string "email"
+    t.string "first_name", null: false
+    t.string "last_name"
+    t.string "phone"
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_contact_details_on_account_id", unique: true
   end
 
   create_table "criteria", force: :cascade do |t|
@@ -550,6 +564,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
   end
 
   create_table "player_profiles", force: :cascade do |t|
+    t.bigint "account_id"
     t.datetime "archived_at"
     t.datetime "created_at", null: false
     t.bigint "created_by_account_id"
@@ -564,6 +579,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
     t.string "visibility", default: "shared", null: false
+    t.index ["account_id"], name: "index_player_profiles_on_account_id"
     t.index ["created_by_account_id"], name: "index_player_profiles_on_created_by_account_id"
     t.index ["created_by_id"], name: "index_player_profiles_on_created_by_id"
     t.index ["merged_by_account_id"], name: "index_player_profiles_on_merged_by_account_id"
@@ -860,9 +876,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
   add_foreign_key "claim_invitations", "users", column: "used_by_id"
   add_foreign_key "coach_profiles", "accounts", column: "created_by_account_id"
   add_foreign_key "coach_profiles", "accounts", column: "merged_by_account_id"
+  add_foreign_key "coach_profiles", "accounts", on_delete: :restrict
   add_foreign_key "coach_profiles", "coach_profiles", column: "merged_into_profile_id"
   add_foreign_key "coach_profiles", "people"
   add_foreign_key "coach_profiles", "users", column: "created_by_id"
+  add_foreign_key "contact_details", "accounts", on_delete: :restrict
   add_foreign_key "criteria", "assessment_categories"
   add_foreign_key "drill_skills", "drills"
   add_foreign_key "drill_skills", "skills"
@@ -897,6 +915,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100006) do
   add_foreign_key "player_coaches", "player_profiles"
   add_foreign_key "player_profiles", "accounts", column: "created_by_account_id"
   add_foreign_key "player_profiles", "accounts", column: "merged_by_account_id"
+  add_foreign_key "player_profiles", "accounts", on_delete: :restrict
   add_foreign_key "player_profiles", "people"
   add_foreign_key "player_profiles", "player_profiles", column: "merged_into_profile_id"
   add_foreign_key "player_profiles", "users", column: "created_by_id"

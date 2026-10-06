@@ -10,6 +10,14 @@ module ContentAuthorization
     render_unauthorized_or_forbidden
   end
 
+  # Profile writes use Account-aware policy checks. User roles continue to
+  # decide whether an authenticated principal may create the domain record.
+  def require_profile_creator!
+    return if ProfilePolicy.new(actor: Current.user).create?
+
+    render_unauthorized_or_forbidden
+  end
+
   # Trainings are shared resources managed by coaches, curators and admins.
   # This is deliberately NOT keyed off `training_session.created_by_id`: a
   # session created yesterday by one coach must stay manageable by the other

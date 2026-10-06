@@ -24,6 +24,9 @@ class PlayerProfile < ApplicationRecord
   # include it, so neither create nor update can set it from the payload.
   belongs_to :created_by, class_name: "User", optional: true
   belongs_to :created_by_account, class_name: "Account", optional: true
+  # Account ownership coexists with the legacy Person association until the
+  # later read/write switch and Person contraction phases.
+  belongs_to :account, optional: true
   belongs_to :merged_into_profile, class_name: "PlayerProfile", optional: true
   belongs_to :merged_by_account, class_name: "Account", optional: true
   has_many :merged_profiles, class_name: "PlayerProfile", foreign_key: :merged_into_profile_id, dependent: :restrict_with_error
@@ -39,6 +42,8 @@ class PlayerProfile < ApplicationRecord
   # With update_only the existing person is updated in place, and a profile
   # created without one still builds a new person.
   accepts_nested_attributes_for :person, allow_destroy: false, update_only: true
+
+  before_validation :inherit_account_from_person, on: :create
 
   has_many :training_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile
   has_many :assessment_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile
@@ -70,6 +75,7 @@ class PlayerProfile < ApplicationRecord
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
   validates :display_name, presence: true, if: -> { person.nil? }
+  validate :account_matches_person
   validate :merge_state_is_consistent
 
   scope :active, -> { where(status: "active") }
@@ -180,6 +186,17 @@ class PlayerProfile < ApplicationRecord
   end
 
   private
+
+  def inherit_account_from_person
+    self.account ||= person&.account
+  end
+
+  def account_matches_person
+    person_account_id = person&.account&.id
+    return unless account && person_account_id && account.id != person_account_id
+
+    errors.add(:account, "must match the Account linked to this Person")
+  end
 
   def merge_state_is_consistent
     errors.add(:merged_into_profile, "cannot be this profile") if merged_into_profile_id.present? && merged_into_profile_id == id

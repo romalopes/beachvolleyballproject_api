@@ -1,0 +1,19 @@
+one:
+  account: one
+  first_name: John
+  last_name: Smith
+  email: one@example.com
+  phone: "+61400000001"
+  date_of_birth: 1995-04-12
+
+two:
+  account: two
+  first_name: Maria
+  last_name: Silva
+  email: two@example.com
+
+three:
+  account: three
+  first_name: Nadia
+  last_name: Osei
+  email: three@example.com

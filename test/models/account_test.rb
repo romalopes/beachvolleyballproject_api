@@ -19,6 +19,54 @@ class AccountTest < ActiveSupport::TestCase
     assert_equal "Curator", account.person.first_name
     assert_equal "signup", account.person.creation_source
     assert_equal "four@example.com", account.person.email
+    assert_equal account.person.email, account.contact_detail.email
+  end
+
+  test "every account has exactly one private contact detail" do
+    account = accounts(:one)
+    assert_equal account.person.first_name, account.contact_detail.first_name
+    assert_equal account.person.email, account.contact_detail.email
+    assert_equal 1, ContactDetail.where(account_id: account.id).count
+  end
+
+  test "account can own multiple player and coach profiles" do
+    account = accounts(:one)
+    another_player = account.player_profiles.create!(
+      person: account.person,
+      display_name: "John Smith second record",
+      status: "active",
+      visibility: "shared"
+    )
+    coach = account.coach_profiles.create!(
+      person: account.person,
+      display_name: "John Smith coach record",
+      status: "active",
+      visibility: "shared"
+    )
+
+    assert_includes account.player_profiles.reload, another_player
+    assert_includes account.coach_profiles.reload, coach
+  end
+
+  test "an account without profiles is valid" do
+    account = Account.create!(user: users(:four))
+
+    assert_empty account.player_profiles
+    assert_empty account.coach_profiles
+    assert account.contact_detail.persisted?
+  end
+
+  test "profile Account must agree with the linked Person Account" do
+    conflicting_account = Account.create!(user: users(:four))
+    profile = PlayerProfile.new(
+      account: conflicting_account,
+      person: accounts(:one).person,
+      status: "active",
+      visibility: "shared"
+    )
+
+    assert_not profile.valid?
+    assert_includes profile.errors[:account], "must match the Account linked to this Person"
   end
 
   test "contact values assigned to the account are handed to the person" do
@@ -40,6 +88,18 @@ class AccountTest < ActiveSupport::TestCase
     account.update!(phone: "+61409999999")
     assert_equal "+61409999999", account.person.reload.phone
     assert_equal "+61409999999", account.reload.phone
+    assert_equal "+61409999999", account.contact_detail.reload.phone
+  end
+
+  test "contact email is separate from login email and editable" do
+    account = accounts(:one)
+    login_email = account.user.email_address
+
+    account.update!(email: "private@example.net")
+
+    assert_equal "private@example.net", account.contact_detail.reload.email
+    assert_equal "private@example.net", account.person.reload.email
+    assert_equal login_email, account.user.reload.email_address
   end
 
   test "person cannot be linked to two accounts" do
@@ -54,8 +114,10 @@ class AccountTest < ActiveSupport::TestCase
   end
 
   test "person survives account destruction" do
-    person = accounts(:one).person
-    accounts(:one).destroy
+    account = accounts(:one)
+    person = account.person
+    assert_not account.destroy
+    assert_includes account.errors[:base], "Cannot delete record because a dependent contact detail exists"
     assert Person.exists?(person.id)
   end
 end

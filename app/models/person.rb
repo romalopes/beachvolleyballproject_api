@@ -73,6 +73,7 @@ class Person < ApplicationRecord
   # findable. Recorded here (not in the controllers) because a person can be
   # renamed from the player/coach API *and* from their own account page.
   after_update :remember_previous_name, if: :saved_change_to_name?
+  after_save :synchronize_account_contact_detail
 
   scope :active, -> { where(status: "active") }
   # Records used by identity resolution: merged people are excluded from
@@ -182,6 +183,22 @@ class Person < ApplicationRecord
   end
 
   private
+
+  def synchronize_account_contact_detail
+    detail = account&.contact_detail
+    return unless detail
+
+    attributes = {
+      first_name: first_name,
+      last_name: last_name,
+      email: email,
+      phone: phone,
+      date_of_birth: date_of_birth
+    }
+    return unless attributes.any? { |key, value| detail.public_send(key) != value }
+
+    detail.update_columns(attributes.merge(updated_at: Time.current))
+  end
 
   # True when first or last name changed in the update that just happened.
   def saved_change_to_name?

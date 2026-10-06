@@ -54,6 +54,7 @@ module Api
           id: account.id,
           first_name: account.first_name,
           last_name: account.last_name,
+          email: account.email,
           phone: account.phone,
           date_of_birth: account.date_of_birth,
           address: {
@@ -68,7 +69,7 @@ module Api
 
       def account_params
         permitted = params.permit(
-          :first_name, :last_name, :phone, :date_of_birth,
+          :first_name, :last_name, :email, :phone, :date_of_birth,
           address: %i[street_address city state postal_code country]
         )
         permitted = permitted.to_h

@@ -10,20 +10,42 @@ class Account < ApplicationRecord
   belongs_to :user
   belongs_to :person, inverse_of: :account, autosave: true
   has_one :account_address, dependent: :destroy
+  has_one :contact_detail, inverse_of: :account, dependent: :restrict_with_error, autosave: true
+  has_many :player_profiles, dependent: :restrict_with_error
+  has_many :coach_profiles, dependent: :restrict_with_error
 
   accepts_nested_attributes_for :account_address, reject_if: :all_blank
 
-  # Contact fields live on Person; delegate for compatibility with the
-  # previous Account-only attributes.
-  delegate :first_name, :last_name, :phone, :date_of_birth, :full_name,
-           to: :person, prefix: false, allow_nil: true
+  # ContactDetail is the account-owned read source. Fall back to Person while
+  # constructing a new Account before its required ContactDetail exists.
+  %i[first_name last_name email phone date_of_birth].each do |field|
+    define_method(field) do
+      detail = contact_detail
+      detail ? detail.public_send(field) : person&.public_send(field)
+    end
+  end
+
+  def full_name
+    [ first_name, last_name ].compact.join(" ")
+  end
 
   # Every Account always has a Person: volleyball identity is mandatory,
   # authentication is what is optional.
   before_validation :ensure_person, on: :create
+  before_validation :ensure_contact_detail, on: :create
+  validates :contact_detail, presence: true
+  after_save :synchronize_contact_detail_from_person
 
   validates :user_id, uniqueness: true
   validate :person_is_unique_across_accounts
+
+  # Authorization roles continue to live on User for compatibility, while
+  # policies can treat Account as the application identity principal.
+  def has_role?(name) = user&.has_role?(name) || false
+  def admin? = has_role?(:admin)
+  def curator? = has_role?(:curator)
+  def coach? = has_role?(:coach)
+  def player? = has_role?(:player)
 
   # Creates the Account's Person if it does not exist yet; safe to call
   # repeatedly. Values assigned through the transitional account-level
@@ -37,13 +59,31 @@ class Account < ApplicationRecord
       last_name: @transitional_last_name || last_name,
       phone: @transitional_phone,
       date_of_birth: @transitional_date_of_birth,
-      email: user&.email_address,
+      email: @transitional_email || user&.email_address,
       creation_source: "signup",
       created_by: user
     )
     @transitional_first_name = @transitional_last_name = nil
     @transitional_phone = @transitional_date_of_birth = nil
+    @transitional_email = nil
     person
+  end
+
+  # ContactDetails is the account-owned copy of private contact information.
+  # Person remains the compatibility source during the expand phase, so every
+  # Account is created with a matching snapshot and existing Person edits keep
+  # the two records aligned.
+  def ensure_contact_detail
+    return contact_detail if contact_detail
+    return unless person
+
+    build_contact_detail(
+      first_name: person.first_name,
+      last_name: person.last_name,
+      email: person.email,
+      phone: person.phone,
+      date_of_birth: person.date_of_birth
+    )
   end
 
   # Transitional setters: capture values until a Person exists to receive
@@ -65,7 +105,28 @@ class Account < ApplicationRecord
     capture_transitional(:date_of_birth, value)
   end
 
+  def email=(value)
+    capture_transitional(:email, value)
+  end
+
   private
+
+  def synchronize_contact_detail_from_person
+    return unless person && contact_detail
+
+    attributes = {
+      first_name: person.first_name,
+      last_name: person.last_name,
+      email: person.email,
+      phone: person.phone,
+      date_of_birth: person.date_of_birth
+    }
+    return unless attributes.any? { |key, value| contact_detail.public_send(key) != value }
+
+    attributes.each { |key, value| contact_detail.public_send(:"#{key}=", value) }
+    contact_detail.save! if contact_detail.new_record?
+    contact_detail.update_columns(attributes.merge(updated_at: Time.current)) if contact_detail.persisted?
+  end
 
   # When no explicit name was given, derive one from the User's display name
   # so Person.first_name (required) is always populated on signup.
@@ -80,6 +141,7 @@ class Account < ApplicationRecord
   def capture_transitional(attribute, value)
     if person
       person.public_send(:"#{attribute}=", value)
+      contact_detail.public_send(:"#{attribute}=", value) if contact_detail
     else
       instance_variable_set("@transitional_#{attribute}", value)
     end

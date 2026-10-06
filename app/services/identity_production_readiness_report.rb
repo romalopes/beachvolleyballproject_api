@@ -19,10 +19,11 @@ class IdentityProductionReadinessReport
     20261006100004
     20261006100005
     20261006100006
+    20261006100007
   ].freeze
 
   REQUIRED_TABLES = %w[
-    users people accounts player_profiles coach_profiles assessments
+    users people accounts contact_details player_profiles coach_profiles assessments
     training_session_participants assessment_session_participants
     organisation_memberships group_memberships player_coaches person_aliases
     player_claims player_claim_invitations person_account_invitations

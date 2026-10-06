@@ -20,6 +20,9 @@ class CoachProfile < ApplicationRecord
   # at creation, never accepted from client params).
   belongs_to :created_by, class_name: "User", optional: true
   belongs_to :created_by_account, class_name: "Account", optional: true
+  # Account ownership coexists with the legacy Person association until the
+  # later read/write switch and Person contraction phases.
+  belongs_to :account, optional: true
   belongs_to :merged_into_profile, class_name: "CoachProfile", optional: true
   belongs_to :merged_by_account, class_name: "Account", optional: true
   has_many :merged_profiles, class_name: "CoachProfile", foreign_key: :merged_into_profile_id, dependent: :restrict_with_error
@@ -35,11 +38,14 @@ class CoachProfile < ApplicationRecord
   # person (and creating a second identity) when no id is sent.
   accepts_nested_attributes_for :person, allow_destroy: false, update_only: true
 
+  before_validation :inherit_account_from_person, on: :create
+
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
   # A profile with no Person has no name of its own, so it requires a display
   # name — the same rule PlayerProfile uses.
   validates :display_name, presence: true, if: -> { person.nil? }
+  validate :account_matches_person
   validate :merge_state_is_consistent
 
   # The assessments this coach recorded. See PlayerProfile#assessments: the rows
@@ -155,6 +161,17 @@ class CoachProfile < ApplicationRecord
   end
 
   private
+
+  def inherit_account_from_person
+    self.account ||= person&.account
+  end
+
+  def account_matches_person
+    person_account_id = person&.account&.id
+    return unless account && person_account_id && account.id != person_account_id
+
+    errors.add(:account, "must match the Account linked to this Person")
+  end
 
   def merge_state_is_consistent
     errors.add(:merged_into_profile, "cannot be this profile") if merged_into_profile_id.present? && merged_into_profile_id == id

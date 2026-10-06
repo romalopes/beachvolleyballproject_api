@@ -12,6 +12,7 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert_nil body["id"]
     assert_nil body["first_name"]
+    assert_nil body["email"]
     assert_equal(
       { "street_address" => nil, "city" => nil, "state" => nil, "postal_code" => nil, "country" => nil },
       body["address"]
@@ -27,6 +28,7 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert_equal account.id, body["id"]
     assert_equal "Bea", body["first_name"]
+    assert_equal @user.email_address, body["email"]
     assert_equal "Copacabana", body["address"]["city"]
   end
 
@@ -40,12 +42,14 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
     patch "/api/v1/account", params: {
       first_name: "Bea",
       last_name: "Volley",
+      email: "contact@example.net",
       phone: "+55 21 99999-0000",
       address: { street_address: "Av. Atlântica 100", city: "Rio", state: "RJ", postal_code: "22010", country: "BR" }
     }
     assert_response :success
     body = JSON.parse(response.body)
     assert_equal "Bea", body["first_name"]
+    assert_equal "contact@example.net", body["email"]
     assert_equal "Rio", body["address"]["city"]
     assert_equal "Bea", @user.reload.account.first_name
   end
