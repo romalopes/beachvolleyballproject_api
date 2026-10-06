@@ -12,6 +12,7 @@
 # see IDENTITY_PHASE_18_UNIFIED_CLAIMS.md for the naming follow-up.
 class PlayerClaim < ApplicationRecord
   STATUSES = %w[pending approved rejected cancelled].freeze
+  VERIFICATION_METHODS = %w[staff_confirmed government_id in_person other].freeze
 
   belongs_to :claimable, polymorphic: true, optional: true
   belongs_to :player_profile, optional: true
@@ -23,8 +24,11 @@ class PlayerClaim < ApplicationRecord
 
   validates :status, inclusion: { in: STATUSES }
   validates :reviewed_at, presence: true, if: -> { %w[approved rejected].include?(status) }
-  validates :reviewed_by_person, presence: true, if: -> { %w[approved rejected].include?(status) }
-  validates :rejection_reason, presence: true, if: -> { status == "rejected" }
+  validate :reviewer_present_for_decision
+  # Older approved rows predate this audit field. New approvals always set it
+  # through PlayerClaimService; preserve legacy rows during unrelated updates.
+  validates :verification_method, inclusion: { in: VERIFICATION_METHODS },
+            if: -> { status == "approved" && verification_method.present? }
   validate :exactly_one_subject
 
   scope :pending, -> { where(status: "pending") }
@@ -85,18 +89,24 @@ class PlayerClaim < ApplicationRecord
 
   # `include_profile_name` is the historic keyword; the subject name is shown
   # instead when the caller may see it.
-  def summary(include_profile_name: false)
+  def summary(include_profile_name: false, include_review_details: false)
     result = {
       id: id,
       player_profile_id: player_profile_key,
       claimable_type: claimable_type,
       claimable_id: claimable_id,
+      claimant_account_id: claimant_account_id,
       person_id: person_id,
       status: status,
       created_at: created_at,
       reviewed_at: reviewed_at
     }
     result[:player_name] = subject&.full_name if include_profile_name
+    if include_review_details
+      result[:reviewed_by_account_id] = reviewed_by_account_id
+      result[:verification_method] = verification_method
+      result[:rejection_reason] = rejection_reason if status == "rejected"
+    end
     result
   end
 
@@ -106,5 +116,12 @@ class PlayerClaim < ApplicationRecord
     both = claimable_id.present? && player_profile_id.present?
     neither = claimable_id.nil? && player_profile_id.nil?
     errors.add(:base, "A claim must name exactly one subject") if both || neither
+  end
+
+  def reviewer_present_for_decision
+    return unless %w[approved rejected].include?(status)
+    return if reviewed_by_account.present? || reviewed_by_person.present?
+
+    errors.add(:reviewed_by_account, "must be recorded for a reviewed claim")
   end
 end

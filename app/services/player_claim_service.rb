@@ -29,33 +29,83 @@ class PlayerClaimService
     end
   end
 
-  def self.approve!(claim:, reviewer:)
-    PlayerClaim.transaction do
-      claim.with_lock do
-        ensure_pending!(claim)
-        # `subject`, not `player_profile`: after the Phase 18 migration every
-        # claim stores its subject polymorphically and leaves
-        # `player_profile_id` NULL, so the legacy association is nil.
-        subject = ClaimSubject.for(claim.subject)
-        claim.subject.with_lock do
-          raise ClaimError, "The profile cannot be claimed" unless subject.eligible? && subject.still_unclaimed?
+  def self.approve!(claim:, reviewer_account: nil, reviewer: nil, verification_method:)
+    reviewer_account ||= account_for_reviewer(reviewer)
+    raise ClaimError, "An authorized reviewer Account is required" unless reviewer_account
+    raise ClaimError, "Choose how the claimant's identity was verified" unless PlayerClaim::VERIFICATION_METHODS.include?(verification_method.to_s)
 
-          subject.effect!(claimant_person: claim.person, actor: reviewer)
-          claim.update!(status: "approved", reviewed_by_person: reviewer, reviewed_at: Time.current)
+    competing_claims = []
+    PlayerClaim.transaction do
+      profile = claim.subject
+      raise ClaimError, "The profile cannot be claimed" unless profile.is_a?(PlayerProfile) || profile.is_a?(CoachProfile)
+
+      profile.with_lock do
+        locked_claims = PlayerClaim.where(claimable: profile).order(:id).lock.to_a
+        locked_claim = locked_claims.find { |row| row.id == claim.id }
+        raise ClaimError, "Claim is no longer pending" unless locked_claim&.pending?
+
+        subject = ClaimSubject.for(profile)
+        claimant_account = locked_claim.claimant_account || locked_claim.person.account
+        raise ClaimError, "The claimant Account is no longer available" unless claimant_account
+        unless claimant_account.person_id == locked_claim.person_id
+          raise ClaimError, "The claimant identity changed after this request was submitted"
         end
+        unless ProfilePolicy.new(actor: reviewer_account.user, profile: profile).review_claim?
+          raise ClaimError, "Forbidden"
+        end
+        if reviewer_account.id == claimant_account.id
+          raise ClaimError, "A claimant cannot review their own claim"
+        end
+        unless profile.account_id.nil? && subject.eligible? && subject.still_unclaimed? &&
+               ProfileClaimability.allowed?(profile: profile, user: claimant_account.user)
+          raise ClaimError, "The profile is no longer eligible for this claim"
+        end
+
+        now = Time.current
+        subject.effect!(claimant_person: claimant_account.person, claimant_account: claimant_account,
+                        actor: reviewer_account.user)
+        locked_claim.update!(
+          status: "approved",
+          reviewed_by_account: reviewer_account,
+          reviewed_by_person: reviewer_account.person,
+          reviewed_at: now,
+          verification_method: verification_method
+        )
+        competing_claims = locked_claims.reject { |row| row.id == locked_claim.id }
+                                         .select(&:pending?)
+        competing_claims.each do |other_claim|
+          other_claim.update!(
+            status: "rejected",
+            reviewed_by_account: reviewer_account,
+            reviewed_by_person: reviewer_account.person,
+            reviewed_at: now,
+            rejection_reason: "Another claim for this profile was approved"
+          )
+        end
+        claim = locked_claim
       end
     end
+    notify_decision!(claim)
+    competing_claims.each { |other_claim| notify_decision!(other_claim) }
     claim
   end
 
-  def self.reject!(claim:, reviewer:, reason:)
+  def self.reject!(claim:, reviewer_account: nil, reviewer: nil, reason: nil)
+    reviewer_account ||= account_for_reviewer(reviewer)
+    raise ClaimError, "An authorized reviewer Account is required" unless reviewer_account
+    raise ClaimError, "Forbidden" unless ProfilePolicy.new(actor: reviewer_account.user, profile: claim.subject).review_claim?
+    claimant_account = claim.claimant_account || claim.person.account
+    raise ClaimError, "A claimant cannot review their own claim" if claimant_account&.id == reviewer_account.id
+
     PlayerClaim.transaction do
       claim.with_lock do
         ensure_pending!(claim)
-        claim.update!(status: "rejected", reviewed_by_person: reviewer,
+        claim.update!(status: "rejected", reviewed_by_account: reviewer_account,
+                      reviewed_by_person: reviewer_account.person,
                       reviewed_at: Time.current, rejection_reason: reason)
       end
     end
+    notify_decision!(claim)
     claim
   end
 
@@ -73,4 +123,23 @@ class PlayerClaimService
     raise ClaimError, "Claim is no longer pending" unless claim.pending?
   end
   private_class_method :ensure_pending!
+
+  def self.account_for_reviewer(reviewer)
+    case reviewer
+    when Account then reviewer
+    when User then reviewer.account
+    when Person then reviewer.account
+    end
+  end
+  private_class_method :account_for_reviewer
+
+  def self.notify_decision!(claim)
+    account = claim.claimant_account || claim.person.account
+    return unless account&.user&.email_address.present?
+
+    ProfileClaimsMailer.decision(claim).deliver_later
+  rescue StandardError => error
+    Rails.logger.error("Claim decision notification failed for claim #{claim.id}: #{error.message}")
+  end
+  private_class_method :notify_decision!
 end

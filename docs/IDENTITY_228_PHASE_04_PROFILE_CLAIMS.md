@@ -84,8 +84,8 @@ Example request body (Account is inferred from authentication):
 - `npm run build`: TypeScript and Vite production build passed.
 - `bin/rails db:migrate`: migration applied to the configured development database.
 
-## Deferred to Phase 5
+## Completed by Phase 5
 
-- Account-based claim reviewer authorization and `reviewed_by_account_id` writes.
-- Approval that links the claimant Account to the target profile/Person and safely resolves competing pending claims.
-- Decision reason, verification evidence, and permanent reviewer audit metadata beyond existing Person-based fields.
+- Account-based claim reviewer authorization and `reviewed_by_account_id` writes are implemented in [Phase 5](IDENTITY_228_PHASE_05_CLAIM_APPROVAL.md).
+- Approval links the claimant Account to the target profile and resolves competing pending claims with audited outcomes.
+- Approval records verification method, reviewer Account/Person, and timestamps. Rejection supports an optional internal reason.

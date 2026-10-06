@@ -30,11 +30,14 @@ class IdentityBusinessMatrixTest < ActionDispatch::IntegrationTest
     assert_nil profile.reload.person_id
 
     sign_in_as(users(:three))
-    post approve_api_v1_player_claim_path(claim_id)
+    post approve_api_v1_player_claim_path(claim_id), params: { verification_method: "staff_confirmed" }
 
     assert_response :success
     assert_equal "approved", PlayerClaim.find(claim_id).status
     assert_equal people(:one).id, profile.reload.person_id
+    assert_equal people(:one).account.id, profile.account_id
+    assert_equal users(:three).account.id, PlayerClaim.find(claim_id).reviewed_by_account_id
+    assert_equal "staff_confirmed", PlayerClaim.find(claim_id).verification_method
     assert_equal profile.id, PlayerClaim.find(claim_id).player_profile_key
     assert_equal assessment_snapshot, Assessment.find(assessment_id).attributes.slice(*assessment_snapshot.keys)
     assert_equal people_before, Person.count

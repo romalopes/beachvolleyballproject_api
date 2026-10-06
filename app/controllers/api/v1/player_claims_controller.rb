@@ -8,7 +8,6 @@ module Api
       include Pagination
 
       before_action :require_authentication
-      before_action :require_content_creator!, only: %i[approve reject]
       before_action :set_claim, only: %i[show approve reject cancel]
 
       def candidates
@@ -45,9 +44,13 @@ module Api
         end
 
         payloads = own_claims.to_a.map do |claim|
-          [ claim.id, claim.summary(include_profile_name: claim.reviewable_by?(Current.user)) ]
+          can_review = claim.reviewable_by?(Current.user)
+          [ claim.id, claim.summary(include_profile_name: can_review,
+                                    include_review_details: can_review) ]
         end.to_h
-        review_claims.each { |claim| payloads[claim.id] = claim.summary(include_profile_name: true) }
+        review_claims.each do |claim|
+          payloads[claim.id] = claim.summary(include_profile_name: true, include_review_details: true)
+        end
         records, meta = paginate_array(payloads.values.sort_by { |claim| claim[:created_at] || claim["created_at"] }.reverse)
         render json: { data: records, meta: meta }
       end
@@ -55,22 +58,24 @@ module Api
       def show
         return unless may_view_claim?
 
-        render json: @claim.summary(include_profile_name: reviewer?)
+        can_review = reviewer?
+        render json: @claim.summary(include_profile_name: can_review,
+                                     include_review_details: can_review)
       end
 
       def create
         account = Current.user&.account
         person = account&.person
-        return render json: { error: "An Account with an active identity is required to request a claim" }, status: :unprocessable_entity unless account && person&.status == "active"
+        return render_claim_error("An Account with an active identity is required to request a claim", :unprocessable_entity, "validation_failed") unless account && person&.status == "active"
 
         type = params[:claimable_type].presence || "PlayerProfile"
         unless ProfileClaimability::PROFILE_TYPES.include?(type)
-          return render json: { error: "Profile cannot be claimed" }, status: :not_found
+          return render_claim_error("Profile cannot be claimed", :not_found, "not_found")
         end
         id = params[:claimable_id].presence || params[:player_profile_id]
         profile = type.constantize.find_by(id: id)
-        return render json: { error: "Profile cannot be claimed" }, status: :not_found unless profile
-        return render json: { error: "Profile cannot be claimed" }, status: :not_found unless ProfileClaimability.allowed?(profile: profile, user: Current.user)
+        return render_claim_error("Profile cannot be claimed", :not_found, "not_found") unless profile
+        return render_claim_error("Profile cannot be claimed", :not_found, "not_found") unless ProfileClaimability.allowed?(profile: profile, user: Current.user)
 
         claim = PlayerClaimService.request!(
           claimable: profile,
@@ -79,41 +84,49 @@ module Api
         )
         render json: claim.summary, status: :created
       rescue PlayerClaimService::ClaimError => e
-        render json: { errors: [ e.message ] }, status: :conflict
+        status = e.message == "Forbidden" ? :forbidden : :conflict
+        code = status == :forbidden ? "forbidden" : "conflict"
+        render_claim_error(e.message, status, code)
       rescue ActiveRecord::RecordInvalid => e
-        render json: { errors: [ e.message ] }, status: :unprocessable_entity
+        render_claim_error(e.message, :unprocessable_entity, "validation_failed")
       rescue ActiveRecord::RecordNotUnique
-        render json: { errors: [ "A pending claim already exists for this profile" ] }, status: :conflict
+        render_claim_error("Your Account already has a pending claim for this profile", :conflict, "conflict")
       end
 
       def approve
         return unless authorize_review!
+        verification_method = params[:verification_method].to_s
+        unless PlayerClaim::VERIFICATION_METHODS.include?(verification_method)
+          return render_claim_error("A valid verification_method is required", :unprocessable_entity, "validation_failed")
+        end
 
-        claim = PlayerClaimService.approve!(claim: @claim, reviewer: Current.user.person)
-        render json: claim.summary(include_profile_name: true)
+        claim = PlayerClaimService.approve!(claim: @claim, reviewer_account: Current.user.account,
+                                            verification_method: verification_method)
+        render json: claim.summary(include_profile_name: true, include_review_details: true)
       rescue PlayerClaimService::ClaimError, ActiveRecord::RecordInvalid => e
-        render json: { errors: [ e.message ] }, status: :conflict
+        status = e.message == "Forbidden" ? :forbidden : :conflict
+        render_claim_error(e.message, status, status == :forbidden ? "forbidden" : "conflict")
       end
 
       def reject
         return unless authorize_review!
 
-        reason = params[:rejection_reason].to_s.strip
-        return render json: { errors: [ "rejection_reason is required" ] }, status: :unprocessable_entity if reason.blank?
-
-        claim = PlayerClaimService.reject!(claim: @claim, reviewer: Current.user.person, reason: reason)
-        render json: claim.summary(include_profile_name: true)
+        reason = params[:rejection_reason].to_s.strip.presence
+        claim = PlayerClaimService.reject!(claim: @claim, reviewer_account: Current.user.account,
+                                           reason: reason)
+        render json: claim.summary(include_profile_name: true, include_review_details: true)
       rescue PlayerClaimService::ClaimError, ActiveRecord::RecordInvalid => e
-        render json: { errors: [ e.message ] }, status: :conflict
+        status = e.message == "Forbidden" ? :forbidden : :conflict
+        render_claim_error(e.message, status, status == :forbidden ? "forbidden" : "conflict")
       end
 
       def cancel
-        return render json: { error: "Claim not found" }, status: :not_found unless claimant?
+        return render_claim_error("Claim not found", :not_found, "not_found") unless claimant?
 
         claim = PlayerClaimService.cancel!(claim: @claim)
         render json: claim.summary
       rescue PlayerClaimService::ClaimError, ActiveRecord::RecordInvalid => e
-        render json: { errors: [ e.message ] }, status: :conflict
+        render_claim_error(e.message, :conflict, "conflict")
       end
 
       private
@@ -131,7 +144,7 @@ module Api
 
       def set_claim
         @claim = PlayerClaim.find_by(id: params[:id])
-        render json: { error: "Claim not found" }, status: :not_found unless @claim
+        render_claim_error("Claim not found", :not_found, "not_found") unless @claim
       end
 
       def claimant?
@@ -148,25 +161,29 @@ module Api
       def may_view_claim?
         return true if claimant? || reviewer?
 
-        render json: { error: "Claim not found" }, status: :not_found
+        render_claim_error("Claim not found", :not_found, "not_found")
         false
       end
 
       def authorize_review!
-        unless Current.user&.person
-          render json: { error: "A linked reviewer Person is required" }, status: :unprocessable_entity
+        unless Current.user&.account
+          render_claim_error("A reviewer Account is required", :forbidden, "forbidden")
           return false
         end
         if claimant?
-          render json: { error: "A claimant cannot review their own claim" }, status: :forbidden
+          render_claim_error("A claimant cannot review their own claim", :forbidden, "forbidden")
           return false
         end
         unless @claim.reviewable_by?(Current.user)
-          render json: { error: "Forbidden" }, status: :forbidden
+          render_claim_error("Forbidden", :forbidden, "forbidden")
           return false
         end
 
         true
+      end
+
+      def render_claim_error(message, status, code)
+        render json: { error: message, code: code }, status: status
       end
     end
   end

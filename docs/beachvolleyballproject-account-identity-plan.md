@@ -399,7 +399,7 @@ STOP: Report the final permission matrix and passing tests.
 
 ### Phase 4 — Profile claims
 
-**Status:** Implemented. See [`IDENTITY_228_PHASE_04_PROFILE_CLAIMS.md`](IDENTITY_228_PHASE_04_PROFILE_CLAIMS.md). Phase 5 (Account-based review and approval/linking) remains next.
+**Status:** Implemented. See [`IDENTITY_228_PHASE_04_PROFILE_CLAIMS.md`](IDENTITY_228_PHASE_04_PROFILE_CLAIMS.md).
 
 The Account dashboard allows claims of eligible, currently unclaimed profiles.
 
@@ -462,6 +462,8 @@ STOP: Provide endpoint examples and test results.
 ```
 
 ### Phase 5 — Claim approval and linking
+
+**Status:** Implemented. See [`IDENTITY_228_PHASE_05_CLAIM_APPROVAL.md`](IDENTITY_228_PHASE_05_CLAIM_APPROVAL.md). Phase 6 is next.
 
 Approval is an identity operation, not merely a status update.
 

@@ -73,14 +73,16 @@ class ClaimSubject
   # Apply an approved claim: return the Person the subject should end up on, and
   # any Person that should be retired. `person:` is the identity asserting the
   # claim; for a Person subject it is the claim itself.
-  def effect!(claimant_person:, actor:)
+  def effect!(claimant_person:, actor:, claimant_account: nil)
     case record
     when PlayerProfile, CoachProfile
       if record.person_id.nil?
-        record.update!(person: claimant_person)
+        record.update!(person: claimant_person, account: claimant_account || claimant_person.account)
         nil
       else
+        account = claimant_account || claimant_person.account
         attach_account!(target_person: record.person, claimant_person: claimant_person, actor: actor)
+        record.update!(account: account)
       end
     else
       attach_account!(target_person: record, claimant_person: claimant_person, actor: actor)

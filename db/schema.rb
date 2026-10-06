@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_100008) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_100009) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -539,6 +539,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100008) do
     t.bigint "reviewed_by_person_id"
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
+    t.string "verification_method"
     t.index ["claimable_type", "claimable_id", "claimant_account_id"], name: "index_player_claims_pending_per_account_and_claimable", unique: true, where: "(((status)::text = 'pending'::text) AND (claimant_account_id IS NOT NULL))"
     t.index ["claimable_type", "claimable_id"], name: "index_player_claims_on_claimable"
     t.index ["claimant_account_id"], name: "index_player_claims_on_claimant_account_id"
@@ -549,6 +550,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100008) do
     t.index ["reviewed_by_person_id"], name: "index_player_claims_on_reviewed_by_person_id"
     t.check_constraint "claimable_id IS NOT NULL AND player_profile_id IS NULL OR claimable_id IS NULL AND player_profile_id IS NOT NULL", name: "player_claims_single_subject"
     t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'cancelled'::character varying]::text[])", name: "player_claims_valid_status"
+    t.check_constraint "verification_method IS NULL OR (verification_method::text = ANY (ARRAY['staff_confirmed'::character varying, 'government_id'::character varying, 'in_person'::character varying, 'other'::character varying]::text[]))", name: "player_claims_valid_verification_method"
   end
 
   create_table "player_coaches", force: :cascade do |t|

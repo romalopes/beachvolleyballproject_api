@@ -234,11 +234,14 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     claim_id = JSON.parse(response.body).fetch("id")
 
     sign_in_as(users(:two)) # admin with a linked Person may review a private profile
-    post approve_api_v1_player_claim_path(claim_id)
+    post approve_api_v1_player_claim_path(claim_id), params: { verification_method: "staff_confirmed" }
 
     assert_response :success
     assert_equal "approved", PlayerClaim.find(claim_id).status
     assert_equal people(:one).id, @profile.reload.person_id
+    assert_equal @claimant.account.id, @profile.reload.account_id
+    assert_equal users(:two).account.id, PlayerClaim.find(claim_id).reviewed_by_account_id
+    assert_equal "staff_confirmed", PlayerClaim.find(claim_id).verification_method
     assert_equal "private", @profile.visibility
     assert_equal @profile.id, PlayerClaim.find(claim_id).player_profile_key
     assert_equal assessment_before_claim, assessment.reload.attributes.slice(*assessment_before_claim.keys)
@@ -248,9 +251,39 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     sign_in_as(@reviewer)
     post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
     claim_id = JSON.parse(response.body).fetch("id")
-    post approve_api_v1_player_claim_path(claim_id)
+    post approve_api_v1_player_claim_path(claim_id), params: { verification_method: "staff_confirmed" }
 
     assert_response :forbidden
+    assert_equal "pending", PlayerClaim.find(claim_id).status
+  end
+
+  test "approval requires a valid verification method and leaves a pending claim unchanged" do
+    sign_in_as(@claimant)
+    post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
+    claim_id = JSON.parse(response.body).fetch("id")
+    sign_in_as(@reviewer)
+
+    post approve_api_v1_player_claim_path(claim_id), params: { verification_method: "" }
+
+    assert_response :unprocessable_entity
+    assert_equal "validation_failed", JSON.parse(response.body).fetch("code")
+    assert_equal "pending", PlayerClaim.find(claim_id).status
+    assert_nil @profile.reload.account_id
+  end
+
+  test "approval conflicts when the profile was linked after the request was submitted" do
+    sign_in_as(@claimant)
+    post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
+    claim_id = JSON.parse(response.body).fetch("id")
+    competing_account = users(:six).account
+    @profile.update!(account: competing_account)
+    sign_in_as(@reviewer)
+
+    post approve_api_v1_player_claim_path(claim_id), params: { verification_method: "staff_confirmed" }
+
+    assert_response :conflict
+    assert_equal "conflict", JSON.parse(response.body).fetch("code")
+    assert_equal competing_account.id, @profile.reload.account_id
     assert_equal "pending", PlayerClaim.find(claim_id).status
   end
 
@@ -260,7 +293,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     claim_id = JSON.parse(response.body).fetch("id")
 
     sign_in_as(users(:six))
-    post approve_api_v1_player_claim_path(claim_id)
+    post approve_api_v1_player_claim_path(claim_id), params: { verification_method: "staff_confirmed" }
 
     assert_response :forbidden
     assert_equal "pending", PlayerClaim.find(claim_id).status
@@ -296,6 +329,16 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "pending", first_claim.status
     assert_equal "pending", second_claim.status
     assert_not_equal first_claim.claimant_account_id, second_claim.claimant_account_id
+
+    sign_in_as(@reviewer)
+    post approve_api_v1_player_claim_path(first_claim.id), params: { verification_method: "in_person" }
+
+    assert_response :success
+    assert_equal "approved", first_claim.reload.status
+    assert_equal "rejected", second_claim.reload.status
+    assert_equal users(:three).account.id, second_claim.reviewed_by_account_id
+    assert_equal "Another claim for this profile was approved", second_claim.rejection_reason
+    assert_equal first_claim.claimant_account_id, @profile.reload.account_id
   end
 
   test "claim index returns a paginated account-scoped result" do
@@ -311,18 +354,16 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal @claimant.account.id, claim.claimant_account_id
   end
 
-  test "rejection requires a reason and does not change the profile" do
+  test "rejection reason is optional and rejection does not change the profile" do
     sign_in_as(@claimant)
     post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
     claim_id = JSON.parse(response.body).fetch("id")
     sign_in_as(@reviewer)
 
-    post reject_api_v1_player_claim_path(claim_id), params: { rejection_reason: "   " }
-    assert_response :unprocessable_entity
-
-    post reject_api_v1_player_claim_path(claim_id), params: { rejection_reason: "Please verify this record" }
+    post reject_api_v1_player_claim_path(claim_id)
     assert_response :success
     assert_equal "rejected", PlayerClaim.find(claim_id).status
+    assert_nil PlayerClaim.find(claim_id).rejection_reason
     assert_nil @profile.reload.person_id
   end
 

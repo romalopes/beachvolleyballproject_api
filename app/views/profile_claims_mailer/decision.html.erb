@@ -1,0 +1,9 @@
+<h1>Your profile claim was <%= @decision %></h1>
+
+<p>Your request to link “<%= @profile_name %>” to your account was <%= @decision %>.</p>
+
+<% if @decision == "rejected" %>
+  <p>Please contact your club or an administrator if you need more information.</p>
+<% else %>
+  <p>The profile is now linked to your account. Its existing training and assessment history remains attached.</p>
+<% end %>
