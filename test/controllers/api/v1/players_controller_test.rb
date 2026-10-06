@@ -28,7 +28,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     get api_v1_players_path
     assert_response :success
     data = JSON.parse(response.body)["data"]
-    assert_equal [linked.id], data.map { |row| row["id"] }
+    assert_equal [ linked.id ], data.map { |row| row["id"] }
 
     get api_v1_player_path(linked)
     assert_response :success
@@ -178,6 +178,25 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert_equal "shared", body["visibility"]
     assert body.key?("created_by")
+  end
+
+  test "profile readers do not receive private contact fields or search by email" do
+    player = player_profiles(:pedro_player)
+    player.person.update!(email: "private-contact@example.com")
+    sign_in_as(@trainer)
+
+    get api_v1_player_path(player)
+    assert_response :success
+    person = JSON.parse(response.body).fetch("person")
+    assert_equal "Pedro", person["first_name"]
+    assert_not person.key?("email")
+    assert_not person.key?("phone")
+    assert_not person.key?("date_of_birth")
+    assert_not person.key?("organisation_memberships")
+
+    get api_v1_players_path, params: { q: player.person.email }
+    assert_response :success
+    assert_not_includes JSON.parse(response.body).fetch("data").map { |row| row["id"] }, player.id
   end
 
   test "only the owner or an admin may flip visibility" do
@@ -332,7 +351,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Pedro", body["person"]["first_name"]
     assert body["player_profile_id"].present?
     assert_equal "active", body["status"]
-    assert_equal "coach_created", body["person"]["creation_source"]
+    assert_not body["person"].key?("creation_source")
   end
 
   test "create returns validation errors" do
@@ -633,7 +652,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert_equal "blocker", body["preferred_position"]
     assert_equal "advanced", body["level"]
-    assert_equal "pedro@example.com", body["person"]["email"]
+    assert_not body["person"].key?("email"), "private contact data is not echoed to a coach"
     assert_equal "blocker", player.reload.preferred_position
   end
 

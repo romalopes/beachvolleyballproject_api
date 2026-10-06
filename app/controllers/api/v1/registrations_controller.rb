@@ -3,6 +3,8 @@ module Api
     class RegistrationsController < ApplicationController
       allow_unauthenticated_access only: :create
 
+      rate_limit to: 10, within: 1.hour, only: :create
+
       def create
         user = User.new(registration_params)
 
@@ -23,14 +25,12 @@ module Api
           # cookie) may be created — an unverified signup must get 202
           # pending_verification, never a token.
           if user.email_verification_pending?
-            raw_token = nil
             if EmailVerification.auto_send_on_signup?
-              raw_token = EmailVerificationService.send_verification(user)
+              EmailVerificationService.send_verification(user)
             end
             render json: user_payload(user).merge(
               status: "pending_verification",
               email: user.email_address,
-              verification_token: raw_token,
               message: "Please check your email to verify your account."
             ), status: :accepted
             return

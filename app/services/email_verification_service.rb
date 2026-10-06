@@ -13,12 +13,11 @@ class EmailVerificationService
   RESEND_COOLDOWN = 1.minute
 
   # Generate a fresh verification token, invalidate any prior token, and deliver
-  # the verification email. The raw token is returned (only the caller that
-  # emails it ever sees it raw) but is never persisted or logged.
+  # it by email. Never return the raw token to controller/API callers.
   def self.send_verification(user)
     raw_token = user.generate_email_verification_token!
     EmailVerificationsMailer.verification(user, raw_token).deliver_now
-    raw_token
+    true
   end
 
   # Find the user by the *raw* token from the URL, consume the token (which

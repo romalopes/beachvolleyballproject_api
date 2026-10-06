@@ -32,6 +32,27 @@ class Api::V1::SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  test "pending verification login never returns its email token to the caller" do
+    previous = ENV["REQUIRE_EMAIL_VERIFICATION"]
+    ENV["REQUIRE_EMAIL_VERIFICATION"] = "true"
+    user = users(:one)
+    user.update_columns(email_verified_at: nil, email_verification_token_digest: nil,
+                        email_verification_sent_at: nil)
+
+    assert_emails 1 do
+      post "/api/v1/sessions", params: { email_address: user.email_address, password: "password", api: true }
+    end
+
+    assert_response :accepted
+    body = JSON.parse(response.body)
+    assert_equal "pending_verification", body["status"]
+    assert_nil body["token"]
+    assert_nil body["verification_token"]
+    assert user.reload.email_verification_token_digest.present?
+  ensure
+    previous.nil? ? ENV.delete("REQUIRE_EMAIL_VERIFICATION") : ENV["REQUIRE_EMAIL_VERIFICATION"] = previous
+  end
+
   test "records an auth log entry on login" do
     assert_difference("Log.count") do
       post "/api/v1/sessions", params: { email_address: "one@example.com", password: "password" }

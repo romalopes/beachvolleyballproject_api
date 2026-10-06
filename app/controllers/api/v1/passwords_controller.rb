@@ -3,6 +3,9 @@ module Api
     class PasswordsController < ApplicationController
       allow_unauthenticated_access only: %i[create update]
 
+      # Reset requests reveal no account state; this also limits mail flooding.
+      rate_limit to: 5, within: 15.minutes, only: :create
+
       # POST /api/v1/passwords — request a reset email
       def create
         if (user = User.find_by(email_address: params[:email_address]))

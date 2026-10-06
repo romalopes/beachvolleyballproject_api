@@ -10,14 +10,14 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
         password_confirmation: "password123"
       } }
     end
-    # With email verification required (the default in test env), standard
-    # registration returns 202 Accepted with pending_verification status and
-    # the raw verification token so the SPA can forward it to the verify route.
+    # With email verification required (the default in test env), registration
+    # returns a pending state. The verification secret is delivered by email,
+    # never returned to the unauthenticated registration caller.
     assert_response :accepted
     body = JSON.parse(response.body)
     assert_equal "newbie@example.com", body["email_address"]
     assert_includes body["roles"], "player"
-    assert_not_nil body["verification_token"], "raw verification token should be returned"
+    assert_nil body["verification_token"]
     assert_equal "pending_verification", body["status"]
     account = User.find(body.fetch("id")).account
     assert account
@@ -45,7 +45,7 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert_equal "pending_verification", body["status"]
     assert_nil body["token"]
-    assert_not_nil body["verification_token"]
+    assert_nil body["verification_token"]
   end
 
   test "verification is skipped when verification is not required" do
@@ -54,7 +54,7 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
     prev = ENV["REQUIRE_EMAIL_VERIFICATION"]
     ENV["REQUIRE_EMAIL_VERIFICATION"] = "false"
     begin
-      assert_difference(["User.count", "Account.count", "ContactDetail.count", "Session.count"]) do
+      assert_difference([ "User.count", "Account.count", "ContactDetail.count", "Session.count" ]) do
         post "/api/v1/registrations", params: {
           user: {
             name: "Token Check",

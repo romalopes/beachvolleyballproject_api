@@ -12,6 +12,7 @@
 | 8 | Profile management dashboard | Complete | [IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md](IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md) |
 | 9 | Remove People workflows | Partially implemented; backend dependency cutover remains | [IDENTITY_228_PHASE_09_PEOPLE_WORKFLOWS.md](IDENTITY_228_PHASE_09_PEOPLE_WORKFLOWS.md) |
 | 10 | Profile merging, archiving and deletion | Complete | [IDENTITY_228_PHASE_10_PROFILE_MERGING_ARCHIVING_DELETION.md](IDENTITY_228_PHASE_10_PROFILE_MERGING_ARCHIVING_DELETION.md) |
-| 11+ | Security, regression and subsequent phases | Not started | [beachvolleyballproject-account-identity-plan.md](beachvolleyballproject-account-identity-plan.md) |
+| 11 | Security and regression audit | Partially complete; security fixes applied, repository lint/runtime gaps remain | [IDENTITY_228_PHASE_11_SECURITY_REGRESSION_AUDIT.md](IDENTITY_228_PHASE_11_SECURITY_REGRESSION_AUDIT.md) |
+| 12 | Production rollout and cleanup | Not started | [beachvolleyballproject-account-identity-plan.md](beachvolleyballproject-account-identity-plan.md) |
 
-Phases 1–8 and 10 are implemented; Phase 10's focused frontend/backend checks pass. Phase 9 removes the active Person workflows from profile management but is not complete: active backend and roster dependencies still require Person. See its detailed audit before proceeding.
+Phases 1–8 and 10 are implemented. Phase 11 has applied the critical token/PII fixes and passed the full Rails and frontend test suites, but remains partial because repository-wide lint and production-like rate-limit/browser checks remain. Phase 9 removes the active Person workflows from profile management but is not complete: active backend and roster dependencies still require Person. See the detailed phase audits before production rollout.

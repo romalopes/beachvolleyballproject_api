@@ -151,6 +151,7 @@ class Assessment < ApplicationRecord
     return true if self.class.oversight?(user)
     return true if stakeholder?(user)
     return false unless publicly_visible?
+    return player_profile&.visibility == "shared" if user.nil?
 
     player_profile.visible_to_user?(user)
   end

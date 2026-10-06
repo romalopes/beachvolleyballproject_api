@@ -25,14 +25,15 @@ class EmailVerificationServiceTest < ActiveSupport::TestCase
 
   test "send_verification generates a token, persists its digest, and enqueues the mailer" do
     assert_difference -> { ActionMailer::Base.deliveries.size }, 1 do
-      raw_token = EmailVerificationService.send_verification(@user)
+      result = EmailVerificationService.send_verification(@user)
       @user.reload
-      assert_not_nil raw_token
+      assert_equal true, result
       assert_not_nil @user.email_verification_token_digest
       assert_not_nil @user.email_verification_sent_at
     end
 
     assert_equal "Verify your email address for Beach Volleyball Project", ActionMailer::Base.deliveries.last.subject
+    assert @user.reload.email_verification_token_digest.present?
   end
 
   test "verify returns the user for a valid token and clears the token digest" do
@@ -83,12 +84,10 @@ class EmailVerificationServiceTest < ActiveSupport::TestCase
     end
   end
 
-  test "resend sends a verification email for a pending user and returns the raw token" do
+  test "resend sends a verification email without returning the raw token" do
     stub_email_verification_require?(true) do
       assert_difference -> { ActionMailer::Base.deliveries.size }, 1 do
-        token = EmailVerificationService.resend(@user.email_address)
-        assert_not_nil token
-        assert_kind_of String, token
+        assert_equal true, EmailVerificationService.resend(@user.email_address)
       end
     end
   end

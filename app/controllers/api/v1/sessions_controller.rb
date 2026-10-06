@@ -3,15 +3,17 @@ module Api
     class SessionsController < ApplicationController
       allow_unauthenticated_access only: %i[create destroy]
 
+      # Bound password guessing from one network source.
+      rate_limit to: 10, within: 15.minutes, only: :create
+
       def create
         if (user = User.authenticate_by(params.permit(:email_address, :password)))
           # Block login when email verification is required but pending.
           if user.email_verification_pending?
-            raw_token = EmailVerificationService.send_verification(user)
+            EmailVerificationService.send_verification(user)
             render json: {
               status: "pending_verification",
               email: user.email_address,
-              verification_token: raw_token,
               message: "Please verify your email address before logging in."
             }, status: :accepted
             return
@@ -63,7 +65,7 @@ module Api
           ip_address: request.remote_ip,
           user_agent: request.user_agent,
           status: response.status,
-          objects: user ? [user] : []
+          objects: user ? [ user ] : []
         )
       rescue StandardError => e
         Rails.logger.error("Auth logging failed: #{e.message}")

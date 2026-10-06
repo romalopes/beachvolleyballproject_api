@@ -46,10 +46,11 @@ module Api
 
         if params[:q].present?
           term = "%#{params[:q]}%"
-          players = players.where("people.last_name ILIKE :t OR people.first_name ILIKE :t OR people.email ILIKE :t OR player_profiles.display_name ILIKE :t",
+          email_clause = Current.user.admin? ? " OR people.email ILIKE :t" : ""
+          players = players.where("people.last_name ILIKE :t OR people.first_name ILIKE :t#{email_clause} OR player_profiles.display_name ILIKE :t",
                                   t: term)
         end
-        if params[:email].present?
+        if params[:email].present? && Current.user.admin?
           players = players.where(people: { email: params[:email] })
         end
         unless params[:include_private].present?
@@ -101,6 +102,7 @@ module Api
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
         payload["person"] = nil unless payload.key?("person")
+        redact_person_contact!(payload, @player)
 
         # Coaching history (plan 4.2): the count is published rows only, and
         # the history is whatever exists for this caller — drafts and
@@ -255,18 +257,24 @@ module Api
       end
 
       def serialize(profile)
+        can_view_contact = can_view_contact_details?(profile)
+        person_options = if can_view_contact
+          {
+            only: PERSON_ONLY,
+            include: {
+              organisation_memberships: {
+                only: [ :id, :organisation_id, :role, :status ],
+                include: { organisation: { only: [ :id, :name ] } }
+              }
+            }
+          }
+        else
+          { only: %i[id first_name last_name] }
+        end
         payload = profile.as_json(
           only: PROFILE_ONLY,
           include: {
-            person: {
-              only: PERSON_ONLY,
-              include: {
-                organisation_memberships: {
-                  only: [ :id, :organisation_id, :role, :status ],
-                  include: { organisation: { only: [ :id, :name ] } }
-                }
-              }
-            },
+            person: person_options,
             created_by: { only: %i[id name] }
           },
           methods: PROFILE_METHODS
@@ -288,6 +296,24 @@ module Api
           last_name: person.last_name,
           email: person.email
         ).matches.reject { |match| match.id == person.id }.map(&:identity_summary)
+      end
+
+      def can_view_contact_details?(profile)
+        user = Current.user
+        return false unless user
+        return true if user.admin?
+
+        account = user.account
+        account && (profile.account_id == account.id || profile.person_id == account.person_id)
+      end
+
+      def redact_person_contact!(payload, profile)
+        return if can_view_contact_details?(profile)
+
+        person = payload["person"]
+        return unless person.is_a?(Hash)
+
+        person.slice!("id", "first_name", "last_name")
       end
 
       def player_params

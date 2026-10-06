@@ -2,6 +2,7 @@ module Api
   module V1
     class EmailVerificationsResendController < ApplicationController
       allow_unauthenticated_access only: :create
+      rate_limit to: 5, within: 15.minutes, only: :create
 
       # POST /api/v1/email-verifications/resend
       #

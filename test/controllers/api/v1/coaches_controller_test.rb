@@ -65,6 +65,21 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Maria", body["person"]["first_name"]
   end
 
+  test "non-admin profile readers do not receive coach contact details" do
+    coach = coach_profiles(:maria_coach)
+    sign_in_as(@trainer)
+
+    get api_v1_coach_path(coach)
+
+    assert_response :success
+    person = JSON.parse(response.body).fetch("person")
+    assert_equal "Maria", person["first_name"]
+    assert_not person.key?("email")
+    assert_not person.key?("phone")
+    assert_not person.key?("date_of_birth")
+    assert_not person.key?("organisation_memberships")
+  end
+
   test "show returns 404 for missing coach" do
     sign_in_as(@admin)
     get api_v1_coach_path(99999)
