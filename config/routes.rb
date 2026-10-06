@@ -146,9 +146,12 @@ Rails.application.routes.draw do
       resources :claim_invitations, only: %i[index show create] do
         collection do
           post :redeem
+          get :received
         end
         member do
           post :revoke
+          post :accept
+          post :decline
         end
       end
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_100009) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -229,6 +229,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100009) do
     t.bigint "claimable_id", null: false
     t.string "claimable_type", null: false
     t.datetime "created_at", null: false
+    t.datetime "declined_at"
     t.datetime "emailed_at"
     t.datetime "expires_at", null: false
     t.bigint "invited_by_id", null: false
@@ -244,7 +245,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100009) do
     t.index ["invited_by_id"], name: "index_claim_invitations_on_invited_by_id"
     t.index ["token_digest"], name: "index_claim_invitations_on_token_digest", unique: true
     t.index ["used_by_id"], name: "index_claim_invitations_on_used_by_id"
-    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying]::text[])", name: "claim_invitations_valid_status"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying, 'declined'::character varying]::text[])", name: "claim_invitations_valid_status"
   end
 
   create_table "coach_profiles", force: :cascade do |t|

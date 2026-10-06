@@ -157,6 +157,54 @@ class ClaimInvitationService
     invitation
   end
 
+  # A recipient may act from their dashboard only on an email-addressed
+  # invitation and only after proving control of that exact verified address.
+  def self.accept_received!(invitation:, user:)
+    process_received!(invitation: invitation, user: user, action: :accept)
+  end
+
+  def self.decline_received!(invitation:, user:)
+    process_received!(invitation: invitation, user: user, action: :decline)
+  end
+
+  def self.process_received!(invitation:, user:, action:)
+    outcome = nil
+    ClaimInvitation.transaction do
+      invitation.claimable.with_lock do
+        invitation.with_lock do
+          user.with_lock do
+            unless invitation.status == "active" && invitation.expires_at > Time.current &&
+                invitation.invitee_email.present? && invitation.verified_email_match?(user)
+              invitation.update!(status: "expired") if invitation.status == "active" && invitation.expires_at <= Time.current
+              next
+            end
+
+            if action == :decline
+              invitation.update!(status: "declined", declined_at: Time.current)
+              outcome = { invitation: invitation, outcome: :declined }
+              next
+            end
+
+            account = user.account || Account.create!(user: user)
+            claimant_person = account.person
+            subject = ClaimSubject.for(invitation.claimable)
+            raise NotRedeemable unless claimant_person&.status == "active" && subject.eligible? && subject.still_unclaimed?
+
+            outcome = auto_link!(invitation: invitation, subject: subject,
+              claimant_person: claimant_person, user: user)
+          end
+        end
+      end
+    end
+    raise InvitationError, VERIFICATION_MESSAGE unless user.email_verified?
+    raise InvitationError, INVALID_MESSAGE unless outcome
+
+    outcome
+  rescue NotRedeemable, ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid, ClaimSubject::Ineligible
+    raise InvitationError, INVALID_MESSAGE
+  end
+  private_class_method :process_received!
+
   # Records delivery telemetry for support/audit. It does not control whether a
   # verified exact-email recipient may link the subject.
   def self.mark_emailed!(invitation:)

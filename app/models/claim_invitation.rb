@@ -15,7 +15,7 @@
 # emailed by the application or shared manually. A profile invitation without a
 # specific recipient email remains a request for staff review.
 class ClaimInvitation < ApplicationRecord
-  STATUSES = %w[active used revoked expired].freeze
+  STATUSES = %w[active used revoked expired declined].freeze
   DEFAULT_EXPIRATION = 7.days
   SUBJECT_TYPES = %w[PlayerProfile CoachProfile Person].freeze
 
@@ -35,6 +35,7 @@ class ClaimInvitation < ApplicationRecord
   validates :used_at, presence: true, if: -> { status == "used" }
   validates :used_by, presence: true, if: -> { status == "used" }
   validates :revoked_at, presence: true, if: -> { status == "revoked" }
+  validates :declined_at, presence: true, if: -> { status == "declined" }
 
   scope :active, -> { where(status: "active") }
 
@@ -65,6 +66,7 @@ class ClaimInvitation < ApplicationRecord
       expires_at: expires_at,
       used_at: used_at,
       revoked_at: revoked_at,
+      declined_at: declined_at,
       created_at: created_at
     }
   end

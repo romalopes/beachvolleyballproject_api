@@ -18,7 +18,8 @@ module Api
         type = params[:claimable_type].presence || "PlayerProfile"
         return render json: { error: "Unsupported profile type" }, status: :unprocessable_entity unless ProfileClaimability::PROFILE_TYPES.include?(type)
 
-        results, total = ProfileClaimCandidateFinder.new(account: account, user: Current.user, type: type)
+        results, total = ProfileClaimCandidateFinder.new(account: account, user: Current.user, type: type,
+          query: params[:q], organisation_id: params[:organisation_id])
           .page(page: page_param, per_page: per_page_param)
         render json: { data: results.map(&:as_json), meta: pagination_meta(total) }
       end

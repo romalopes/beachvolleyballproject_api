@@ -579,6 +579,8 @@ STOP: Demonstrate existing-account and new-account invitation acceptance.
 
 ### Phase 7 — Account dashboard
 
+**Status: Implemented.** See [IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md](IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md) for the shipped scope, API behavior, security decisions, and verification status.
+
 The Account dashboard is the central location for linked profiles, pending claims and invitations.
 
 Conceptual layout:

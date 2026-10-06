@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented for both PlayerProfile and CoachProfile invitations. An invitation may target a verified email address or remain open for staff-reviewed claiming. The next planned phase is Phase 7, the Account dashboard.
+Implemented for both PlayerProfile and CoachProfile invitations. An invitation may target a verified email address or remain open for staff-reviewed claiming. Phase 7's Account dashboard is now implemented; see [IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md](IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md).
 
 ## Existing workflow reused
 
@@ -75,4 +75,4 @@ The response has outcome `linked` for an exact verified email match or `pending_
 
 - The API and database retain `ClaimInvitation`, `active/used/revoked/expired`, and `invited_by_id` names to preserve existing invitation flows and audit rows.
 - Recipient email binding is intentionally used instead of persisting `invited_account_id`; existing and new Account recipients follow the same verified-email rule.
-- Phase 7 should provide account-level invitation visibility without exposing raw tokens and should preserve the current subject-level authorization checks.
+- Phase 7 provides account-level recipient invitation visibility without exposing raw tokens and preserves the current subject-level authorization checks. See [Phase 7](IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md).

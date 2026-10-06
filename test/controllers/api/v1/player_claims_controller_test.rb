@@ -138,6 +138,31 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, body.fetch("data").length
   end
 
+  test "candidate search supports a name query, organisation filter, and pagination together" do
+    matching = PlayerProfile.create!(display_name: "Taylor Query Result", created_by: @reviewer)
+    PlayerProfile.create!(display_name: "Morgan Other Result", created_by: @reviewer)
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path, params: {
+      q: "Query", organisation_id: organisations(:sydney_club).id, page: 1, per_page: 1
+    }
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal [ matching.id ], body.fetch("data").map { |row| row.fetch("id") }
+    assert_equal 1, body.dig("meta", "total")
+    assert_equal "name_search", body.dig("data", 0, "match_type")
+  end
+
+  test "candidate search ignores organisation filters the claimant does not belong to" do
+    other_org = Organisation.create!(name: "Other eligible-looking club")
+    sign_in_as(@claimant)
+    get candidates_api_v1_player_claims_path, params: { organisation_id: other_org.id }
+
+    assert_response :success
+    assert_empty JSON.parse(response.body).fetch("data")
+  end
+
   test "candidate search respects private profile visibility" do
     private_profile = PlayerProfile.create!(display_name: "John Smith", visibility: "private", created_by: users(:six))
     sign_in_as(@claimant)

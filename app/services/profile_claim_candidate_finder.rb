@@ -18,11 +18,13 @@ class ProfileClaimCandidateFinder
     end
   end
 
-  def initialize(person: nil, account: nil, user:, type: "PlayerProfile")
+  def initialize(person: nil, account: nil, user:, type: "PlayerProfile", query: nil, organisation_id: nil)
     @account = account || user&.account
     @person = person || @account&.person || user&.person
     @user = user
     @type = type
+    @query = query.to_s.strip
+    @organisation_id = organisation_id.presence
   end
 
   def matches
@@ -34,6 +36,27 @@ class ProfileClaimCandidateFinder
     return [ [], 0 ] unless @person&.status == "active"
 
     available = ProfileClaimability.profiles_for(user: @user, type: @type)
+    if @organisation_id
+      membership = @person.organisation_memberships.active.find_by(organisation_id: @organisation_id)
+      return [ [], 0 ] unless membership
+
+      organisation_people = Person.joins(:organisation_memberships)
+        .where(organisation_memberships: { organisation_id: @organisation_id, status: "active" })
+      creator_accounts = Account.where(person_id: organisation_people).select(:id)
+      creator_users = Account.where(person_id: organisation_people).select(:user_id)
+      available = available.where(created_by_account_id: creator_accounts)
+        .or(available.where(created_by_id: creator_users))
+    end
+
+    unless @query.blank?
+      return [ [], 0 ] if @query.length < MIN_PARTIAL_LENGTH
+      matching = available.where("#{effective_name_sql} ILIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(@query)}%")
+      total = matching.count
+      rows = matching.order(Arel.sql("LOWER(display_name)"), :id)
+        .offset((page - 1) * per_page).limit(per_page)
+      return [ rows.map { |row| Candidate.new(profile: row, type: @type, match_type: "name_search") }, total ]
+    end
+
     names = ([ @person.full_name, @person.first_name, @person.last_name ] + @person.person_aliases.map(&:full_name))
             .map { |name| normalize(name) }.reject(&:blank?).uniq
     return [ [], 0 ] if names.empty?

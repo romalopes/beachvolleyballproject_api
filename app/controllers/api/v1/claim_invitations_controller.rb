@@ -15,7 +15,7 @@ module Api
 
       before_action :require_authentication
       before_action :require_claim_invitation_manager!, only: %i[index create revoke]
-      before_action :set_invitation, only: %i[show revoke]
+      before_action :set_invitation, only: %i[show revoke accept decline]
 
       def index
         if params[:claimable_type].blank? && params[:claimable_id].blank?
@@ -58,6 +58,28 @@ module Api
       rescue ClaimInvitationService::InvitationError, ClaimSubject::Ineligible,
              ActiveRecord::RecordInvalid => e
         render json: { errors: [ e.message ] }, status: :conflict
+      end
+
+      def received
+        return render json: { error: ClaimInvitationService::VERIFICATION_MESSAGE }, status: :forbidden unless Current.user.email_verified?
+
+        invitations = ClaimInvitation.where(invitee_email: Current.user.email_address)
+          .order(created_at: :desc).limit(100)
+        render json: invitations.map(&:summary)
+      end
+
+      def accept
+        result = ClaimInvitationService.accept_received!(invitation: @invitation, user: Current.user)
+        render json: redeem_payload(result), status: :created
+      rescue ClaimInvitationService::InvitationError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      def decline
+        result = ClaimInvitationService.decline_received!(invitation: @invitation, user: Current.user)
+        render json: result[:invitation].summary
+      rescue ClaimInvitationService::InvitationError => e
+        render json: { error: e.message }, status: :unprocessable_entity
       end
 
       def redeem

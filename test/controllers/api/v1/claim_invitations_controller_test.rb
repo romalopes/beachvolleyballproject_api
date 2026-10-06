@@ -131,4 +131,57 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :unauthorized
   end
+
+  test "verified recipients can list, accept and decline only their address-bound invitations" do
+    accept_profile = PlayerProfile.create!(display_name: "Accept Profile", created_by: @coach)
+    decline_profile = CoachProfile.create!(display_name: "Decline Profile", created_by: @coach)
+    accepted, = ClaimInvitationService.issue!(claimable: accept_profile, invited_by: @coach, invitee_email: @claimer.email_address)
+    declined, = ClaimInvitationService.issue!(claimable: decline_profile, invited_by: @coach, invitee_email: @claimer.email_address)
+    sign_in_as(@claimer)
+
+    get "/api/v1/claim_invitations/received"
+    assert_response :success
+    ids = JSON.parse(response.body).map { |row| row.fetch("id") }
+    assert_includes ids, accepted.id
+    assert_includes ids, declined.id
+    assert_not_includes response.body, accepted.token_digest
+
+    post "/api/v1/claim_invitations/#{accepted.id}/accept"
+    assert_response :created
+    assert_equal "linked", JSON.parse(response.body).fetch("outcome")
+    assert_equal @claimer.person.id, accept_profile.reload.person_id
+    assert_equal "used", accepted.reload.status
+
+    post "/api/v1/claim_invitations/#{declined.id}/decline"
+    assert_response :success
+    assert_equal "declined", declined.reload.status
+    assert_not_nil declined.declined_at
+    assert_nil decline_profile.reload.person_id
+  end
+
+  test "another verified account cannot accept or decline a recipient invitation" do
+    invitation, = ClaimInvitationService.issue!(claimable: @profile, invited_by: @coach, invitee_email: @claimer.email_address)
+    other = User.create!(name: "Other", email_address: "other-verified@example.com", password: "password123", email_verified_at: Time.current)
+    Account.create!(user: other)
+    sign_in_as(other)
+
+    post "/api/v1/claim_invitations/#{invitation.id}/accept"
+    assert_response :unprocessable_entity
+    post "/api/v1/claim_invitations/#{invitation.id}/decline"
+    assert_response :unprocessable_entity
+    assert_equal "active", invitation.reload.status
+    assert_nil @profile.reload.person_id
+  end
+
+  test "unverified recipients cannot view received invitations or accept them" do
+    invitation, = ClaimInvitationService.issue!(claimable: @profile, invited_by: @coach, invitee_email: @claimer.email_address)
+    @claimer.update!(email_verified_at: nil)
+    sign_in_as(@claimer)
+
+    get "/api/v1/claim_invitations/received"
+    assert_response :forbidden
+    post "/api/v1/claim_invitations/#{invitation.id}/accept"
+    assert_response :unprocessable_entity
+    assert_equal "active", invitation.reload.status
+  end
 end
