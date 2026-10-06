@@ -5,10 +5,10 @@ module Api
 
       def show
         user = Current.user
-        person = user.person
-        player_profiles = person ? person.player_profiles.order(:id).to_a : []
-        player_profile = person&.player_profile
-        coach_profiles = person ? person.coach_profiles.order(:id).to_a : []
+        account = user.account
+        player_profiles = account ? account.player_profiles.order(:id).to_a : []
+        player_profile = player_profiles.first
+        coach_profiles = account ? account.coach_profiles.order(:id).to_a : []
         active_coach_profiles = coach_profiles.select { |profile| profile.status == "active" }
         # Keep a deterministic legacy default for older SPA clients. New clients
         # should use the complete collection and submit the chosen profile ID.
@@ -22,8 +22,7 @@ module Api
           # assessor defaults to `coach_profile_id`, a missing one explains
           # the "no coach profile yet" affordance, and `player_profile_id`
           # keeps the caller's own player row out of the assessable picker.
-          person_id: person&.id,
-          account_id: user.account&.id,
+          account_id: account&.id,
           player_profile_id: player_profile&.id,
           player_profile_ids: player_profiles.map(&:id),
           player_profiles: player_profiles.map do |profile|
@@ -46,9 +45,10 @@ module Api
               status: profile.status
             }
           end,
-          organisation_memberships: person ? person.organisation_memberships.includes(:organisation).order(:id).map do |membership|
+          organisation_memberships: account ? account.organisation_memberships.includes(:organisation).order(:id).map do |membership|
             {
               id: membership.id,
+              account_id: membership.account_id,
               organisation_id: membership.organisation_id,
               role: membership.role,
               status: membership.status,
@@ -61,10 +61,11 @@ module Api
               }
             }
           end : [],
-          group_memberships: person ? person.group_memberships.includes(group: :organisation).order(:id).map do |membership|
+          group_memberships: account ? account.group_memberships.includes(group: :organisation).order(:id).map do |membership|
             group = membership.group
             {
               id: membership.id,
+              account_id: membership.account_id,
               group_id: membership.group_id,
               role: membership.role,
               status: membership.status,

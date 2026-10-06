@@ -1,6 +1,6 @@
 # Issue #228 — Account-Centric Identity Refactor Audit
 
-**Status:** Phase 1 audit completed; additive Phase 2, Account-based Phase 3 authorization, and Phase 4 Account claimant records/discovery are implemented in their separate phase documents. Phase 5 review and approval remains next.
+**Historical snapshot:** this audit records the pre-cutover model. The current Account↔Person decision is in [Phase 9](IDENTITY_228_PHASE_09_PEOPLE_WORKFLOWS.md): Account and User no longer have Person associations in application code, and migration `20261006100011` removes `accounts.person_id` after backfill. Remaining Person roster/history dependencies are retained.
 
 **Issue:** [#228 — Account-centric identity refactoring plan](https://github.com/romalopes/beachvolleyballproject_api/issues/228)
 

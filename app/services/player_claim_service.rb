@@ -1,13 +1,10 @@
 class PlayerClaimService
   class ClaimError < StandardError; end
 
-  def self.request!(person: nil, account: nil, initiated_by_person: nil, claimable: nil, player_profile: nil)
+  def self.request!(account: nil, claimable: nil, player_profile: nil)
     profile = claimable || player_profile
     raise ClaimError, "Profile cannot be claimed" unless profile.is_a?(PlayerProfile) || profile.is_a?(CoachProfile)
-    person ||= account&.person
-    initiated_by_person ||= person
     raise ClaimError, "An account is required to request a claim" unless account
-    raise ClaimError, "A verified active identity is required to request a claim" unless person&.status == "active"
 
     PlayerClaim.transaction do
       profile.with_lock do
@@ -20,9 +17,8 @@ class PlayerClaimService
 
         PlayerClaim.create!(
           claimable: profile,
-          person: person,
-          initiated_by_person: initiated_by_person,
           claimant_account: account,
+          initiated_by_account: account,
           status: "pending"
         )
       end
@@ -45,11 +41,8 @@ class PlayerClaimService
         raise ClaimError, "Claim is no longer pending" unless locked_claim&.pending?
 
         subject = ClaimSubject.for(profile)
-        claimant_account = locked_claim.claimant_account || locked_claim.person.account
+        claimant_account = locked_claim.claimant_account
         raise ClaimError, "The claimant Account is no longer available" unless claimant_account
-        unless claimant_account.person_id == locked_claim.person_id
-          raise ClaimError, "The claimant identity changed after this request was submitted"
-        end
         unless ProfilePolicy.new(actor: reviewer_account.user, profile: profile).review_claim?
           raise ClaimError, "Forbidden"
         end
@@ -62,12 +55,10 @@ class PlayerClaimService
         end
 
         now = Time.current
-        subject.effect!(claimant_person: claimant_account.person, claimant_account: claimant_account,
-                        actor: reviewer_account.user)
+        subject.effect!(claimant_account: claimant_account, actor: reviewer_account.user)
         locked_claim.update!(
           status: "approved",
           reviewed_by_account: reviewer_account,
-          reviewed_by_person: reviewer_account.person,
           reviewed_at: now,
           verification_method: verification_method
         )
@@ -77,7 +68,6 @@ class PlayerClaimService
           other_claim.update!(
             status: "rejected",
             reviewed_by_account: reviewer_account,
-            reviewed_by_person: reviewer_account.person,
             reviewed_at: now,
             rejection_reason: "Another claim for this profile was approved"
           )
@@ -94,14 +84,13 @@ class PlayerClaimService
     reviewer_account ||= account_for_reviewer(reviewer)
     raise ClaimError, "An authorized reviewer Account is required" unless reviewer_account
     raise ClaimError, "Forbidden" unless ProfilePolicy.new(actor: reviewer_account.user, profile: claim.subject).review_claim?
-    claimant_account = claim.claimant_account || claim.person.account
+    claimant_account = claim.claimant_account
     raise ClaimError, "A claimant cannot review their own claim" if claimant_account&.id == reviewer_account.id
 
     PlayerClaim.transaction do
       claim.with_lock do
         ensure_pending!(claim)
         claim.update!(status: "rejected", reviewed_by_account: reviewer_account,
-                      reviewed_by_person: reviewer_account.person,
                       reviewed_at: Time.current, rejection_reason: reason)
       end
     end
@@ -128,13 +117,12 @@ class PlayerClaimService
     case reviewer
     when Account then reviewer
     when User then reviewer.account
-    when Person then reviewer.account
     end
   end
   private_class_method :account_for_reviewer
 
   def self.notify_decision!(claim)
-    account = claim.claimant_account || claim.person.account
+    account = claim.claimant_account
     return unless account&.user&.email_address.present?
 
     ProfileClaimsMailer.decision(claim).deliver_later

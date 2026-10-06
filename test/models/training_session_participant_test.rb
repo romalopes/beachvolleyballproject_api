@@ -114,7 +114,7 @@ class TrainingSessionParticipantTest < ActiveSupport::TestCase
 
   test "has_one person through player_profile" do
     participant = training_session_participants(:session_with_participants)
-    assert_equal people(:one), participant.person
+    assert_equal people(:one), participant.player_profile.person
   end
 
   test "ordered scope sorts by id" do

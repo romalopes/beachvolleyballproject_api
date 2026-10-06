@@ -65,7 +65,6 @@ class PersonConsolidationService
       RELATIONSHIPS.each do |_name, model|
         model.where(person_id: @source.id).update_all(person_id: @canonical.id, updated_at: now)
       end
-      Account.where(person_id: @source.id).update_all(person_id: @canonical.id, updated_at: now) if @source.account
       # Flatten existing merge references so every merged record points directly
       # to the canonical identity and cannot form a chain through this source.
       merged_from_count = Person.where(merged_into_id: @source.id).where.not(id: @source.id).update_all(merged_into_id: @canonical.id, updated_at: now)
@@ -93,8 +92,10 @@ class PersonConsolidationService
 
   def conflict_list
     conflicts = []
-    if @source.account && @canonical.account
-      conflicts << { type: "account_conflict", source_record_id: @source.account.id, canonical_record_id: @canonical.account.id }
+    source_accounts = linked_account_ids(@source)
+    canonical_accounts = linked_account_ids(@canonical)
+    if source_accounts.any? && canonical_accounts.any? && (source_accounts & canonical_accounts).empty?
+      conflicts << { type: "account_conflict", source_record_id: source_accounts.first, canonical_record_id: canonical_accounts.first }
     end
     {
       organisation_membership_conflict: [OrganisationMembership, :organisation_id],
@@ -176,9 +177,13 @@ class PersonConsolidationService
 
   def record_counts
     counts = RELATIONSHIPS.transform_values { |model| model.where(person_id: @source.id).count }
-    counts[:accounts] = Account.where(person_id: @source.id).count
     counts[:merged_people] = Person.where(merged_into_id: @source.id).where.not(id: @source.id).count
     counts
+  end
+
+  def linked_account_ids(person)
+    person.player_profiles.where.not(account_id: nil).pluck(:account_id) +
+      person.coach_profiles.where.not(account_id: nil).pluck(:account_id)
   end
 
   def person_summary(person)

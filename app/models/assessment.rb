@@ -118,7 +118,7 @@ class Assessment < ApplicationRecord
     return published if user.nil?
 
     own = where(created_by_id: user.id)
-    attributed = where(coach_profile_id: user.person&.coach_profiles&.select(:id))
+    attributed = where(coach_profile_id: user.account&.coach_profiles&.select(:id))
     own.or(attributed).or(published)
   }
 
@@ -175,7 +175,7 @@ class Assessment < ApplicationRecord
   # A coach recorded without an account is still a valid assessor — their rows
   # are then managed by the recorder and by curators/admins.
   def coach_account_user_id
-    coach_profile&.person&.account&.user_id
+    coach_profile&.account&.user_id
   end
 
   def publicly_visible?
@@ -444,12 +444,13 @@ class Assessment < ApplicationRecord
     self.scale = nil
   end
 
-  # A person may hold both profiles. Nobody rates themselves, whoever records it:
-  # comparing the FK columns keeps this query-free, and `coach_profiles.person_id`
-  # is unique — one CoachProfile per Person — so "the same person" is unambiguous.
+  # An Account may own both profiles; legacy unclaimed profiles can still share
+  # their historical roster identity.
   def coach_must_not_assess_their_own_player_profile
     return if coach_profile.blank? || player_profile.blank?
-    return unless coach_profile.person_id == player_profile.person_id
+    same_account = coach_profile.account_id.present? && coach_profile.account_id == player_profile.account_id
+    same_legacy_identity = coach_profile.person_id.present? && coach_profile.person_id == player_profile.person_id
+    return unless same_account || same_legacy_identity
 
     errors.add(:coach_profile, "cannot be the same person as the player being assessed")
   end

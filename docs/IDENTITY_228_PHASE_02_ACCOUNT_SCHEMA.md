@@ -2,14 +2,14 @@
 
 ## Status
 
-Implemented and verified against the configured local PostgreSQL database. At the Phase 2 checkpoint, no ownership/authorization work had begun; Phase 3 is now implemented separately in `IDENTITY_228_PHASE_03_PROFILE_AUTHORIZATION.md`.
+Implemented and verified against the configured local PostgreSQL database at the Phase 2 checkpoint. The later Account decoupling is recorded in `IDENTITY_228_PHASE_09_PEOPLE_WORKFLOWS.md`; the current model no longer stores an Account→Person relationship.
 
 ## Decisions applied
 
 - Every Account receives one private ContactDetail with first name, last name, contact email, phone and date of birth.
 - ContactDetail email is distinct from User.email_address (authentication).
 - AccountAddress continues to hold postal address fields.
-- PlayerProfile and CoachProfile gain nullable `account_id` links. Person-linked profiles are linked only through the existing Account.person relationship; profiles with no Account remain unclaimed.
+- PlayerProfile and CoachProfile gain nullable `account_id` links. At this checkpoint, Person-linked profiles were mapped through `Account.person`; migration `20261006100011` replaces that bridge with explicit profile and membership Account links.
 - Creator Account columns already existed. Legacy `created_by_id` User IDs are mapped to Accounts only where an exact Account exists.
 - Roles stay on User. Person and existing Person references remain in place.
 - Foreign keys use restrictive deletion behavior. No domain history is deleted.
@@ -19,7 +19,7 @@ Implemented and verified against the configured local PostgreSQL database. At th
 - Added migration `20261006100007_add_account_centric_identity_links` to create `contact_details`, add profile `account_id` FKs, backfill ContactDetails from Account-linked Person data, backfill profile Account links, and fill missing creator Account links from an exact User mapping.
 - Added `ContactDetail` and Account association/creation validation. Account creation builds ContactDetail in the same Active Record transaction. Existing Person writes synchronize the ContactDetail during this transition.
 - Exposed contact email in the existing account API and account settings form without changing the User login email.
-- Added `AccountIdentityPhase2Backfill` and `bin/rails identity:phase2_backfill`. The default is a read-only dry run; set `APPLY=true` to repeat the idempotent account/profile creator mapping. It reports core counts, unknown creator mappings, profiles with accountless Person records, ambiguities, and preserved history counts.
+- Added `AccountIdentityPhase2Backfill` and `bin/rails identity:phase2_backfill`. The current service is read-only because ownership mapping is now performed by the later migration; it reports core counts and preserved history.
 - Extended the production readiness report with the new table and migration version.
 
 ## Verification results

@@ -1,4 +1,5 @@
 maria_coach:
   person: two
+  account: two
   coaching_level: level_2
   status: active

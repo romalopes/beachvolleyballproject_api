@@ -14,7 +14,7 @@ class ClaimInvitationsMailer < ApplicationMailer
     @invitation = invitation
     @token = raw_token
     @subject = ClaimSubject.for(invitation.claimable)
-    @inviter_name = invitation.invited_by&.person&.full_name || invitation.invited_by&.name
+    @inviter_name = invitation.invited_by&.account&.full_name || invitation.invited_by&.name
     @expires_in = ClaimInvitation::DEFAULT_EXPIRATION
     @claim_url = claim_url(raw_token)
 

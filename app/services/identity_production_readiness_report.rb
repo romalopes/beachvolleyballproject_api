@@ -23,6 +23,7 @@ class IdentityProductionReadinessReport
     20261006100008
     20261006100009
     20261006100010
+    20261006100011
   ].freeze
 
   REQUIRED_TABLES = %w[
@@ -35,7 +36,6 @@ class IdentityProductionReadinessReport
 
   ORPHAN_CHECKS = {
     "accounts_without_users" => [ "accounts", "user_id", "users" ],
-    "accounts_without_people" => [ "accounts", "person_id", "people" ],
     "contact_details_without_accounts" => [ "contact_details", "account_id", "accounts" ],
     "player_profiles_without_accounts" => [ "player_profiles", "account_id", "accounts" ],
     "player_profile_creators_without_accounts" => [ "player_profiles", "created_by_account_id", "accounts" ],
@@ -49,6 +49,8 @@ class IdentityProductionReadinessReport
     "assessment_participants_without_player_profiles" => [ "assessment_session_participants", "player_profile_id", "player_profiles" ],
     "organisation_memberships_without_people" => [ "organisation_memberships", "person_id", "people" ],
     "group_memberships_without_people" => [ "group_memberships", "person_id", "people" ],
+    "organisation_memberships_without_accounts" => [ "organisation_memberships", "account_id", "accounts" ],
+    "group_memberships_without_accounts" => [ "group_memberships", "account_id", "accounts" ],
     "claims_without_people" => [ "player_claims", "person_id", "people" ],
     "claims_without_initiators" => [ "player_claims", "initiated_by_person_id", "people" ],
     "claims_without_reviewers" => [ "player_claims", "reviewed_by_person_id", "people" ],
@@ -87,17 +89,11 @@ class IdentityProductionReadinessReport
     add_anomaly(anomalies, "required_migrations_pending", "warning",
                 (REQUIRED_MIGRATIONS - migration_versions).length,
                 "Apply the identity migrations after backup and preflight approval.") unless (REQUIRED_MIGRATIONS - migration_versions).empty?
-    add_anomaly(anomalies, "accounts_with_duplicate_person", "blocker", duplicate_count(:accounts, :person_id),
-                "Resolve account ownership explicitly; do not auto-merge accounts.")
-    add_anomaly(anomalies, "accounts_without_person", "warning", Account.where(person_id: nil).count,
-                "Review unlinked accounts and confirm they are expected onboarding records.")
     if table_exists?(:contact_details)
       missing_contact_details = Account.left_outer_joins(:contact_detail).where(contact_details: { id: nil }).count
       add_anomaly(anomalies, "accounts_without_contact_details", "blocker", missing_contact_details,
                   "Create and validate a ContactDetail for every Account before deploying the account-centric contract.")
     end
-    add_anomaly(anomalies, "coach_profiles_without_person", "blocker", CoachProfile.where(person_id: nil).count,
-                "CoachProfiles require a Person; investigate before deployment.")
     add_anomaly(anomalies, "duplicate_canonical_emails", "warning", duplicate_canonical_email_groups,
                 "Review matching email groups; this report does not decide whether records describe the same person.")
     add_anomaly(anomalies, "duplicate_canonical_names", "warning", duplicate_canonical_name_groups,
@@ -120,9 +116,9 @@ class IdentityProductionReadinessReport
                   "Restore a valid claim lifecycle status before deployment.")
       add_anomaly(anomalies, "pending_claims_on_linked_profiles", "blocker",
                   PlayerClaim.pending.where(claimable_type: "PlayerProfile",
-                                            claimable_id: PlayerProfile.where.not(person_id: nil).select(:id)).count +
+                                            claimable_id: PlayerProfile.where.not(account_id: nil).select(:id)).count +
                     PlayerClaim.pending.where(claimable_type: "CoachProfile",
-                                              claimable_id: CoachProfile.where.not(person_id: nil).select(:id)).count,
+                                              claimable_id: CoachProfile.where.not(account_id: nil).select(:id)).count,
                   "Reconcile the claim and existing profile association before enabling claims.")
       add_anomaly(anomalies, "duplicate_pending_claim_profiles", "blocker",
                   duplicate_claimables("player_claims", status: "pending"),
@@ -210,7 +206,7 @@ class IdentityProductionReadinessReport
         people_with_multiple_player_profiles: multiple_profile_people_count(PlayerProfile),
         people_with_multiple_coach_profiles: multiple_profile_people_count(CoachProfile),
         unlinked_player_profiles: PlayerProfile.where(person_id: nil).count,
-        accounts_without_person: Account.where(person_id: nil).count,
+        accounts_without_contact_detail: Account.left_joins(:contact_detail).where(contact_details: { id: nil }).count,
         duplicate_canonical_email_groups: duplicate_canonical_email_groups,
         duplicate_canonical_name_groups: duplicate_canonical_name_groups
       },

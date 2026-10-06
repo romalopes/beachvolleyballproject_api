@@ -251,7 +251,7 @@ class Api::V1::PeopleControllerTest < ActionDispatch::IntegrationTest
     sign_in_as(@admin)
     # `people(:five)` does not exist: the person behind an account is `people(:one)`.
     person = people(:one)
-    assert person.account, "the fixture must have an account for this test to mean anything"
+    assert person.player_profiles.exists?(account_id: accounts(:one).id), "the fixture must have an Account-linked profile for this test to mean anything"
 
     delete "/api/v1/people/#{person.id}"
 

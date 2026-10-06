@@ -15,13 +15,13 @@ Only same-type merges are supported. This phase does not merge Accounts or Peopl
 - Supported foreign-key references move to the canonical profile. The source row remains, is archived, and points to the canonical profile. Active invitations to the source are revoked (or marked expired when their expiry has passed).
 - Profile detail pages expose the same-type merge workflow only to admins and curators. It requires selecting a target, entering a reason, and checking an explicit confirmation. A successful merge navigates to the canonical profile.
 - A personless player profile can be edited from its detail page; the Edit action no longer depends on a Person association.
-- Hard deletion checks direct Account ownership, Person Account ownership and group membership, profile history, claim/invitation records, merge audit/link rows, and the profile's Person siblings. A failed foreign-key delete caused by a concurrent reference is reported as protected history.
+- Hard deletion checks group membership, profile history, claim/invitation records, merge audit/link rows, and the profile's Person siblings. A direct Account link or an Account link on the retained Person's sibling profile does not block deleting this profile; the Account and Person are retained. A failed foreign-key delete caused by a concurrent reference is reported as protected history.
 
 ## Deletion dependency matrix
 
 | Dependency or history | Player profile merge | Coach profile merge | Hard-delete behavior |
 | --- | --- | --- | --- |
-| Direct `account_id` / linked Person's Account | Both profiles must resolve to the same Account | Both profiles must resolve to the same Account | Blocks deletion if either the profile or its Person is Account-linked |
+| Direct `account_id` / linked Person's Account | Both profiles must resolve to the same Account | Both profiles must resolve to the same Account | Does not block deletion; linked Account and Person are retained |
 | `assessments.player_profile_id` / `assessments.coach_profile_id` | Repoint to canonical | Repoint to canonical | Blocks deletion |
 | Training session participants | Repoint to canonical; same-session duplicate blocks merge | Not a coach-profile FK in the current schema | Blocks player deletion |
 | Assessment session participants | Repoint to canonical; same-session duplicate blocks merge | Not a coach-profile FK in the current schema | Blocks player deletion |
@@ -54,4 +54,4 @@ The service moves only the listed, explicit foreign keys. JSON snapshots are not
 
 ## Operational notes
 
-No migration is required; the `profile_merges` audit table and merge columns already exist. Hard deletion is intentionally unavailable whenever a profile has protected history. Archive remains the fallback lifecycle action. The merge action is irreversible through the UI, so staff must verify the target before confirming.
+No migration is required; the `profile_merges` audit table and merge columns already exist. Hard deletion is unavailable whenever a profile has protected history. Account ownership alone is not protected profile history and does not prevent an administrator from deleting the profile. Archive remains the fallback lifecycle action. The merge action is irreversible through the UI, so staff must verify the target before confirming.

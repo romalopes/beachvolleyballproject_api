@@ -373,16 +373,31 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert Person.exists?(person.id)
   end
 
-  test "hard delete refuses a coach whose linked Person has an account" do
-    person = people(:two)
+  test "admin can hard delete a coach whose linked Person has an Account-linked profile" do
+    person = Person.create!(first_name: "Unused", last_name: "Coach", creation_source: "system")
+    player = PlayerProfile.create!(person: person, account: accounts(:two), display_name: "Linked player")
     coach = CoachProfile.create!(person: person, display_name: "Maria secondary coach")
+    account = player.account
     sign_in_as(@admin)
 
     delete "/api/v1/coaches/#{coach.id}"
 
-    assert_response :unprocessable_entity
-    assert_includes JSON.parse(response.body)["blockers"], "person_account"
-    assert CoachProfile.exists?(coach.id)
+    assert_response :no_content
+    assert_not CoachProfile.exists?(coach.id)
+    assert Person.exists?(person.id)
+    assert Account.exists?(account.id)
+  end
+
+  test "admin can hard delete a coach profile directly linked to an Account" do
+    coach = CoachProfile.create!(display_name: "Connected coach", account: accounts(:two))
+    account = coach.account
+    sign_in_as(@admin)
+
+    delete "/api/v1/coaches/#{coach.id}"
+
+    assert_response :no_content
+    assert_not CoachProfile.exists?(coach.id)
+    assert Account.exists?(account.id)
   end
 
   test "visibility: owned, shared and private rows" do

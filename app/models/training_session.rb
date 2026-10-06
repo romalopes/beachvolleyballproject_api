@@ -96,7 +96,7 @@ class TrainingSession < ApplicationRecord
     shared = non_drafts.where(visibility: "shared")
     if user.respond_to?(:content_manager?) && user.content_manager?
       all
-    elsif user.respond_to?(:person) && (profile = user.person&.player_profile)
+    elsif user.respond_to?(:account) && (profile = user.account&.player_profiles&.first)
       participant_ids = TrainingSessionParticipant.where(player_profile_id: profile.id).pluck(:training_session_id)
       shared.or(non_drafts.where(id: participant_ids))
     else
@@ -151,7 +151,7 @@ class TrainingSession < ApplicationRecord
     return false if draft?
     return true if shared?
 
-    profile = user.respond_to?(:person) ? user.person&.player_profile : nil
+    profile = user.respond_to?(:account) ? user.account&.player_profiles&.first : nil
     return false if profile.nil?
 
     training_session_participants.any? { |p| p.player_profile_id == profile.id }

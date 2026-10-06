@@ -5,15 +5,13 @@ class PlayerClaimInvitationService
   INVALID_MESSAGE = "Invitation is invalid, expired, revoked, or already used".freeze
 
   # `invitee_email` is optional. When present it is stored (normalized) and the
-  # invitation can only be redeemed by a Person holding that address; when nil
-  # the invitation stays an open one-time bearer token, which is the only option
-  # for a placeholder profile that has no Person and therefore no email.
-  def self.issue!(player_profile:, created_by_person:, invitee_email: nil)
+  # invitation can only be redeemed by a verified Account holding that address.
+  def self.issue!(player_profile:, created_by_account:, invitee_email: nil)
     raw_token = SecureRandom.urlsafe_base64(32)
     invitation = PlayerClaimInvitation.transaction do
       player_profile.with_lock do
-        raise InvitationError, INVALID_MESSAGE unless player_profile.person_id.nil? && player_profile.status == "active"
-        raise InvitationError, "A linked active creator Person is required" unless created_by_person&.status == "active"
+        raise InvitationError, INVALID_MESSAGE unless player_profile.account_id.nil? && player_profile.status == "active"
+        raise InvitationError, "An authenticated creator Account is required" unless created_by_account
 
         now = Time.current
         player_profile.player_claim_invitations.active.each do |prior|
@@ -25,7 +23,7 @@ class PlayerClaimInvitationService
         end
 
         player_profile.player_claim_invitations.create!(
-          created_by_person: created_by_person,
+          created_by_account: created_by_account,
           token_digest: digest(raw_token),
           invitee_email: invitee_email,
           expires_at: now + EXPIRATION,
@@ -37,8 +35,9 @@ class PlayerClaimInvitationService
     [ invitation, raw_token ]
   end
 
-  def self.redeem!(raw_token:, person:)
-    raise InvitationError, INVALID_MESSAGE if raw_token.blank? || person&.status != "active"
+  def self.redeem!(raw_token:, account:)
+    raise InvitationError, INVALID_MESSAGE if raw_token.blank? || account.nil?
+    user = account.user
 
     invitation = PlayerClaimInvitation.find_by(token_digest: digest(raw_token))
     raise InvitationError, INVALID_MESSAGE unless invitation
@@ -54,24 +53,22 @@ class PlayerClaimInvitationService
           # An address-restricted invitation is refused for anyone else, and the
           # failure is the same generic message as an invalid token so the
           # endpoint never reveals that a given address was invited.
-          raise InvitationError, INVALID_MESSAGE unless invitation.redeemable_by?(person)
+          raise InvitationError, INVALID_MESSAGE unless invitation.redeemable_by?(user)
 
           if invitation.expires_at <= Time.current
             invitation.update!(status: "expired")
             next
           end
 
-          raise InvitationError, INVALID_MESSAGE unless profile.person_id.nil? && profile.status == "active"
+          raise InvitationError, INVALID_MESSAGE unless profile.account_id.nil? && profile.status == "active"
 
           # Keep the Phase 3 approval step: possession of an invite authorizes a
-          # claim request, but never silently edits PlayerProfile.person_id.
+          # claim request, but never silently links a profile without approval.
           claim = PlayerClaimService.request!(
             player_profile: profile,
-            account: person.account,
-            person: person,
-            initiated_by_person: invitation.created_by_person
+            account: account
           )
-          invitation.update!(status: "used", used_at: Time.current, used_by_person: person)
+          invitation.update!(status: "used", used_at: Time.current, used_by_account: account)
         end
       end
     end

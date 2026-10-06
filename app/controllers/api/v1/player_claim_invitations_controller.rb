@@ -45,7 +45,7 @@ module Api
           result = ClaimInvitationService.redeem!(raw_token: raw_token, user: Current.user)
           payload = { outcome: result[:outcome].to_s, invitation: result[:invitation].summary }
           if result[:outcome] == :linked
-            payload[:person] = Current.user.reload.person&.identity_summary
+            payload[:account_id] = Current.user.reload.account&.id
           else
             payload[:claim] = result[:claim].summary
             payload[:message] = "Your request was sent for review. A coach or administrator will approve it."
@@ -54,7 +54,7 @@ module Api
           # Previously issued legacy links remain redeemable during the
           # compatibility window. They always create a review request; they
           # cannot directly attach a profile to a Person.
-          claim = PlayerClaimInvitationService.redeem!(raw_token: raw_token, person: Current.user.person)
+          claim = PlayerClaimInvitationService.redeem!(raw_token: raw_token, account: Current.user.account)
           payload = { outcome: "pending_review", claim: claim.summary,
                       message: "Your request was sent for review. A coach or administrator will approve it." }
         end

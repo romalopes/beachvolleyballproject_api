@@ -1,4 +1,15 @@
-# Person / Player / Coach Identity Model
+# Person / Player / Coach Identity Model (legacy model checkpoint)
+
+> **Current implementation note (2026-10-06):** this document describes the
+> former Person-centered design below. The current Issue 228 target makes
+> `Account` independent of `Person`: `User 1—1 Account 1—1 ContactDetail`, and
+> an Account may own multiple player/coach profiles. The application no longer
+> defines `Account.person`, `Person.account`, or `User.person`. Person remains
+> as a legacy roster/history identity through profile and membership references;
+> it is not the Account identity. See
+> [Phase 9](IDENTITY_228_PHASE_09_PEOPLE_WORKFLOWS.md) for the cutover and
+> remaining boundary. Migration `20261006100011` must be applied to a target
+> database before its schema matches this contract.
 
 The identity model supports an optional Account and multiple player and coach
 profiles per Person. Claim, candidate-discovery, and invitation workflows are

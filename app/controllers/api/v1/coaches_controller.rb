@@ -272,7 +272,7 @@ module Api
         return true if user.admin?
 
         account = user.account
-        account && (profile.account_id == account.id || profile.person_id == account.person_id)
+        account && profile.account_id == account.id
       end
 
       def redact_person_contact!(payload, profile)

@@ -11,7 +11,7 @@ module NestedOrganisationMembershipAuthorization
     return true if rows.blank?
     return true if Current.user&.admin?
 
-    actor = Current.user&.person
+    actor = Current.user&.account
     return forbidden_nested_membership! if actor.nil?
 
     rows = rows.is_a?(Array) ? rows : [rows]

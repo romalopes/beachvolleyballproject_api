@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_100011) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -28,10 +28,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
 
   create_table "accounts", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "person_id", null: false
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
-    t.index ["person_id"], name: "index_accounts_on_person_id", unique: true
     t.index ["user_id"], name: "index_accounts_on_user_id", unique: true
   end
 
@@ -331,14 +329,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
   end
 
   create_table "group_memberships", force: :cascade do |t|
+    t.bigint "account_id"
     t.datetime "created_at", null: false
     t.bigint "group_id", null: false
     t.datetime "joined_at"
     t.datetime "left_at"
-    t.bigint "person_id", null: false
+    t.bigint "person_id"
     t.string "role", default: "member", null: false
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_group_memberships_on_account_id"
+    t.index ["group_id", "account_id"], name: "index_group_memberships_on_group_and_account", unique: true, where: "(account_id IS NOT NULL)"
     t.index ["group_id", "person_id"], name: "index_group_memberships_on_group_and_person", unique: true
     t.index ["group_id"], name: "index_group_memberships_on_group_id"
     t.index ["group_id"], name: "index_group_memberships_single_active_owner", unique: true, where: "(((role)::text = 'owner'::text) AND ((status)::text = 'active'::text))"
@@ -400,14 +401,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
   end
 
   create_table "organisation_memberships", force: :cascade do |t|
+    t.bigint "account_id"
     t.datetime "created_at", null: false
     t.datetime "joined_at"
     t.datetime "left_at"
     t.bigint "organisation_id", null: false
-    t.bigint "person_id", null: false
+    t.bigint "person_id"
     t.string "role", default: "member", null: false
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_organisation_memberships_on_account_id"
+    t.index ["organisation_id", "account_id"], name: "index_org_memberships_on_org_and_account", unique: true, where: "(account_id IS NOT NULL)"
     t.index ["organisation_id", "person_id"], name: "index_org_memberships_on_organisation_and_person", unique: true
     t.index ["organisation_id", "status"], name: "index_org_memberships_on_organisation_and_status"
     t.index ["organisation_id"], name: "index_org_memberships_single_active_owner", unique: true, where: "(((role)::text = 'owner'::text) AND ((status)::text = 'active'::text))"
@@ -421,6 +425,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
   create_table "organisations", force: :cascade do |t|
     t.string "acronym"
     t.datetime "created_at", null: false
+    t.bigint "created_by_account_id"
     t.bigint "created_by_person_id"
     t.text "description"
     t.string "name", null: false
@@ -431,6 +436,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
     t.datetime "updated_at", null: false
     t.index "lower((name)::text)", name: "index_organisations_on_lower_name", unique: true
     t.index ["acronym"], name: "index_organisations_on_acronym"
+    t.index ["created_by_account_id"], name: "index_organisations_on_created_by_account_id"
     t.index ["created_by_person_id"], name: "index_organisations_on_created_by_person_id"
     t.index ["organisation_type"], name: "index_organisations_on_organisation_type"
     t.index ["parent_organisation_id"], name: "index_organisations_on_parent_organisation_id"
@@ -507,7 +513,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
 
   create_table "player_claim_invitations", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "created_by_person_id", null: false
+    t.bigint "created_by_account_id"
+    t.bigint "created_by_person_id"
     t.datetime "expires_at", null: false
     t.string "invitee_email"
     t.bigint "player_profile_id", null: false
@@ -516,12 +523,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
     t.string "token_digest", null: false
     t.datetime "updated_at", null: false
     t.datetime "used_at"
+    t.bigint "used_by_account_id"
     t.bigint "used_by_person_id"
+    t.index ["created_by_account_id"], name: "index_player_claim_invitations_on_created_by_account_id"
     t.index ["created_by_person_id"], name: "index_player_claim_invitations_on_created_by_person_id"
     t.index ["player_profile_id", "invitee_email"], name: "index_player_claim_invitations_one_active_per_email", unique: true, where: "(((status)::text = 'active'::text) AND (invitee_email IS NOT NULL))"
     t.index ["player_profile_id"], name: "index_player_claim_invitations_on_player_profile_id"
     t.index ["player_profile_id"], name: "index_player_claim_invitations_one_active_per_profile", unique: true, where: "((status)::text = 'active'::text)"
     t.index ["token_digest"], name: "index_player_claim_invitations_on_token_digest", unique: true
+    t.index ["used_by_account_id"], name: "index_player_claim_invitations_on_used_by_account_id"
     t.index ["used_by_person_id"], name: "index_player_claim_invitations_on_used_by_person_id"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'used'::character varying, 'revoked'::character varying, 'expired'::character varying]::text[])", name: "player_claim_invitations_valid_status"
   end
@@ -531,8 +541,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
     t.string "claimable_type"
     t.bigint "claimant_account_id"
     t.datetime "created_at", null: false
-    t.bigint "initiated_by_person_id", null: false
-    t.bigint "person_id", null: false
+    t.bigint "initiated_by_account_id"
+    t.bigint "initiated_by_person_id"
+    t.bigint "person_id"
     t.bigint "player_profile_id"
     t.text "rejection_reason"
     t.datetime "reviewed_at"
@@ -544,6 +555,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
     t.index ["claimable_type", "claimable_id", "claimant_account_id"], name: "index_player_claims_pending_per_account_and_claimable", unique: true, where: "(((status)::text = 'pending'::text) AND (claimant_account_id IS NOT NULL))"
     t.index ["claimable_type", "claimable_id"], name: "index_player_claims_on_claimable"
     t.index ["claimant_account_id"], name: "index_player_claims_on_claimant_account_id"
+    t.index ["initiated_by_account_id"], name: "index_player_claims_on_initiated_by_account_id"
     t.index ["initiated_by_person_id"], name: "index_player_claims_on_initiated_by_person_id"
     t.index ["person_id"], name: "index_player_claims_on_person_id"
     t.index ["player_profile_id"], name: "index_player_claims_on_player_profile_id"
@@ -853,7 +865,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
   end
 
   add_foreign_key "account_addresses", "accounts"
-  add_foreign_key "accounts", "people"
   add_foreign_key "accounts", "users"
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
@@ -892,13 +903,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
   add_foreign_key "drill_skills", "drills"
   add_foreign_key "drill_skills", "skills"
   add_foreign_key "drills", "users", column: "created_by_id"
+  add_foreign_key "group_memberships", "accounts"
   add_foreign_key "group_memberships", "groups"
   add_foreign_key "group_memberships", "people"
   add_foreign_key "groups", "organisations"
   add_foreign_key "groups", "users", column: "created_by_id"
   add_foreign_key "log_objects", "logs"
+  add_foreign_key "organisation_memberships", "accounts"
   add_foreign_key "organisation_memberships", "organisations"
   add_foreign_key "organisation_memberships", "people"
+  add_foreign_key "organisations", "accounts", column: "created_by_account_id"
   add_foreign_key "organisations", "organisations", column: "parent_organisation_id"
   add_foreign_key "organisations", "people", column: "created_by_person_id"
   add_foreign_key "people", "people", column: "merged_into_id"
@@ -911,10 +925,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100010) do
   add_foreign_key "person_consolidations", "people", column: "canonical_person_id"
   add_foreign_key "person_consolidations", "people", column: "source_person_id"
   add_foreign_key "person_consolidations", "users", column: "performed_by_id"
+  add_foreign_key "player_claim_invitations", "accounts", column: "created_by_account_id"
+  add_foreign_key "player_claim_invitations", "accounts", column: "used_by_account_id"
   add_foreign_key "player_claim_invitations", "people", column: "created_by_person_id"
   add_foreign_key "player_claim_invitations", "people", column: "used_by_person_id"
   add_foreign_key "player_claim_invitations", "player_profiles"
   add_foreign_key "player_claims", "accounts", column: "claimant_account_id"
+  add_foreign_key "player_claims", "accounts", column: "initiated_by_account_id"
   add_foreign_key "player_claims", "accounts", column: "reviewed_by_account_id"
   add_foreign_key "player_claims", "people"
   add_foreign_key "player_claims", "people", column: "initiated_by_person_id"

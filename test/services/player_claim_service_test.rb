@@ -7,20 +7,20 @@ class PlayerClaimServiceTest < ActiveSupport::TestCase
     reviewer = users(:three)
     claimants = [ users(:five), users(:six) ]
     claimants.each do |user|
-      OrganisationMembership.find_or_create_by!(person: user.person, organisation: organisations(:sydney_club)) do |membership|
+      OrganisationMembership.find_or_create_by!(account: user.account, organisation: organisations(:sydney_club)) do |membership|
         membership.role = "member"
         membership.status = "active"
         membership.joined_at = Time.current
       end
     end
-    OrganisationMembership.find_or_create_by!(person: reviewer.person, organisation: organisations(:sydney_club)) do |membership|
+    OrganisationMembership.find_or_create_by!(account: reviewer.account, organisation: organisations(:sydney_club)) do |membership|
       membership.role = "coach"
       membership.status = "active"
       membership.joined_at = Time.current
     end
     profile = PlayerProfile.create!(display_name: "Concurrent Claim", created_by: reviewer)
     claims = claimants.map do |user|
-      PlayerClaim.create!(claimable: profile, person: user.person, initiated_by_person: user.person,
+      PlayerClaim.create!(claimable: profile, initiated_by_account: user.account,
                           claimant_account: user.account, status: "pending")
     end
 
@@ -59,14 +59,14 @@ class PlayerClaimServiceTest < ActiveSupport::TestCase
   test "failure after linking rolls back the profile and claim decision" do
     reviewer = users(:three)
     claimant = users(:five)
-    OrganisationMembership.find_or_create_by!(person: reviewer.person, organisation: organisations(:sydney_club)) do |membership|
+    OrganisationMembership.find_or_create_by!(account: reviewer.account, organisation: organisations(:sydney_club)) do |membership|
       membership.role = "coach"
       membership.status = "active"
       membership.joined_at = Time.current
     end
     profile = PlayerProfile.create!(display_name: "Rollback Claim", created_by: reviewer)
-    claim = PlayerClaim.create!(claimable: profile, person: claimant.person,
-                                initiated_by_person: claimant.person, claimant_account: claimant.account,
+    claim = PlayerClaim.create!(claimable: profile, initiated_by_account: claimant.account,
+                                claimant_account: claimant.account,
                                 status: "pending")
     subject = ClaimSubject.for(profile)
     effect = subject.method(:effect!)

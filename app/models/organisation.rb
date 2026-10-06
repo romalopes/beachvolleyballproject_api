@@ -51,6 +51,8 @@ class Organisation < ApplicationRecord
 
   belongs_to :parent_organisation, class_name: "Organisation", optional: true
   belongs_to :created_by_person, class_name: "Person", optional: true
+  belongs_to :created_by_account, class_name: "Account", optional: true
+  belongs_to :created_by_account, class_name: "Account", optional: true
 
   # The first attachment in this application. The storage service was already
   # configured but never installed, so this is what the Active Storage tables
@@ -71,6 +73,7 @@ class Organisation < ApplicationRecord
            class_name: "OrganisationMembership",
            inverse_of: :organisation
   has_many :members, through: :active_memberships, source: :person
+  has_many :account_members, through: :active_memberships, source: :account
 
   has_many :child_organisations,
            class_name: "Organisation",
@@ -147,13 +150,15 @@ class Organisation < ApplicationRecord
   # `created_by_person_id`. An organisation can be handed over, and only one of
   # these can change when that happens.
   def owner
-    active_memberships.find_by(role: "owner")&.person
+    membership = active_memberships.find_by(role: "owner")
+    membership&.account || membership&.person
   end
 
-  def owner?(person)
-    return false if person.nil?
+  def owner?(member)
+    return false if member.nil?
 
-    active_memberships.where(role: "owner", person_id: person.id).exists?
+    key = member.is_a?(Account) ? { account_id: member.id } : { person_id: member.id }
+    active_memberships.where(role: "owner", **key).exists?
   end
 
   # Whether a person may change this organisation's membership: its owner and its
@@ -162,12 +167,11 @@ class Organisation < ApplicationRecord
   #
   # Site admins are *not* handled here; that is a wider authority than membership
   # and belongs to the authorization layer, which ORs the two.
-  def manageable_by?(person)
-    return false if person.nil?
+  def manageable_by?(member)
+    return false if member.nil?
 
-    person.organisation_memberships.active
-                                   .manageable
-                                   .exists?(organisation_id: id)
+    memberships = active_memberships.manageable.where(organisation_id: id)
+    member.is_a?(Account) ? memberships.exists?(account_id: member.id) : memberships.exists?(person_id: member.id)
   end
 
   def active_organisation_memberships
@@ -192,12 +196,12 @@ class Organisation < ApplicationRecord
   #
   # Site admins and curators are not handled here: those are wider authorities and
   # the authorization layer ORs them in.
-  def editable_by?(person)
-    return false if person.nil?
-    return true if manageable_by?(person)
-    return false unless created_by_person_id == person.id
+  def editable_by?(member)
+    return false if member.nil?
+    return true if manageable_by?(member)
+    return false unless member.is_a?(Person) && created_by_person_id == member.id
 
-    person.organisation_memberships.active.exists?(organisation_id: id)
+    member.organisation_memberships.active.exists?(organisation_id: id)
   end
 
   # Whether this organisation may be hard-deleted at all.
@@ -232,7 +236,7 @@ class Organisation < ApplicationRecord
   # The per-record path, used when the caller supplied neither a precomputed set nor
   # the "oversight can edit everything" flag — a single `show`, for instance.
   def default_can_edit?
-    editable_by?(Current&.user&.person) || oversight?
+    editable_by?(Current&.user&.account) || oversight?
   end
 
   # `editable_all` is a flag rather than a sentinel value inside `editable_ids`
@@ -250,7 +254,7 @@ class Organisation < ApplicationRecord
   # admits the creator and the curator — neither of whom runs anybody's roster.
   def manage_members_flag(manage_members_ids, manage_members_all)
     return true if manage_members_all
-    return manageable_by?(Current&.user&.person) if manage_members_ids.nil?
+    return manageable_by?(Current&.user&.account) if manage_members_ids.nil?
 
     manage_members_ids.include?(id)
   end

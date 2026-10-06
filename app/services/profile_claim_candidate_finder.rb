@@ -20,7 +20,7 @@ class ProfileClaimCandidateFinder
 
   def initialize(person: nil, account: nil, user:, type: "PlayerProfile", query: nil, organisation_id: nil)
     @account = account || user&.account
-    @person = person || @account&.person || user&.person
+    @person = person
     @user = user
     @type = type
     @query = query.to_s.strip
@@ -33,17 +33,15 @@ class ProfileClaimCandidateFinder
 
   def page(page:, per_page:)
     return [ [], 0 ] unless ProfileClaimability::PROFILE_TYPES.include?(@type)
-    return [ [], 0 ] unless @person&.status == "active"
+    return [ [], 0 ] unless @account
 
     available = ProfileClaimability.profiles_for(user: @user, type: @type)
     if @organisation_id
-      membership = @person.organisation_memberships.active.find_by(organisation_id: @organisation_id)
+      membership = @account.organisation_memberships.active.find_by(organisation_id: @organisation_id)
       return [ [], 0 ] unless membership
 
-      organisation_people = Person.joins(:organisation_memberships)
-        .where(organisation_memberships: { organisation_id: @organisation_id, status: "active" })
-      creator_accounts = Account.where(person_id: organisation_people).select(:id)
-      creator_users = Account.where(person_id: organisation_people).select(:user_id)
+      creator_accounts = Account.where(id: OrganisationMembership.where(organisation_id: @organisation_id, status: "active").select(:account_id))
+      creator_users = creator_accounts.select(:user_id)
       available = available.where(created_by_account_id: creator_accounts)
         .or(available.where(created_by_id: creator_users))
     end
@@ -57,7 +55,8 @@ class ProfileClaimCandidateFinder
       return [ rows.map { |row| Candidate.new(profile: row, type: @type, match_type: "name_search") }, total ]
     end
 
-    names = ([ @person.full_name, @person.first_name, @person.last_name ] + @person.person_aliases.map(&:full_name))
+    own_names = @account.player_profiles.pluck(:display_name) + @account.coach_profiles.pluck(:display_name)
+    names = own_names
             .map { |name| normalize(name) }.reject(&:blank?).uniq
     return [ [], 0 ] if names.empty?
 
@@ -96,7 +95,7 @@ class ProfileClaimCandidateFinder
   private
 
   def effective_name_sql
-    "COALESCE(NULLIF(trim(display_name), ''), NULLIF(trim(concat_ws(' ', people.first_name, people.last_name)), ''))"
+    "NULLIF(trim(display_name), '')"
   end
 
   def normalize(value)

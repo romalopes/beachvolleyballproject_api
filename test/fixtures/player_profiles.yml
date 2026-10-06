@@ -1,5 +1,6 @@
 john_player:
   person: one
+  account: one
   preferred_position: blocker
   level: intermediate
   status: active

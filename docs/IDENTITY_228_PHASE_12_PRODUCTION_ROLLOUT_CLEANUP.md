@@ -10,7 +10,7 @@ Phase 9 is still partial because active Account and organisation/group roster wo
 
 ## Readiness gate changes
 
-`IdentityProductionReadinessReport` now requires the identity migration set through `20261006100010`, rather than stopping at `20261006100007`. It also:
+`IdentityProductionReadinessReport` now requires the identity migration set through `20261006100011`, rather than stopping at `20261006100007`. It also:
 
 - Counts ContactDetails and Account-linked profile rows without exposing identity values.
 - Treats any Account without its required ContactDetail as a blocker.
@@ -18,6 +18,8 @@ Phase 9 is still partial because active Account and organisation/group roster wo
 - Includes ContactDetails in pre/post preservation counts.
 
 The report remains aggregate-only and the task runs it inside a PostgreSQL read-only transaction. A local development read-only run on 2026-10-06 reported all 21 required migrations applied, no missing tables, zero blockers, and two duplicate-identity warning groups. This is development evidence only; it says nothing about production state.
+
+Migration `20261006100011` is prepared but has not been applied in this workspace. It backfills Account ownership and actor links, verifies that each Account has ContactDetails, makes legacy actor references nullable, and removes `accounts.person_id`. Its `down` path is irreversible because reconstructing the old Person association is ambiguous. Do not treat the edited `db/schema.rb` as evidence that the target database has this migration applied.
 
 ## Production preconditions
 
@@ -47,6 +49,7 @@ All changes use ordinary Rails/PostgreSQL DDL and transactional migrations; no c
 | `20261006100008` | Adds Account actor links to claims, backfills, replaces pending-claim uniqueness | Backfills claim rows and changes a unique partial index. `down` is intentionally irreversible because valid competing Account claims may no longer fit the old index. |
 | `20261006100009` | Adds and constrains claim verification method | Constraint validation scans claims and may lock the table. |
 | `20261006100010` | Adds declined invitation state and replaces status check | Constraint replacement can lock/scan invitations. A rollback can fail after rows use `declined`; never delete those records to force rollback. |
+| `20261006100011` | Adds Account membership/actor links, backfills them, requires ContactDetails, and removes `accounts.person_id` | Row updates and DDL can lock membership/profile/claim tables. It aborts on missing ContactDetails or conflicting profile ownership and has no automatic rollback. Rehearse on a verified restored copy and preserve the pre-migration backup. |
 
 The account/contact migration is additive to the previous Person-backed model, but API compatibility for old clients is not yet demonstrated. Migration completion alone does not establish application compatibility.
 

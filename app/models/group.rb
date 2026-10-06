@@ -38,6 +38,7 @@ class Group < ApplicationRecord
   # roster, which is not history in the way a session is.
   has_many :group_memberships, dependent: :destroy, inverse_of: :group
   has_many :people, through: :group_memberships
+  has_many :accounts, through: :group_memberships
 
   # A group that has run sessions is history; deleting it is restricted so it
   # must be archived instead of leaving orphaned references.
@@ -65,16 +66,16 @@ class Group < ApplicationRecord
   # `organisation` is overridable so a caller can ask about the state a request
   # *would* produce — a group being moved and re-rostered in one call has to be
   # checked against its new organisation, not its current one.
-  def shares_organisation?(person_ids, organisation = organisation_id)
+  def shares_organisation?(person_ids, organisation = organisation_id, account_ids: [])
     return true if organisation.nil?
 
-    ids = Array(person_ids).map(&:to_i).uniq
-    return true if ids.empty?
+    person_ids = Array(person_ids).compact.map(&:to_i).uniq
+    account_ids = Array(account_ids).compact.map(&:to_i).uniq
+    return true if person_ids.empty? && account_ids.empty?
 
-    OrganisationMembership
-      .where(organisation_id: organisation, person_id: ids, status: "active")
-      .distinct
-      .count == ids.size
+    person_members = OrganisationMembership.where(organisation_id: organisation, person_id: person_ids, status: "active").distinct.count
+    account_members = OrganisationMembership.where(organisation_id: organisation, account_id: account_ids, status: "active").distinct.count
+    person_members == person_ids.size && account_members == account_ids.size
   end
 
   scope :active, -> { where(status: "active") }
@@ -83,12 +84,12 @@ class Group < ApplicationRecord
   # `none` rather than an unfiltered `all` when the caller has no Person, which
   # would otherwise return every group to an accountless user.
   scope :owned_by, ->(user) {
-    person_id = user&.person&.id
-    if person_id.nil?
+    account_id = user&.account&.id
+    if account_id.nil?
       none
     else
       joins(:group_memberships)
-        .where(group_memberships: { role: "owner", status: "active", person_id: person_id })
+        .where(group_memberships: { role: "owner", status: "active", account_id: account_id })
         .distinct
     end
   }
@@ -116,16 +117,16 @@ class Group < ApplicationRecord
   # else is manageable by its new owner and by nobody else. Resolved through the
   # user's Person because a group member is a Person, not an account.
   def owner?(user)
-    person_id = user&.person&.id
-    return false if person_id.nil?
+    account_id = user&.account&.id
+    return false if account_id.nil?
 
-    group_memberships.owners.exists?(person_id: person_id)
+    group_memberships.owners.exists?(account_id: account_id)
   end
 
   # The active owner membership, or nil. Callers that render who owns a group
   # should use this rather than re-deriving it.
   def owner_membership
-    group_memberships.owners.includes(:person).first
+    group_memberships.owners.includes(:person, :account).first
   end
 
   def archived?
@@ -162,7 +163,10 @@ class Group < ApplicationRecord
       player_count: player_count,
       # Who runs it, from the membership rather than from `created_by`, so this
       # cannot drift from what `owner?` decides.
-      owner: owner_membership&.then { |m| { id: m.person_id, name: m.person&.full_name } },
+      owner: owner_membership&.then do |membership|
+        { id: membership.account_id || membership.person_id, account_id: membership.account_id,
+          person_id: membership.person_id, name: membership.player_name }
+      end,
       # Present but null for a group placed before this column existed.
       organisation: organisation && { id: organisation.id, name: organisation.name },
       # Audit only — deliberately not named "owner".
@@ -181,9 +185,10 @@ class Group < ApplicationRecord
   def members_share_the_organisation
     return if organisation_id.nil?
 
-    current = group_memberships.active.map(&:person_id).uniq
-    return if current.empty?
-    return if shares_organisation?(current)
+    people_ids = group_memberships.active.map(&:person_id).compact.uniq
+    account_ids = group_memberships.active.map(&:account_id).compact.uniq
+    return if people_ids.empty? && account_ids.empty?
+    return if shares_organisation?(people_ids, organisation_id, account_ids: account_ids)
 
     errors.add(:organisation_id,
                "does not match everyone on the roster — a group is people who share one organisation")

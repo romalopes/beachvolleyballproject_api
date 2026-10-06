@@ -22,12 +22,18 @@ class OrganisationMembership < ApplicationRecord
   MANAGEMENT_ROLES = %w[owner administrator].freeze
 
   belongs_to :organisation
-  belongs_to :person
+  belongs_to :person, optional: true
+  belongs_to :account, optional: true
 
   validates :role, presence: true, inclusion: { in: ROLES }
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :person_id, uniqueness: { scope: :organisation_id,
-                                      message: "is already a member of this organisation" }
+                                      message: "is already a member of this organisation" },
+            allow_nil: true
+  validates :account_id, uniqueness: { scope: :organisation_id,
+                                       message: "is already a member of this organisation" },
+            allow_nil: true
+  validate :member_identity_present
   validate :ended_membership_has_left_at
   validate :one_active_owner_per_organisation
 
@@ -82,7 +88,7 @@ class OrganisationMembership < ApplicationRecord
   end
 
   def display_name
-    person&.full_name
+    account&.full_name || person&.full_name
   end
 
   # The move a membership makes in ordinary use. Kept here rather than in a service
@@ -101,6 +107,7 @@ class OrganisationMembership < ApplicationRecord
       id: id,
       organisation_id: organisation_id,
       person_id: person_id,
+      account_id: account_id,
       person_name: display_name,
       role: role,
       role_label: role_label,
@@ -115,6 +122,10 @@ class OrganisationMembership < ApplicationRecord
   end
 
   private
+
+  def member_identity_present
+    errors.add(:base, "A roster member is required") if person_id.nil? && account_id.nil?
+  end
 
   # Joined/left timestamps follow the status rather than being set independently, so
   # the two can never contradict each other. Mirrored by a database check on

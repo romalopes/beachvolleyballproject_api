@@ -52,8 +52,8 @@ class ProfileMergeService
   def validate_current_state!
     raise Error, "Profiles must be different records" if @source.id == @canonical.id
     raise Error, "Only active profiles can be merged" unless @source.status == "active" && @canonical.status == "active"
-    source_account_id = @source.account_id || @source.person&.account_id
-    canonical_account_id = @canonical.account_id || @canonical.person&.account_id
+    source_account_id = @source.account_id
+    canonical_account_id = @canonical.account_id
     unless source_account_id == canonical_account_id
       raise Error, "Profiles linked to different Accounts cannot be merged"
     end

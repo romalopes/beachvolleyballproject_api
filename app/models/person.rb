@@ -17,7 +17,6 @@ class Person < ApplicationRecord
   STATUSES = %w[active archived merged].freeze
   CREATION_SOURCES = %w[signup coach_created player_created system].freeze
 
-  has_one :account, foreign_key: :person_id, inverse_of: :person, dependent: :restrict_with_error
   has_many :player_profiles, dependent: :restrict_with_error, inverse_of: :person
   has_many :coach_profiles, dependent: :restrict_with_error, inverse_of: :person
   # Legacy singular associations remain read-only conveniences for callers that
@@ -73,7 +72,6 @@ class Person < ApplicationRecord
   # findable. Recorded here (not in the controllers) because a person can be
   # renamed from the player/coach API *and* from their own account page.
   after_update :remember_previous_name, if: :saved_change_to_name?
-  after_save :synchronize_account_contact_detail
 
   scope :active, -> { where(status: "active") }
   # Records used by identity resolution: merged people are excluded from
@@ -132,13 +130,13 @@ class Person < ApplicationRecord
   # staff-recorded profile ("profile_only"). Single source of truth for the
   # player/coach profiles and for the identity search payload.
   def account_status
-    account ? "connected" : "profile_only"
+    linked = player_profiles.where.not(account_id: nil).exists? || coach_profiles.where.not(account_id: nil).exists?
+    linked ? "connected" : "profile_only"
   end
 
-  # Compact identity payload shared by the identity-search endpoint
-  # (/api/v1/people) and the possible-duplicate suggestions returned when a
-  # player or coach is created. Callers should eager load account and the
-  # profiles to avoid N+1 queries.
+  # Compact legacy roster identity payload shared by the identity-search
+  # endpoint (/api/v1/people) and older duplicate-suggestion clients. Account
+  # connectivity is derived only from explicit profile Account links.
   def identity_summary
     {
       id: id,
@@ -183,22 +181,6 @@ class Person < ApplicationRecord
   end
 
   private
-
-  def synchronize_account_contact_detail
-    detail = account&.contact_detail
-    return unless detail
-
-    attributes = {
-      first_name: first_name,
-      last_name: last_name,
-      email: email,
-      phone: phone,
-      date_of_birth: date_of_birth
-    }
-    return unless attributes.any? { |key, value| detail.public_send(key) != value }
-
-    detail.update_columns(attributes.merge(updated_at: Time.current))
-  end
 
   # True when first or last name changed in the update that just happened.
   def saved_change_to_name?

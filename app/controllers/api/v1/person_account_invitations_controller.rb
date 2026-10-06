@@ -1,7 +1,8 @@
 module Api
   module V1
-    # Compatibility routes for connecting an Account to an already-recorded
-    # Person. Records and lifecycle are delegated to ClaimInvitationService.
+    # Compatibility routes for legacy Person-subject links. The unified claim
+    # invitation service links profiles/memberships to Account; Person remains
+    # independent and is never attached to the Account.
     class PersonAccountInvitationsController < ApplicationController
       include ContentAuthorization
 
@@ -45,7 +46,7 @@ module Api
           result = ClaimInvitationService.redeem!(raw_token: raw_token, user: Current.user)
           account = Current.user.reload.account
           render json: { invitation: result[:invitation].summary, outcome: result[:outcome].to_s,
-                         account_id: account&.id, person: account&.person&.identity_summary }
+                         account_id: account&.id }
         else
           # Keep redeeming outstanding links issued before the unified-table
           # transition. The legacy service enforces the same verified exact
@@ -53,7 +54,7 @@ module Api
           invitation = PersonAccountInvitationService.redeem!(raw_token: raw_token, user: Current.user)
           account = Current.user.reload.account
           render json: { invitation: invitation.summary, outcome: "linked",
-                         account_id: account&.id, person: account&.person&.identity_summary }
+                         account_id: account&.id }
         end
       rescue ClaimInvitationService::InvitationError => e
         render json: { error: e.message }, status: :unprocessable_entity

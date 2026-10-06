@@ -39,7 +39,7 @@ module ContentAuthorization
   # A coach recorded without an account has no User to match against, so this
   # is nil and the caller treats that as "not the coach of record".
   def coach_account_user(coach_profile)
-    coach_profile&.person&.account&.user
+    coach_profile&.account&.user
   end
 
   # Session authority (assessment plan §4): oversight (curator/admin) OR the
@@ -131,7 +131,7 @@ module ContentAuthorization
   # lapses when they leave — so a resigned founder cannot keep renaming the club.
   def require_organisation_editor!
     return true if Current.user&.admin? || Current.user&.curator?
-    return true if @organisation&.editable_by?(Current.user&.person)
+    return true if @organisation&.editable_by?(Current.user&.account)
 
     render json: {
       error: "Only this organisation's officers, its creator, a curator or an admin can edit it"
@@ -158,7 +158,7 @@ module ContentAuthorization
   # on it is not authority over it.
   def require_organisation_membership_manager!
     return true if Current.user&.admin?
-    return true if @organisation&.manageable_by?(Current.user&.person)
+    return true if @organisation&.manageable_by?(Current.user&.account)
 
     render json: {
       error: "Only this organisation's owner or administrators can manage its members"

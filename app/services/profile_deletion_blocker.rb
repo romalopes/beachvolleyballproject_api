@@ -12,13 +12,11 @@ class ProfileDeletionBlocker
 
   def self.blockers(profile)
     blockers = []
-    blockers << "profile_account" if profile.account_id.present?
     person = profile.person
     # A profile is only disposable while its linked identity is still an
     # unclaimed, unused record. History can be attached to a sibling profile,
     # so check every profile for the Person as well as the target profile.
     if person
-      blockers << "person_account" if person.account.present?
       blockers << "person_group_memberships" if person.group_memberships.exists?
       person.player_profiles.each do |player|
         blockers << "person_training_session_participants" if player.training_session_participants.exists?

@@ -2,6 +2,17 @@
 
 The revised architecture preserves the existing **User → Account relationship**, eliminates Person as an intermediate identity layer, and allows each Account to be associated with multiple player and coach profiles.
 
+**Implementation checkpoint (2026-10-06):** `Account` and `User` no longer
+reference `Person` in the application models. Account private identity fields
+are stored in required `ContactDetail`; profiles, memberships, claim actors,
+and organisation ownership have Account links. The migration that backfills
+these links and drops `accounts.person_id` is prepared as
+`20261006100011_remove_person_link_from_accounts.rb` but is not yet applied to
+the configured database. Person remains for accountless rosters and historical
+training/assessment references, so this implementation does not claim that the
+Person table or every `person_id` has been retired. See the Phase 9 and Phase 12
+documents for remaining work and the rollout gate.
+
 The responsibilities are:
 
 - **User:** authentication, credentials, login sessions and password recovery.

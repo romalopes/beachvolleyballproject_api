@@ -11,8 +11,6 @@ class TrainingSessionParticipant < ApplicationRecord
   belongs_to :training_session, inverse_of: :training_session_participants
   belongs_to :player_profile, inverse_of: :training_session_participants
 
-  has_one :person, through: :player_profile
-
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :player_profile_id, uniqueness: { scope: :training_session_id }
   validate :training_session_is_not_cancelled, on: :create
@@ -21,7 +19,7 @@ class TrainingSessionParticipant < ApplicationRecord
 
     # Display helpers for the API payload.
   def player_name
-    person&.full_name
+    player_profile&.full_name
   end
 
   # Human-readable label for the participant's attendance/status.
@@ -32,7 +30,7 @@ class TrainingSessionParticipant < ApplicationRecord
   # Whether the participating player has an Account. Used by clients to show
   # "Account connected" vs "Profile only".
   def account_connected?
-    person&.account.present?
+    player_profile&.account.present?
   end
 
   # Same fact without the predicate suffix, so the serialized payload key is

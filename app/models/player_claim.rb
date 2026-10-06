@@ -1,8 +1,8 @@
-# A reviewable request to attach a claimant Person to a subject the club already
-# recorded. Claiming changes only the link; the subject row and all of its domain
-# history stay exactly where they are.
+# A reviewable request to attach a claimant Account to a subject the club
+# already recorded. Claiming changes only the profile's Account link; the
+# profile row and all of its domain history stay exactly where they are.
 #
-# `claimable` is polymorphic (PlayerProfile, CoachProfile or Person). The legacy
+# `claimable` is polymorphic (PlayerProfile or CoachProfile). The legacy
 # `player_profile_id` column is retained for existing rows and clients: a claim
 # carries exactly one of the two, enforced by a check constraint. An Account-aware
 # partial unique index prevents duplicate pending claims by the same Account while
@@ -16,10 +16,8 @@ class PlayerClaim < ApplicationRecord
 
   belongs_to :claimable, polymorphic: true, optional: true
   belongs_to :player_profile, optional: true
-  belongs_to :person
-  belongs_to :initiated_by_person, class_name: "Person"
-  belongs_to :reviewed_by_person, class_name: "Person", optional: true
   belongs_to :claimant_account, class_name: "Account", optional: true
+  belongs_to :initiated_by_account, class_name: "Account", optional: true
   belongs_to :reviewed_by_account, class_name: "Account", optional: true
 
   validates :status, inclusion: { in: STATUSES }
@@ -96,7 +94,6 @@ class PlayerClaim < ApplicationRecord
       claimable_type: claimable_type,
       claimable_id: claimable_id,
       claimant_account_id: claimant_account_id,
-      person_id: person_id,
       status: status,
       created_at: created_at,
       reviewed_at: reviewed_at
@@ -120,7 +117,7 @@ class PlayerClaim < ApplicationRecord
 
   def reviewer_present_for_decision
     return unless %w[approved rejected].include?(status)
-    return if reviewed_by_account.present? || reviewed_by_person.present?
+    return if reviewed_by_account_id.present? || reviewed_by_person_id.present?
 
     errors.add(:reviewed_by_account, "must be recorded for a reviewed claim")
   end

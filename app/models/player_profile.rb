@@ -24,8 +24,6 @@ class PlayerProfile < ApplicationRecord
   # include it, so neither create nor update can set it from the payload.
   belongs_to :created_by, class_name: "User", optional: true
   belongs_to :created_by_account, class_name: "Account", optional: true
-  # Account ownership coexists with the legacy Person association until the
-  # later read/write switch and Person contraction phases.
   belongs_to :account, optional: true
   belongs_to :merged_into_profile, class_name: "PlayerProfile", optional: true
   belongs_to :merged_by_account, class_name: "Account", optional: true
@@ -43,7 +41,6 @@ class PlayerProfile < ApplicationRecord
   # created without one still builds a new person.
   accepts_nested_attributes_for :person, allow_destroy: false, update_only: true
 
-  before_validation :inherit_account_from_person, on: :create
 
   has_many :training_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile
   has_many :assessment_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile
@@ -74,8 +71,8 @@ class PlayerProfile < ApplicationRecord
 
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
+  before_validation :ensure_display_name
   validates :display_name, presence: true, if: -> { person.nil? }
-  validate :account_matches_person
   validate :merge_state_is_consistent
 
   scope :active, -> { where(status: "active") }
@@ -94,10 +91,18 @@ class PlayerProfile < ApplicationRecord
     # §15: belonging to the same club as a player is itself a reason to see them.
     # This is what a membership is *for* — otherwise a club's roster would have to
     # be restated as a list of coach-player grants and would drift out of date.
-    peer_ids = user.person&.organisation_peer_ids
-    return base if peer_ids.blank?
+    account = user.account
+    return base unless account
 
-    base.or(where(person_id: peer_ids))
+    roster_ids = account.player_profiles.where.not(person_id: nil).pluck(:person_id) +
+      account.coach_profiles.where.not(person_id: nil).pluck(:person_id)
+    organisation_ids = OrganisationMembership.active.where(account_id: account.id).pluck(:organisation_id)
+    organisation_ids += OrganisationMembership.active.where(person_id: roster_ids).pluck(:organisation_id) if roster_ids.any?
+    return base if organisation_ids.empty?
+
+    peer_account_ids = OrganisationMembership.active.where(organisation_id: organisation_ids).where.not(account_id: nil).select(:account_id)
+    peer_roster_ids = OrganisationMembership.active.where(organisation_id: organisation_ids).where.not(person_id: nil).select(:person_id)
+    base.or(where(account_id: peer_account_ids)).or(where(person_id: peer_roster_ids))
   }
   scope :owned_by, ->(user) { ProfileOwnership.account_scope(all, user) }
 
@@ -125,9 +130,7 @@ class PlayerProfile < ApplicationRecord
     user.present? && (user.admin? || owner?(user))
   end
 
-  def full_name
-    display_name.presence || person&.full_name
-  end
+  def full_name = display_name.presence || account&.full_name || person&.full_name
 
   def merged?
     merged_into_profile_id.present?
@@ -137,9 +140,7 @@ class PlayerProfile < ApplicationRecord
     merged? ? merged_into_profile&.canonical_profile || merged_into_profile : self
   end
 
-  def account_status
-    person&.account_status || "profile_only"
-  end
+  def account_status = account_id.present? ? "connected" : "profile_only"
 
   # API-facing alias: callers address a profile by `<resource>_profile_id`
   # (training session participants already use that shape), so payloads carry
@@ -179,15 +180,10 @@ class PlayerProfile < ApplicationRecord
 
   private
 
-  def inherit_account_from_person
-    self.account ||= person&.account
-  end
+  def ensure_display_name
+    return if display_name.present?
 
-  def account_matches_person
-    person_account_id = person&.account&.id
-    return unless account && person_account_id && account.id != person_account_id
-
-    errors.add(:account, "must match the Account linked to this Person")
+    self.display_name = account&.full_name.presence || person&.full_name
   end
 
   def merge_state_is_consistent

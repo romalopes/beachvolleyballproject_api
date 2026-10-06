@@ -558,15 +558,16 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert PlayerProfile.exists?(player.id)
   end
 
-  test "hard delete refuses an Account-linked profile even when it has no Person history" do
+  test "admin can hard delete an Account-linked profile and retains its Account" do
     profile = PlayerProfile.create!(display_name: "Linked profile", account: accounts(:one))
+    account = profile.account
     sign_in_as(@admin)
 
     delete "/api/v1/players/#{profile.id}"
 
-    assert_response :unprocessable_entity
-    assert_includes JSON.parse(response.body)["blockers"], "profile_account"
-    assert PlayerProfile.exists?(profile.id)
+    assert_response :no_content
+    assert_not PlayerProfile.exists?(profile.id)
+    assert Account.exists?(account.id)
   end
 
   test "admin explicitly merges a player profile and keeps the source redirect" do
@@ -625,16 +626,16 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert PlayerProfile.exists?(player.id)
   end
 
-  test "hard delete refuses a player whose linked Person has an account" do
+  test "admin can hard delete a player whose linked Person has an Account-linked profile" do
     person = people(:one)
     player = PlayerProfile.create!(person: person, display_name: "Connected player")
     sign_in_as(@admin)
 
     delete "/api/v1/players/#{player.id}"
 
-    assert_response :unprocessable_entity
-    assert_includes JSON.parse(response.body)["blockers"], "person_account"
-    assert PlayerProfile.exists?(player.id)
+    assert_response :no_content
+    assert_not PlayerProfile.exists?(player.id)
+    assert Person.exists?(person.id)
   end
 
   test "update player as coach changes profile and person attributes" do

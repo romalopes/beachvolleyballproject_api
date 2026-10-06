@@ -54,15 +54,14 @@ module Api
         records = relations.flat_map do |klass|
           relation = ProfileManagementScope.scope(klass.all, user: user)
           relation = relation.where(status: status_filter) unless status_filter == "all"
-          relation = relation.left_joins(person: :account)
           if link_filter == "linked"
-            relation = relation.where("#{klass.table_name}.account_id IS NOT NULL OR accounts.id IS NOT NULL")
+            relation = relation.where.not(account_id: nil)
           elsif link_filter == "unlinked"
-            relation = relation.where("#{klass.table_name}.account_id IS NULL AND accounts.id IS NULL")
+            relation = relation.where(account_id: nil)
           end
           if params[:q].present?
             term = "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].to_s.strip)}%"
-            relation = relation.where("#{klass.table_name}.display_name ILIKE :term OR people.first_name ILIKE :term OR people.last_name ILIKE :term", term: term)
+            relation = relation.where("#{klass.table_name}.display_name ILIKE :term", term: term)
           end
           relation.order(:id).to_a.map do |profile|
             can_invite = ProfilePolicy.new(actor: user, profile: profile).invite? && ClaimSubject.for(profile).eligible?
@@ -71,7 +70,7 @@ module Api
               claimable_id: profile.id,
               display_name: profile.full_name,
               status: profile.status,
-              linked_to_account: profile.account_id.present? || profile.person&.account.present?,
+              linked_to_account: profile.account_id.present?,
               can_invite: can_invite
             }
           end
@@ -199,7 +198,7 @@ module Api
       def redeem_payload(result)
         payload = { invitation: result[:invitation].summary, outcome: result[:outcome].to_s }
         if result[:outcome] == :linked
-          payload[:person] = Current.user.reload.person&.identity_summary
+          payload[:account_id] = Current.user.reload.account&.id
         else
           payload[:claim] = result[:claim].summary
           payload[:message] =

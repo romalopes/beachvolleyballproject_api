@@ -1,5 +1,5 @@
 # Suggests visible, active, unlinked profiles whose recorded display name may
-# match the signed-in Person's current or previous names. Results are hints only;
+# match the signed-in Account's ContactDetail name. Results are hints only;
 # this service never changes a profile or creates a claim.
 class PlayerProfileCandidateFinder
   LIMIT = 20
@@ -17,24 +17,15 @@ class PlayerProfileCandidateFinder
     end
   end
 
-  def initialize(person:, user:)
-    @person = person
+  def initialize(account:, user:)
+    @account = account
     @user = user
   end
 
   def matches
-    ProfileClaimCandidateFinder.new(person: @person, user: @user, type: "PlayerProfile").matches.map do |candidate|
+    ProfileClaimCandidateFinder.new(account: @account, user: @user, type: "PlayerProfile").matches.map do |candidate|
       Candidate.new(player_profile: candidate.profile, match_type: candidate.match_type)
     end
   end
 
-  private
-
-  def known_names
-    [ @person.full_name, @person.first_name, @person.last_name ] + @person.person_aliases.map(&:full_name)
-  end
-
-  def normalize(value)
-    value.to_s.downcase.gsub(/[^\p{Alnum}]/u, "")
-  end
 end

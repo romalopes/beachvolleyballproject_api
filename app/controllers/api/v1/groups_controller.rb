@@ -72,9 +72,9 @@ module Api
           # The creator owns it, and ownership is a membership now (§2.6). Creating
           # the group without this row would produce a group nobody can manage —
           # exactly the state the old `created_by_id` check was papering over.
-          if Current.user&.person
+          if Current.user&.account
             @group.group_memberships.create!(
-              person: Current.user.person,
+              account: Current.user.account,
               role: "owner",
               status: "active",
               joined_at: Time.current
@@ -84,6 +84,7 @@ module Api
           if params[:person_ids].present?
             assign_person_ids(Array(params[:person_ids]))
           end
+          assign_account_ids(Array(params[:account_ids])) if params[:account_ids].present?
 
           render json: { group: serialize_detail(@group.reload) }, status: :created
         else
@@ -102,19 +103,22 @@ module Api
           }, status: :forbidden
         end
 
-        if params.key?(:person_ids)
+        if params.key?(:person_ids) || params.key?(:account_ids)
           # Checked against the organisation this request *would* leave the group in,
           # and against the roster it *would* leave — a group being moved and
           # re-rostered together has to be judged as a whole, or the order of two
           # writes would decide whether the rule holds.
-          proposed = Array(params[:person_ids]).map(&:to_i)
-          # `sync_person_ids` always retains the active owner, so the owner is part
-          # of what is being proposed.
-          proposed += @group.group_memberships.active.pluck(:person_id)
+          proposed_people = params.key?(:person_ids) ? Array(params[:person_ids]).map(&:to_i) : @group.group_memberships.active.where.not(person_id: nil).pluck(:person_id)
+          proposed_accounts = params.key?(:account_ids) ? Array(params[:account_ids]).map(&:to_i) : @group.group_memberships.active.where.not(account_id: nil).pluck(:account_id)
+          @group.group_memberships.owners.each do |membership|
+            proposed_people << membership.person_id if membership.person_id
+            proposed_accounts << membership.account_id if membership.account_id
+          end
           target_organisation = params.dig(:group, :organisation_id).presence ||
                                 @group.organisation_id
 
-          unless @group.shares_organisation?(proposed.uniq, target_organisation)
+          unless @group.shares_organisation?(proposed_people.uniq, target_organisation,
+                                             account_ids: proposed_accounts.uniq)
             return render json: {
               errors: [ "The roster must contain only active members of this group's organisation." ]
             }, status: :unprocessable_entity
@@ -125,6 +129,7 @@ module Api
           if params.key?(:person_ids)
             sync_person_ids(Array(params[:person_ids]))
           end
+          sync_account_ids(Array(params[:account_ids])) if params.key?(:account_ids)
 
           render json: { group: serialize_detail(@group.reload) }
         else
@@ -146,21 +151,22 @@ module Api
       # Add one or more people to the group's roster. People, not players: a squad
       # may hold a coach or a volunteer who has no player profile (plan §2.2).
       def add_members
-        ids = Array(params[:person_ids] || params[:person_id]).compact.map(&:to_i)
-        if ids.empty?
-          return render json: { errors: [ "No people specified" ] }, status: :unprocessable_entity
+        person_ids = Array(params[:person_ids] || params[:person_id]).compact.map(&:to_i)
+        account_ids = Array(params[:account_ids] || params[:account_id]).compact.map(&:to_i)
+        if person_ids.empty? && account_ids.empty?
+          return render json: { errors: [ "No roster members specified" ] }, status: :unprocessable_entity
         end
 
         # The rule that makes a group "people who share an Organisation" (§10): only
         # somebody actually in it can be added. 422 rather than 403 — the request
         # was well formed, the person simply does not belong.
-        unless @group.shares_organisation?(ids)
+        unless @group.shares_organisation?(person_ids, @group.organisation_id, account_ids: account_ids)
           return render json: {
-            errors: [ "That person is not an active member of this group's organisation." ]
+            errors: [ "Each roster member must be an active member of this group's organisation." ]
           }, status: :unprocessable_entity
         end
 
-        added = assign_person_ids(ids)
+        added = assign_person_ids(person_ids) + assign_account_ids(account_ids)
 
         render json: {
           group: serialize_detail(@group.reload),
@@ -171,11 +177,13 @@ module Api
       # End a membership rather than removing the row (§2.5). The person stays on
       # the roster as history, which is what keeps a past assessment explicable.
       def remove_member
-        person_id = params[:person_id].to_i
-        membership = @group.group_memberships.active.find_by(person_id: person_id)
+        account_id = params[:account_id].presence&.to_i
+        person_id = params[:person_id].presence&.to_i
+        membership = account_id ? @group.group_memberships.active.find_by(account_id: account_id) :
+          @group.group_memberships.active.find_by(person_id: person_id)
 
         unless membership
-          return render json: { errors: [ "That person is not an active member of this group" ] },
+          return render json: { errors: [ "That roster member is not active in this group" ] },
                         status: :not_found
         end
 
@@ -191,7 +199,7 @@ module Api
 
         render json: {
           group: serialize_detail(@group.reload),
-          removed: person_id
+          removed: account_id || person_id
         }
       end
 
@@ -209,9 +217,9 @@ module Api
       end
 
       def set_group
-        @group = Group.includes(:created_by, group_memberships: :person)
+        @group = Group.includes(:created_by, group_memberships: [ :person, :account ])
                       .find_by(id: params[:id]) ||
-                 Group.includes(:created_by, group_memberships: :person)
+                 Group.includes(:created_by, group_memberships: [ :person, :account ])
                       .find_by!(slug: params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Group not found" }, status: :not_found
@@ -240,12 +248,12 @@ module Api
       # `Current.user&.person` rather than the user id: memberships are on Person
       # (§2.2), so an account with no Person is a non-member rather than an error.
       def active_member_of?(organisation_id)
-        person_id = Current.user&.person&.id
-        return false if person_id.nil?
+        account_id = Current.user&.account&.id
+        return false if account_id.nil?
 
         OrganisationMembership.where(
           organisation_id: organisation_id.to_i,
-          person_id: person_id,
+          account_id: account_id,
           status: "active"
         ).exists?
       end
@@ -285,6 +293,30 @@ module Api
         assign_person_ids(valid_ids.to_a)
       end
 
+      def assign_account_ids(ids)
+        added = 0
+        Account.where(id: ids.map(&:to_i).uniq).find_each do |account|
+          membership = @group.group_memberships.find_by(account_id: account.id)
+          if membership.nil?
+            @group.group_memberships.create!(account: account, joined_at: Time.current)
+            added += 1
+          elsif membership.ended?
+            membership.update!(status: "active", left_at: nil)
+            added += 1
+          end
+        end
+        added
+      end
+
+      def sync_account_ids(ids)
+        target_ids = ids.map(&:to_i).to_set
+        @group.group_memberships.owners.each { |membership| target_ids << membership.account_id if membership.account_id }
+        valid_ids = Account.where(id: target_ids.to_a).pluck(:id).to_set
+        @group.group_memberships.active.where.not(account_id: nil).where.not(account_id: valid_ids.to_a)
+              .find_each { |membership| membership.end_membership! }
+        assign_account_ids(valid_ids.to_a)
+      end
+
       def serialize_summary(group)
         group.metadata
       end
@@ -292,17 +324,19 @@ module Api
       def serialize_detail(group)
         members = group.group_memberships.sort_by(&:id).map do |membership|
           person = membership.person
+          account = membership.account
           # The player profile is optional now: a squad may hold somebody who never
           # registered as a player (§2.2), so these three are legitimately nil.
-          player = person&.player_profile
+          player = account&.player_profiles&.first || person&.player_profile
           {
             id: membership.id,
+            account_id: membership.account_id,
             person_id: membership.person_id,
-            name: person&.full_name,
+            name: account&.full_name || person&.full_name,
             player_profile_id: player&.id,
             level: player&.level,
             preferred_position: player&.preferred_position,
-            email: person&.email,
+            email: account&.email || person&.email,
             role: membership.role,
             status: membership.status,
             joined_at: membership.joined_at,

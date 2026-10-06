@@ -7,9 +7,8 @@
 # revocation and one-active-per-subject rule, and disagreed about who the issuer
 # is. One polymorphic subject replaces both.
 #
-#   claimable_type "PlayerProfile" -> the profile adopts a Person
-#   claimable_type "CoachProfile"  -> the profile adopts a Person
-#   claimable_type "Person"        -> a login Account adopts this identity
+#   claimable_type "PlayerProfile" -> the profile links to an Account
+#   claimable_type "CoachProfile"  -> the profile links to an Account
 #
 # A verified exact-email match permits immediate linking, whether the link was
 # emailed by the application or shared manually. A profile invitation without a
@@ -17,7 +16,7 @@
 class ClaimInvitation < ApplicationRecord
   STATUSES = %w[active used revoked expired declined].freeze
   DEFAULT_EXPIRATION = 7.days
-  SUBJECT_TYPES = %w[PlayerProfile CoachProfile Person].freeze
+  SUBJECT_TYPES = %w[PlayerProfile CoachProfile].freeze
 
   belongs_to :claimable, polymorphic: true
   belongs_to :invited_by, class_name: "User"
@@ -56,7 +55,6 @@ class ClaimInvitation < ApplicationRecord
       claimable_id: claimable_id,
       # Retained so an existing client reading the player key keeps working.
       player_profile_id: claimable_type == "PlayerProfile" ? claimable_id : nil,
-      person_id: claimable_type == "Person" ? claimable_id : nil,
       invitee_email: invitee_email,
       emailed_at: emailed_at,
       # Kept for API compatibility. Delivery telemetry no longer controls

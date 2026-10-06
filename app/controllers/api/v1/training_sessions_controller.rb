@@ -119,7 +119,7 @@ module Api
         # mine=1 narrows the calendar to the current player's own sessions
         # ("my schedule"): sessions visible to them that they participate in.
         if params[:mine] == "1"
-          profile = Current.user&.person&.player_profile
+          profile = Current.user&.account&.player_profiles&.active&.order(:id)&.first
           return TrainingSession.none unless profile
 
           return TrainingSession.visible_to(Current.user).participated_by(profile).ordered
@@ -138,7 +138,7 @@ module Api
         session = TrainingSession
                     .includes(:created_by, training_focuses: { skill: :category },
                               training_session_drills: { drill: { skills: :category } },
-                              training_session_participants: { player_profile: { person: :account } },
+                              training_session_participants: { player_profile: { account: :contact_detail } },
                               video_references: :video)
                     .find_by(id: params[:id])
         # A session the user may not see is reported as not found rather than

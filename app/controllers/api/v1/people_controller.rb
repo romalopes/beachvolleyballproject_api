@@ -148,7 +148,7 @@ module Api
       # duplicate an identity somebody has already reconciled.
       def scoped_people
         people = Person.canonical
-                       .includes(:account, :player_profiles, :coach_profiles, :person_aliases)
+                       .includes(:player_profiles, :coach_profiles, :person_aliases)
                        .order(:last_name, :first_name, :id)
 
         if params[:q].present?

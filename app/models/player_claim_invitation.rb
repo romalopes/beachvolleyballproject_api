@@ -6,8 +6,8 @@ class PlayerClaimInvitation < ApplicationRecord
   DEFAULT_EXPIRATION = 7.days
 
   belongs_to :player_profile
-  belongs_to :created_by_person, class_name: "Person"
-  belongs_to :used_by_person, class_name: "Person", optional: true
+  belongs_to :created_by_account, class_name: "Account", optional: true
+  belongs_to :used_by_account, class_name: "Account", optional: true
 
   # An invitation may be restricted to one address. Stored downcased and
   # trimmed so the redemption comparison is an exact match rather than a
@@ -20,18 +20,18 @@ class PlayerClaimInvitation < ApplicationRecord
   validates :invitee_email, format: { with: URI::MailTo::EMAIL_REGEXP },
                           allow_nil: true
   validates :used_at, presence: true, if: -> { status == "used" }
-  validates :used_by_person, presence: true, if: -> { status == "used" }
+  validates :used_by_account_id, presence: true, if: -> { status == "used" }
   validates :revoked_at, presence: true, if: -> { status == "revoked" }
 
   scope :active, -> { where(status: "active") }
 
   # True when this invitation may only be redeemed by the holder of
-  # `person`'s email address. An invitation with no address is an open bearer
+  # invitee's email address. An invitation with no address is an open bearer
   # token, which is the only option for a placeholder profile.
-  def redeemable_by?(person)
+  def redeemable_by?(user)
     return true if invitee_email.blank?
 
-    person.present? && person.email.to_s.strip.downcase == invitee_email
+    user.present? && user.email_address.to_s.strip.downcase == invitee_email && user.email_verified?
   end
 
   def effective_status(now: Time.current)

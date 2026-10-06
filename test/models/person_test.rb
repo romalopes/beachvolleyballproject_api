@@ -14,7 +14,7 @@ class PersonTest < ActiveSupport::TestCase
   test "can exist without an Account, PlayerProfile or CoachProfile" do
     person = Person.new(first_name: "Ana")
     assert person.valid?
-    assert_nil person.account
+    assert_not_respond_to person, :account
     assert_nil person.player_profile
     assert_nil person.coach_profile
   end
@@ -60,7 +60,7 @@ class PersonTest < ActiveSupport::TestCase
 
   test "accountless player fixture has no account but has a player profile" do
     person = people(:accountless_player)
-    assert_nil person.account
+    assert_not_respond_to person, :account
     assert person.player_profile.present?
     assert_equal "coach_created", person.creation_source
   end

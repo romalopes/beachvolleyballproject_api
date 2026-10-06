@@ -21,19 +21,16 @@ class ClaimInvitationService
     subject = ClaimSubject.for(claimable)
     raise InvitationError, subject.ineligibility_reason unless subject.eligible?
 
-    # A Person subject always carries its own address; a profile only when the
-    # club supplies one, so a placeholder player stays an open bearer link.
+    unless ProfileClaimability::PROFILE_TYPES.include?(claimable.class.name) || claimable.is_a?(Person)
+      raise InvitationError, "Only player and coach profiles can be invited."
+    end
     raw_token = SecureRandom.urlsafe_base64(32)
 
     invitation = ClaimInvitation.transaction do
       claimable.with_lock do
         subject = ClaimSubject.for(claimable)
         raise InvitationError, subject.ineligibility_reason unless subject.eligible?
-        address = if claimable.is_a?(Person)
-          subject.default_email
-        else
-          invitee_email.presence || subject.default_email
-        end
+        address = invitee_email.presence || subject.default_email
 
         now = Time.current
         claimable.claim_invitations.active.each do |prior|
@@ -59,7 +56,7 @@ class ClaimInvitationService
 
   # Returns what happened, so the caller can tell an immediate link from a
   # request awaiting review:
-  #   { invitation:, outcome: :linked, person: }
+  #   { invitation:, outcome: :linked, account: }
   #   { invitation:, outcome: :pending_review, claim: }
   def self.redeem!(raw_token:, user:)
     raise InvitationError, INVALID_MESSAGE if raw_token.to_s.strip.empty?
@@ -99,12 +96,10 @@ class ClaimInvitationService
                 raise NeedsVerification
               end
 
-              # Some existing Users predate Account provisioning. Create the
-              # authentication-to-identity bridge in this same transaction so
-              # a verified invitee never receives a second Person later.
+              # Older Users may predate Account provisioning. Keep provisioning
+              # atomic with invitation acceptance; ContactDetails are created by
+              # the Account model and remain independent of profile identity.
               account = user.account || Account.create!(user: user)
-              claimant_person = account.person
-              raise NotRedeemable unless claimant_person&.status == "active"
 
               subject = ClaimSubject.for(invitation.claimable)
               # The record may have been archived, cleared of its required
@@ -114,11 +109,9 @@ class ClaimInvitationService
               raise NotRedeemable unless subject.eligible? && subject.still_unclaimed?
 
               outcome = if invitation.verified_email_match?(user)
-                          auto_link!(invitation: invitation, subject: subject,
-                                     claimant_person: claimant_person, user: user)
+                          auto_link!(invitation: invitation, subject: subject, account: account, user: user)
               else
-                          enqueue_for_review!(invitation: invitation, subject: subject,
-                                              claimant_person: claimant_person, user: user)
+                          enqueue_for_review!(invitation: invitation, subject: subject, account: account, user: user)
               end
             end
           end
@@ -131,10 +124,6 @@ class ClaimInvitationService
     rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid, ClaimSubject::Ineligible
       raise InvitationError, INVALID_MESSAGE
     end
-
-    # No usable invitation and no Person to redeem against: the caller must
-    # verify their address before anything else can be attempted.
-    raise InvitationError, VERIFICATION_MESSAGE if user.person.nil?
 
     raise InvitationError, INVALID_MESSAGE unless outcome
 
@@ -186,12 +175,10 @@ class ClaimInvitationService
             end
 
             account = user.account || Account.create!(user: user)
-            claimant_person = account.person
             subject = ClaimSubject.for(invitation.claimable)
-            raise NotRedeemable unless claimant_person&.status == "active" && subject.eligible? && subject.still_unclaimed?
+            raise NotRedeemable unless subject.eligible? && subject.still_unclaimed?
 
-            outcome = auto_link!(invitation: invitation, subject: subject,
-              claimant_person: claimant_person, user: user)
+            outcome = auto_link!(invitation: invitation, subject: subject, account: account, user: user)
           end
         end
       end
@@ -217,25 +204,24 @@ class ClaimInvitationService
   end
   private_class_method :digest
 
-  def self.auto_link!(invitation:, subject:, claimant_person:, user:)
-    subject.effect!(claimant_person: claimant_person, actor: user)
+  def self.auto_link!(invitation:, subject:, account:, user:)
+    subject.effect!(claimant_account: account, actor: user)
     invitation.update!(status: "used", used_by: user, used_at: Time.current)
-    { invitation: invitation, outcome: :linked, person: invitation.claimable }
+    { invitation: invitation, outcome: :linked, account: account }
   end
   private_class_method :auto_link!
 
   # A link by itself does not prove identity. When there is no verified exact
   # email match, possession of the invite authorizes a request for staff review.
-  def self.enqueue_for_review!(invitation:, subject:, claimant_person:, user:)
+  def self.enqueue_for_review!(invitation:, subject:, account:, user:)
     account = user.account
     raise InvitationError, INVALID_MESSAGE unless account
     raise InvitationError, INVALID_MESSAGE if pending_claim_for?(invitation, account: account)
 
     claim = PlayerClaim.create!(
       claimable: invitation.claimable,
-      person: claimant_person,
-      initiated_by_person: invitation.invited_by.person || claimant_person,
       claimant_account: account,
+      initiated_by_account: invitation.invited_by.account,
       status: "pending"
     )
     invitation.update!(status: "used", used_by: user, used_at: Time.current)

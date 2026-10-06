@@ -12,8 +12,7 @@ module Api
 
       def candidates
         account = Current.user&.account
-        person = account&.person
-        return render json: { error: "An active Account is required to search for profiles" }, status: :unprocessable_entity unless account && person&.status == "active"
+        return render json: { error: "An active Account is required to search for profiles" }, status: :unprocessable_entity unless account
 
         type = params[:claimable_type].presence || "PlayerProfile"
         return render json: { error: "Unsupported profile type" }, status: :unprocessable_entity unless ProfileClaimability::PROFILE_TYPES.include?(type)
@@ -32,7 +31,6 @@ module Api
         account = Current.user&.account
         own_claims = if account
                        PlayerClaim.where(claimant_account: account)
-                         .or(PlayerClaim.where(claimant_account_id: nil, person: account.person))
                      else
                        PlayerClaim.none
                      end
@@ -70,8 +68,7 @@ module Api
 
       def create
         account = Current.user&.account
-        person = account&.person
-        return render_claim_error("An Account with an active identity is required to request a claim", :unprocessable_entity, "validation_failed") unless account && person&.status == "active"
+        return render_claim_error("An Account is required to request a claim", :unprocessable_entity, "validation_failed") unless account
 
         type = params[:claimable_type].presence || "PlayerProfile"
         unless ProfileClaimability::PROFILE_TYPES.include?(type)
@@ -84,8 +81,7 @@ module Api
 
         claim = PlayerClaimService.request!(
           claimable: profile,
-          account: account,
-          initiated_by_person: person
+          account: account
         )
         render json: claim.summary, status: :created
       rescue PlayerClaimService::ClaimError => e
@@ -184,7 +180,7 @@ module Api
         account = Current.user&.account
         return account.id == @claim.claimant_account_id if account && @claim.claimant_account_id
 
-        account&.person_id == @claim.person_id
+        false
       end
 
       def reviewer?

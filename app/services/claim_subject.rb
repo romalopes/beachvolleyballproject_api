@@ -1,9 +1,5 @@
-# Eligibility and effect for one kind of invitation subject.
-#
-# The point of the polymorphic `claim_invitations` table is that "who may be
-# invited" and "what accepting does" differ per subject. Keeping those two
-# questions together per subject stops the difference from leaking into the
-# service, the controller and the UI as parallel code paths.
+# Eligibility and Account-linking behavior for a profile or a legacy Person
+# invitation that predates the profile-only claim workflow.
 class ClaimSubject
   class Ineligible < StandardError; end
 
@@ -13,133 +9,62 @@ class ClaimSubject
     @record = record
   end
 
-  # Returns a new instance of the right class for `record`, or raises when the
-  # record is not a recognised subject.
   def self.for(record)
-    case record
-    when PlayerProfile then new(record)
-    when CoachProfile  then new(record)
-    when Person        then new(record)
-    else raise Ineligible, "That record cannot be the subject of a claim invitation."
-    end
+    return new(record) if record.is_a?(PlayerProfile) || record.is_a?(CoachProfile) || record.is_a?(Person)
+
+    raise Ineligible, "Only recorded profiles or legacy Person invitations can be claimed."
   end
 
   def kind = record.class.name
+  def label = record.is_a?(PlayerProfile) ? "player profile" : (record.is_a?(CoachProfile) ? "coach profile" : "recorded identity")
 
-  # Human label used in review queues and audit text.
-  def label
-    case record
-    when PlayerProfile then "player profile"
-    when CoachProfile  then "coach profile"
-    else "person"
-    end
-  end
-
-  # Can the club issue an invitation for this subject right now?
   def eligible?
-    case record
-    when PlayerProfile, CoachProfile then profile_eligible?
-    else person_eligible?
-    end
+    return eligible_person? if record.is_a?(Person)
+
+    record.status == "active" && record.account_id.nil? && record.full_name.present?
   end
 
-  # Why not. Kept specific so the coach is told what to fix.
   def ineligibility_reason
-    case record
-    when PlayerProfile then "The player profile must be active, named, and not already linked to an account."
-    when CoachProfile  then "The coach profile must be active, named, and not already linked to an account."
-    else "The person must be active, have no account yet, and have a valid email address."
-    end
+    "The profile must be active, named, and not already linked to an account."
   end
 
-  # The address an invitation is restricted to, when the subject has one.
-  # A profile inherits the recorded Person's email when it has one.
   def default_email
-    case record
-    when Person then record.email
-    when PlayerProfile, CoachProfile then record.person&.email
-    end
+    record.is_a?(Person) ? record.email : nil
   end
 
-  # Does this subject still need a claim, i.e. is the thing being attached
-  # absent? Re-checked at redemption so a subject claimed meanwhile is refused.
   def still_unclaimed?
-    case record
-    when Person then record.account.nil?
-    when PlayerProfile, CoachProfile then record.person_id.nil? || record.person&.account.nil?
-    end
+    return eligible_person? if record.is_a?(Person)
+
+    record.account_id.nil?
   end
 
-  # Apply an approved claim: return the Person the subject should end up on, and
-  # any Person that should be retired. `person:` is the identity asserting the
-  # claim; for a Person subject it is the claim itself.
-  def effect!(claimant_person:, actor:, claimant_account: nil)
-    case record
-    when PlayerProfile, CoachProfile
-      if record.person_id.nil?
-        record.update!(person: claimant_person, account: claimant_account || claimant_person.account)
-        nil
-      else
-        account = claimant_account || claimant_person.account
-        attach_account!(target_person: record.person, claimant_person: claimant_person, actor: actor)
-        record.update!(account: account)
-      end
-    else
-      attach_account!(target_person: record, claimant_person: claimant_person, actor: actor)
-    end
+  def effect!(claimant_account:, **_unused)
+    return link_person_records!(claimant_account) if record.is_a?(Person)
+
+    record.update!(account: claimant_account)
+    record
   end
 
   private
 
-  def person_eligible?
-    record.status == "active" && record.account.nil? && record.email.present? &&
-      URI::MailTo::EMAIL_REGEXP.match?(record.email.to_s.strip)
+  def eligible_person?
+    record.status == "active" && record.email.present? &&
+      (record.player_profiles.exists? || record.coach_profiles.exists?) &&
+      linked_accounts.empty?
   end
 
-  def profile_eligible?
-    return false unless record.status == "active"
-
-    if record.person_id.nil?
-      record.display_name.present?
-    else
-      record.full_name.present? && record.person&.status == "active" && record.person.account.nil?
-    end
+  def linked_accounts
+    ids = record.player_profiles.where.not(account_id: nil).pluck(:account_id) +
+      record.coach_profiles.where.not(account_id: nil).pluck(:account_id)
+    Account.where(id: ids.uniq)
   end
 
-  # Moves the claimant's login onto this Person and retires the disposable
-  # signup Person it was pointing at.
-  #
-  # Order matters: the placeholder was loaded through `account.person`, so once
-  # the Account is re-pointed that object is stale and saving it afterwards
-  # writes the old `person_id` back. Retiring first never touches the inverse.
-  def attach_account!(target_person:, claimant_person:, actor:)
-    account = claimant_person.account
-    unless account
-      raise Ineligible, "This person has no account to connect."
-    end
-
-    placeholder = account.person
-    unless placeholder && placeholder.id != target_person.id
-      Account.create!(user: account.user, person: target_person)
-      return nil
-    end
-
-    unless disposable_signup_placeholder?(placeholder, account)
-      raise Ineligible, "This account already has an identity that cannot be replaced automatically."
-    end
-
-    placeholder.update!(status: "merged", merged_into: target_person, merged_by: actor)
-    account.update!(person: target_person)
-    placeholder
-  end
-
-  # Signup builds an empty Person for backwards compatibility. Only that stub
-  # may move; any identity carrying profile or membership history is a real
-  # conflict and must go through staff review instead.
-  def disposable_signup_placeholder?(placeholder, account)
-    placeholder.status == "active" && placeholder.creation_source == "signup" &&
-      placeholder.created_by_id == account.user_id && placeholder.player_profiles.empty? &&
-      placeholder.coach_profiles.empty? && placeholder.group_memberships.empty? &&
-      placeholder.organisation_memberships.empty? && placeholder.merged_from.empty?
+  def link_person_records!(account)
+    now = Time.current
+    record.player_profiles.where(account_id: nil).update_all(account_id: account.id, updated_at: now)
+    record.coach_profiles.where(account_id: nil).update_all(account_id: account.id, updated_at: now)
+    record.organisation_memberships.where(account_id: nil).update_all(account_id: account.id, updated_at: now)
+    record.group_memberships.where(account_id: nil).update_all(account_id: account.id, updated_at: now)
+    record
   end
 end

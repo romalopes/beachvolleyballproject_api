@@ -41,7 +41,7 @@ module Api
                         .with_status(params[:status])
                         .of_type(params[:organisation_type])
                         .ordered
-                        .includes(:parent_organisation, :created_by_person, :logo_attachment)
+                        .includes(:parent_organisation, :created_by_person, :created_by_account, :logo_attachment)
         # `mine=1` narrows to the organisations the caller is an *active* member
         # of. It exists because the group form needs the choices a person can
         # actually make: offering every organisation would list ones the server
@@ -50,7 +50,7 @@ module Api
         # is a non-member rather than an error, so they simply get none.
         if params[:mine].present?
           mine_ids = OrganisationMembership
-                     .where(person_id: Current.user&.person&.id, status: "active")
+                     .where(account_id: Current.user&.account&.id, status: "active")
                      .select(:organisation_id)
           organisations = organisations.where(id: mine_ids)
         end
@@ -99,12 +99,10 @@ module Api
       # `administrator` is precisely the escalation this must not allow. An admin
       # still grants roles afterwards through the roster.
       def join
-        person = Current.user&.person
-        # A user with no Person has nothing to join *as*. Returned as 422 rather
-        # than 404: the request was fine, this particular account is incomplete.
-        if person.nil?
+        account = Current.user&.account
+        if account.nil?
           return render json: {
-            errors: [ "Your account has no person record yet, so it cannot join an organisation." ]
+            errors: [ "Your account is not ready to join an organisation." ]
           }, status: :unprocessable_entity
         end
 
@@ -114,7 +112,7 @@ module Api
           }, status: :unprocessable_entity
         end
 
-        existing = @organisation.organisation_memberships.find_by(person: person)
+        existing = @organisation.organisation_memberships.find_by(account: account)
 
         # Already a member: 409, because the request was well formed and the state
         # is what conflicts. A `pending` row is *recorded but not yet active*, so it
@@ -129,7 +127,7 @@ module Api
         # Re-joining after an ending reactivates the same row rather than adding a
         # second one, so the earlier stint's history stays on the record — the same
         # rule organisation memberships already follow.
-        membership = existing || @organisation.organisation_memberships.build(person: person)
+        membership = existing || @organisation.organisation_memberships.build(account: account)
         membership.role = "member"
         membership.status = "active"
         membership.joined_at ||= Time.current
@@ -145,9 +143,13 @@ module Api
 
       def create
         @organisation = Organisation.new(organisation_params)
-        @organisation.created_by_person = Current.user.person
+        @organisation.created_by_account = Current.user.account
 
-        if @organisation.save
+        if Organisation.transaction do
+             @organisation.save && @organisation.organisation_memberships.create!(
+               account: Current.user.account, role: "owner", status: "active", joined_at: Time.current
+             )
+           end
           render json: serialize(@organisation), status: :created
         else
           render json: { errors: @organisation.errors.full_messages },
@@ -277,24 +279,27 @@ module Api
       end
 
       def create_member
-        person = Person.canonical.find_by(id: member_params[:person_id])
-        return render json: { errors: [ "Person not found" ] }, status: :not_found if person.nil?
+        account = Account.find_by(id: member_params[:account_id]) if member_params[:account_id].present?
+        person = Person.canonical.find_by(id: member_params[:person_id]) if member_params[:person_id].present?
+        member = account || person
+        return render json: { errors: [ "Account or roster member not found" ] }, status: :not_found if member.nil?
 
-        existing = @organisation.organisation_memberships.find_by(person: person)
+        existing = @organisation.organisation_memberships.find_by(account: account) if account
+        existing ||= @organisation.organisation_memberships.find_by(person: person) if person
 
         # Already on the roster: nothing was created, so a 201 here would be a lie.
         # 409 rather than 422, because the request was well-formed — the state is
         # what conflicts.
         if existing && !existing.ended?
           return render json: {
-            error: "#{person.full_name} is already a member of this organisation",
+            error: "#{member.try(:full_name) || member.name} is already a member of this organisation",
             membership: existing.metadata
           }, status: :conflict
         end
 
         # Defaulting to `pending`, not `active`: adding someone to a roster is an
         # invitation, and an invitation is not a grant.
-        membership = existing || @organisation.organisation_memberships.build(person: person)
+        membership = existing || @organisation.organisation_memberships.build(account: account, person: person)
         membership.role = member_params[:role].presence || (existing ? membership.role : "member")
         # Defaulting to `active`. This used to default to `pending` — "adding
         # somebody to a roster is an invitation" — but nothing could ever accept an
@@ -361,21 +366,23 @@ module Api
       # ended membership is visible to anyone who can see the organisation, because
       # hiding it would erase the very history this feature exists to keep.
       def visible_memberships
-        scope = @organisation.organisation_memberships.includes(:person).ordered
+        scope = @organisation.organisation_memberships.includes(:person, :account).ordered
         return scope if manageable_membership?
-        return scope.ended if Current.user&.person.nil?
+        return scope.ended if Current.user&.account.nil?
 
-        scope.where(person_id: Current.user.person.id)
+        scope.where(account_id: Current.user.account.id)
       end
 
       def manageable_membership?
-        Current.user&.admin? || @organisation.manageable_by?(Current.user&.person)
+        Current.user&.admin? || @organisation.manageable_by?(Current.user&.account)
       end
 
       def find_membership
         membership = @organisation.organisation_memberships
-                                         .includes(:person)
-                                         .find_by(person_id: params[:person_id])
+                                         .includes(:person, :account)
+                                         .find_by(account_id: params[:account_id]) if params[:account_id].present?
+        membership ||= @organisation.organisation_memberships.includes(:person, :account)
+          .find_by(person_id: params[:person_id]) if params[:person_id].present?
         return membership if membership
 
         render json: { errors: [ "That person is not a member of this organisation" ] },
@@ -448,15 +455,12 @@ module Api
         return @manageable_organisation_ids if defined?(@manageable_organisation_ids)
         return @manageable_organisation_ids = Set.new if Current.user.admin?
 
-        person = Current.user&.person
-        # A curator, or a coach with no Person, runs nobody's roster. An empty set
+        account = Current.user&.account
+        # A curator, or a coach with no Account, runs nobody's roster. An empty set
         # says so without a per-row query.
-        return @manageable_organisation_ids = Set.new if person.nil?
+        return @manageable_organisation_ids = Set.new if account.nil?
 
-        @manageable_organisation_ids = person.organisation_memberships.active
-                                                      .manageable
-                                                      .pluck(:organisation_id)
-                                                      .to_set
+        @manageable_organisation_ids = account.organisation_memberships.active.manageable.pluck(:organisation_id).to_set
       end
 
       # The scheme the *browser* used, which is not necessarily the one that reached
@@ -489,22 +493,21 @@ module Api
         return Set.new if editable_all?
         return @editable_organisation_ids if defined?(@editable_organisation_ids)
 
-        person = Current.user&.person
-        @editable_organisation_ids = person.nil? ? Set.new : membership_ids_for(person)
+        account = Current.user&.account
+        @editable_organisation_ids = account.nil? ? Set.new : membership_ids_for(account)
       end
 
-      def membership_ids_for(person)
-        active_ids = person.organisation_memberships.active.pluck(:organisation_id)
-        officer_ids = person.organisation_memberships.active.manageable.pluck(:organisation_id)
+      def membership_ids_for(account)
+        active_ids = account.organisation_memberships.active.pluck(:organisation_id)
+        officer_ids = account.organisation_memberships.active.manageable.pluck(:organisation_id)
         return officer_ids.to_set if active_ids.empty?
 
-        created_ids = Organisation.where(id: active_ids, created_by_person_id: person.id).pluck(:id)
-        (officer_ids + created_ids).to_set
+        officer_ids.to_set
       end
 
       def set_organisation
         @organisation = Organisation
-                        .includes(:parent_organisation, :created_by_person)
+                        .includes(:parent_organisation, :created_by_person, :created_by_account)
                         .find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Organisation not found" }, status: :not_found
@@ -534,7 +537,7 @@ module Api
       end
 
       def member_params
-        params.require(:membership).permit(:person_id, :role, :status)
+        params.require(:membership).permit(:person_id, :account_id, :role, :status)
       end
     end
   end

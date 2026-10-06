@@ -2,9 +2,9 @@
 
 ## Status
 
-**User-facing Person creation, editing, duplicate lookup, invitation, and consolidation flows have been removed from the active profile UI. Phase 9 is not complete:** the required dependency-free backend cutover cannot be claimed while Account, organisation/group membership, claim compatibility, and historical domain records still depend on `Person` / `person_id`.
+**The frontend Person management workflow was removed. The Account↔Person bridge is now removed in the application code and an additive/backfill/contract migration is prepared as `20261006100011`. Phase 9 remains partial:** Person still represents accountless roster members and legacy training/assessment history, so the People model, roster endpoints, and historical `person_id` columns are intentionally retained.
 
-No Person tables or columns were dropped. Phase 12 remains the planned contract migration and requires a separately approved production cutover.
+No `people` table or profile/history Person columns are dropped. The new migration removes only `accounts.person_id` after migrating active Account ownership and actor references. Applying it requires a deliberate database rollout.
 
 ## Changes in this phase
 
@@ -14,6 +14,8 @@ No Person tables or columns were dropped. Phase 12 remains the planned contract 
 - Identity no longer displays a Person ID or redeems legacy Person-to-Account invitation tokens; the active redemption path is profile claim invitations.
 - Coach profile creation and update now accept `display_name`, matching the existing nullable/personless CoachProfile schema.
 - Profile names resolve from `display_name` first and fall back to the legacy Person name. Existing Person-backed records remain readable while migrated.
+- `Account` no longer belongs to `Person`; `User` no longer exposes a Person-through-Account association. ContactDetail is the required Account-owned private identity record.
+- The Account bridge migration copies Account ownership into profile and membership Account links, maps account actors for claims/invitations and organisation ownership, then removes `accounts.person_id`. Legacy Person rows remain available for roster/history compatibility.
 - The Identity page no longer exposes Person consolidation.
 - Profile invitation history no longer offers a People filter or displays legacy Person invitation rows. The supported flow is profile claims and profile invitations.
 - There is no active `/people` page or navigation entry. Existing profile edit URLs remain `/players/:id/edit` and `/coaches/:id/edit`.
@@ -24,13 +26,12 @@ The frontend no longer offers Person creation, Person editing, Person duplicate 
 
 The backend is **not** dependency-free. Confirmed active dependencies include:
 
-- `Account belongs_to :person`; the account/contact migration and backfill still use `Person` as an intermediate identity link.
-- `OrganisationMembership` and `GroupMembership` are keyed by Person. Organisation and group roster operations, group participants, and training participant resolution consume `person_id`.
+- `OrganisationMembership` and `GroupMembership` still retain Person roster subjects for people without Accounts. Account-linked memberships now also carry `account_id`; authorization uses Account links for signed-in users.
 - PlayerProfile and CoachProfile retain optional `person_id` for existing records, profile visibility within organisation peers, legacy serializers, and old claim/invitation compatibility.
-- Training, assessments, account signup/contact synchronization, person claim compatibility, and deletion guards contain Person-backed reads or foreign keys.
+- Training, assessments, roster search, Person invitation/consolidation, and deletion guards still contain Person-backed reads or foreign keys. They preserve people who have no Account and historical domain rows.
 - Historical Person foreign keys and records remain in the database and are not orphaned by this phase because no rows were deleted or repointed.
 
-Removing these dependencies in this phase would require replacing durable organisation/group membership identity and converting the account/contact link, with compatibility behavior for existing roster and training history. The documented migration order places production observation and contract cleanup later. Therefore the Phase 9 prompt's requirement “No active model or API depends on Person” is **not met** and Phase 9 remains incomplete pending the active-data/API cutover. This is a recorded dependency, not a claim that the Person model is retired.
+Removing every remaining Person dependency would require a durable roster identity independent of both Account and Person, plus migration of all history and APIs. That broader removal is not part of `20261006100011`. Therefore the Phase 9 prompt's requirement “No active model or API depends on Person” is **not met** and Phase 9 remains incomplete. The narrower Account↔Person dependency is removed by the implementation in this checkout once the migration is applied.
 
 ## Verification checklist
 
@@ -38,10 +39,11 @@ Removing these dependencies in this phase would require replacing durable organi
 - [x] Person consolidation UI removed from Identity.
 - [x] Person invitation subjects removed from the active management history UI.
 - [x] No People route or navigation item is present.
-- [ ] No active model/API depends on Person — blocked by Account, organisation/group roster, and training compatibility described above.
+- [x] Account and User models do not reference Person; profile ownership, membership authorization, claim actors and invitation actors use Account.
+- [ ] No active model/API depends on Person — still blocked by accountless roster members and training/history compatibility described above.
 - [ ] Dependency-free production verification report — pending completion of those migrations.
 - [ ] Existing authentication, training, assessment, organisation, and group workflows verified after the full cutover — not claimed in this phase.
-- [x] Person tables/columns retained for the later approved contract migration.
+- [x] Person tables and non-Account foreign keys retained for roster/history compatibility.
 
 Focused verification for the implemented slice:
 
@@ -58,7 +60,7 @@ Focused verification for the implemented slice:
 
 ## Remaining implementation boundary
 
-The backend cutover is not a safe column rename. Existing OrganisationMembership and GroupMembership rows are durable roster identities, including participants who have no Account. Training and assessment history also resolves those roster subjects through Person-backed references. Replacing these references with `account_id` alone would either lose unclaimed participants or make them impossible to roster before registration.
+The remaining backend cutover is not a safe column rename. Existing OrganisationMembership and GroupMembership rows are durable roster identities, including participants who have no Account. Training and assessment history also resolves those roster subjects through Person-backed references. Replacing these references with `account_id` alone would either lose unclaimed participants or make them impossible to roster before registration. The completed Account decoupling slice adds Account actor/owner links while preserving those roster identities.
 
 The next implementation slice must introduce a durable roster identity independent of `Person` and `Account` (or another explicitly approved equivalent), then migrate memberships and historical participant references while preserving their IDs/meaning. Account and profile links can be optional links from that roster identity. ContactDetails remains private Account data and must not become a substitute for unregistered roster identities. After that:
 

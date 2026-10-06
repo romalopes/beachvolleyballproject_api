@@ -63,7 +63,7 @@ module Api
         rows = rows.where(training_session_id: params[:training_session_id]) if params[:training_session_id].present?
         rows = params[:status].present? ? rows.where(status: params[:status]) : rows.active
         if params[:mine].present?
-          own_coach_profile_ids = Current.user.person&.coach_profiles&.select(:id)
+          own_coach_profile_ids = Current.user.account&.coach_profiles&.select(:id)
           rows = rows.where(created_by_id: Current.user.id)
                      .or(rows.where(coach_profile_id: own_coach_profile_ids))
         end
@@ -220,7 +220,7 @@ module Api
         requested = assessment_params[:coach_profile_id].presence&.to_i
 
         if requested.nil?
-          own = Current.user.person&.coach_profiles&.active&.order(:id)&.first
+          own = Current.user.account&.coach_profiles&.active&.order(:id)&.first
           if own.nil?
             @assessment.errors.add(:coach_profile, "could not be determined from the signed-in account")
             render json: { errors: @assessment.errors.full_messages }, status: :unprocessable_entity
@@ -237,7 +237,7 @@ module Api
         end
 
         return if Assessment.oversight?(Current.user)
-        return if Current.user.person&.coach_profiles&.active&.exists?(id: requested)
+        return if Current.user.account&.coach_profiles&.active&.exists?(id: requested)
 
         render json: { errors: [ "You may only record assessments as yourself" ] }, status: :forbidden
       end
