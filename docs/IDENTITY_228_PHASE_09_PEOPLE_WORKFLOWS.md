@@ -56,6 +56,16 @@ Focused verification for the implemented slice:
 - `CoachesController` permits profile display names; `PlayerProfile#full_name` and `CoachProfile#full_name` prefer profile display names and retain Person fallback.
 - Frontend API input types permit coach display names.
 
-## Next action
+## Remaining implementation boundary
 
-Before Phase 10, resolve the data ownership cutover for account/contact, organisation/group memberships, and existing history references. Do not drop `people`, `person_id`, or compatibility endpoints as part of this partial phase.
+The backend cutover is not a safe column rename. Existing OrganisationMembership and GroupMembership rows are durable roster identities, including participants who have no Account. Training and assessment history also resolves those roster subjects through Person-backed references. Replacing these references with `account_id` alone would either lose unclaimed participants or make them impossible to roster before registration.
+
+The next implementation slice must introduce a durable roster identity independent of `Person` and `Account` (or another explicitly approved equivalent), then migrate memberships and historical participant references while preserving their IDs/meaning. Account and profile links can be optional links from that roster identity. ContactDetails remains private Account data and must not become a substitute for unregistered roster identities. After that:
+
+1. Backfill the new roster identity for every canonical Person and preserve merge aliases/history.
+2. Repoint organisation/group memberships and training/assessment participant resolution transactionally, preserving existing membership and history rows.
+3. Move claim/invitation actor audit references to Account/User and retain immutable historical attribution.
+4. Switch all API serializers, authorization, roster endpoints, and compatibility clients to the new identity source.
+5. Verify authentication, rosters, training, assessments, and historical reports against the migrated data before considering Person API/model retirement.
+
+Until that migration is designed and implemented, keep the Person-backed endpoints and foreign keys readable. Do not drop `people`, `person_id`, or compatibility endpoints, and do not describe Phase 9 as complete.

@@ -44,11 +44,13 @@ The assessment relation and row predicate disagreed for anonymous reads of an ac
 - Focused auth/profile/assessment suites — **155 tests, 614 assertions** before the final mailer assertion adjustment; the full Rails rerun above includes the final changes.
 - `npm test` — **82 files, 875 tests passed**.
 - `npm run build` — passed TypeScript and Vite production build. Vite reports the existing JavaScript chunk above 500 kB (about 885 kB).
-- `npm run lint` — failed with **4 errors and 1 warning** in the existing `ProfileManagementDashboard.tsx`, `ClaimInvitationPanel.tsx`, and `Identity.tsx` patterns (synchronous state changes inside effects and one missing dependency warning). The new Phase 11 changes do not add a lint finding.
+- `npm run lint` — passed after removing synchronous state mirroring from effects in `ProfileManagementDashboard.tsx`, `ClaimInvitationPanel.tsx`, and `Identity.tsx`; the management list loader now has an explicit callback dependency.
+- Focused frontend regression tests for those components/pages — **3 files, 18 tests passed**.
+- `npm run build` — passed TypeScript and Vite production build; Vite reports the existing JavaScript chunk above 500 kB (about 885 kB).
 - `bundle exec rubocop --cache false` — **417 files inspected, 480 existing offenses** across the repository.
 - Focused RuboCop on the changed controllers/model/test files — **13 files inspected, no offenses**.
 - Browser tests: unavailable; no Playwright dependency or browser-test script is configured.
 
 ## Status
 
-Security fixes and regression audit are implemented. Phase 11 remains **partially complete** while repository-wide lint debt and the noted integration/runtime checks remain. Phase 12 production rollout remains separate and must not be inferred from this audit.
+Security fixes and the listed frontend lint findings are resolved. Phase 11 remains **partially complete**: repository-wide RuboCop still reports 480 offenses, production-like rate-limit exhaustion and browser tests have not run, and no staging/deployed API or real SMTP delivery was available. Phase 12 production rollout remains separate and must not be inferred from this audit.
