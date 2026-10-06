@@ -1,5 +1,5 @@
 class ApplicationMailer < ActionMailer::Base
-  default from: "romalopes@gmail.com"
+  default from: MailSender.from, reply_to: MailSender.reply_to
   layout "mailer"
 
   # Email testing (Configuration page): when test mode is on, every outgoing

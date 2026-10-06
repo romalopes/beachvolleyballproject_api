@@ -35,11 +35,9 @@ Rails.application.configure do
   # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 
 
-  # Real delivery when SMTP credentials are provided (e.g. Gmail app password
-  # in .env.development). Otherwise fall back to writing emails to tmp/mails
-  # so the reset flow remains testable without a mail server.
+  config.action_mailer.perform_deliveries = true
+  config.action_mailer.raise_delivery_errors = true
   if ENV["SMTP_ADDRESS"].present?
-    config.action_mailer.delivery_method = :smtp
     config.action_mailer.smtp_settings = {
       address: ENV["SMTP_ADDRESS"],
       port: ENV.fetch("SMTP_PORT", 587).to_i,
@@ -48,12 +46,9 @@ Rails.application.configure do
       password: ENV["SMTP_PASSWORD"],
       authentication: ENV.fetch("SMTP_AUTHENTICATION", "plain").to_sym,
       enable_starttls_auto: ENV.fetch("SMTP_ENABLE_STARTTLS", "true") == "true",
-      open_timeout: 5,
-      read_timeout: 5
+      open_timeout: 10,
+      read_timeout: 10
     }
-  else
-    config.action_mailer.delivery_method = :file
-    config.action_mailer.file_settings = { location: Rails.root.join("tmp/mails") }
   end
 
   # Log to STDOUT with the current request id as a default log tag.
@@ -85,7 +80,7 @@ Rails.application.configure do
   # config.action_mailer.raise_delivery_errors = false
 
   # Set host to be used by links generated in mailer templates.
-  config.action_mailer.default_url_options = { host: "example.com" }
+  config.action_mailer.default_url_options = { host: ENV.fetch("APP_HOST", "example.com"), protocol: "https" }
 
   # React frontend URL for password-reset email links (production deploy to Vercel).
   ENV["FRONTEND_URL"] ||= "https://beachvolleyballproject.vercel.app"
