@@ -640,6 +640,8 @@ STOP: Demonstrate the claim journey from search through status display.
 
 ### Phase 8 — Admin, Curator and Coach dashboard
 
+**Status: Implemented.** See [IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md](IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md) for the role boundary, endpoints, UX, and verification.
+
 ```text
 # Phase 8 — Profile Management Dashboard
 

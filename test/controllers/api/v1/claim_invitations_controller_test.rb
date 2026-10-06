@@ -184,4 +184,45 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
     assert_equal "active", invitation.reload.status
   end
+
+  test "management invitation filters include names and remain within the coach's profile scope" do
+    own_invitation, = ClaimInvitationService.issue!(claimable: @profile, invited_by: @coach, invitee_email: "person@example.com")
+    other_profile = PlayerProfile.create!(display_name: "Other coach profile", created_by: @other_coach)
+    ClaimInvitationService.issue!(claimable: other_profile, invited_by: @other_coach, invitee_email: "other@example.com")
+    sign_in_as(@coach)
+
+    get "/api/v1/claim_invitations", params: { management: 1, status: "active", claimable_type: "PlayerProfile" }
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal [ own_invitation.id ], body.fetch("data").map { |row| row.fetch("id") }
+    assert_equal "Unclaimed Player", body.dig("data", 0, "claimable_name")
+    assert body["meta"]
+  end
+
+  test "claimable profile directory applies type, status and link filters server side" do
+    unlinked = PlayerProfile.create!(display_name: "Directory Unlinked", created_by: @coach)
+    linked_person = Person.create!(first_name: "Linked", last_name: "Directory", status: "active")
+    Account.create!(user: users(:one), person: linked_person)
+    linked = PlayerProfile.create!(person: linked_person, created_by: @coach)
+    sign_in_as(@coach)
+
+    get "/api/v1/claim_invitations/claimables", params: { claimable_type: "PlayerProfile", status: "active", link_state: "unlinked", q: "Directory" }
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal [ unlinked.id ], body.fetch("data").map { |row| row.fetch("claimable_id") }
+    assert_equal false, body.dig("data", 0, "linked_to_account")
+    assert_not_includes body.fetch("data").map { |row| row.fetch("claimable_id") }, linked.id
+    assert_not_includes body.fetch("data").first.keys, "email"
+    assert_not_includes body.fetch("data").first.keys, "phone"
+  end
+
+  test "profile directory and management invitation history require a manager role" do
+    sign_in_as(@claimer)
+    get "/api/v1/claim_invitations/claimables"
+    assert_response :forbidden
+    get "/api/v1/claim_invitations", params: { management: 1 }
+    assert_response :forbidden
+  end
 end

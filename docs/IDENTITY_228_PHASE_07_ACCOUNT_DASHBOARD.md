@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented. The focused frontend suite passes (13 tests), and the frontend production build passes. Rails execution remains pending because the local PostgreSQL server/socket was unavailable.
+Implemented. The focused frontend suite and relevant Rails controller suites pass, and the frontend production build passes.
 
 ## User-facing behavior
 
@@ -58,8 +58,8 @@ bundle exec rails test test/controllers/api/v1/claim_invitations_controller_test
 npm test -- --run src/pages/Identity.test.tsx
 ```
 
-The frontend Identity suite passed (13 tests), and `npm run build` passed with the repository's existing Vite large-chunk warning. Ruby syntax checks passed for the changed services, controllers, tests, and migration. The Rails test command stopped because a database migration is pending; applying it to the test database failed because the local PostgreSQL socket `/tmp/.s.PGSQL.5432` was unavailable (`Operation not permitted`). Run the migration and focused Rails suites once PostgreSQL is available before marking verification complete.
+The frontend Identity and management suites passed (17 tests), and `npm run build` passed with the repository's existing Vite large-chunk warning. The focused Rails claim-invitation and claim controller suites passed (47 tests, 188 assertions, 0 failures/errors), covering the Phase 7 candidate filters and recipient invitation actions. Ruby syntax and diff checks passed.
 
 ## Next phase
 
-Phase 8 is the management dashboard for Admin, Curator, and Coach accounts. It has not been started as part of this implementation.
+Phase 8 is implemented; see [IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md](IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md). Phase 9 remains not started.

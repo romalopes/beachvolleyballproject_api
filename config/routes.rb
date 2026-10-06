@@ -147,6 +147,7 @@ Rails.application.routes.draw do
         collection do
           post :redeem
           get :received
+          get :claimables
         end
         member do
           post :revoke

@@ -49,7 +49,7 @@ class ClaimInvitation < ApplicationRecord
     invitee_email.present? && user&.email_address.to_s.strip.downcase == invitee_email && user.email_verified?
   end
 
-  def summary
+  def summary(include_claimable_name: false)
     {
       id: id,
       claimable_type: claimable_type,
@@ -68,6 +68,6 @@ class ClaimInvitation < ApplicationRecord
       revoked_at: revoked_at,
       declined_at: declined_at,
       created_at: created_at
-    }
+    }.tap { |payload| payload[:claimable_name] = claimable.respond_to?(:full_name) ? claimable.full_name : ClaimSubject.for(claimable).label if include_claimable_name }
   end
 end

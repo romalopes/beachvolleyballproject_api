@@ -163,6 +163,36 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_empty JSON.parse(response.body).fetch("data")
   end
 
+  test "management claims are filtered to owned profiles and cannot grant curators review authority" do
+    own_claim = PlayerClaim.create!(claimable: @profile, person: people(:one),
+      initiated_by_person: people(:one), claimant_account: users(:five).account, status: "pending")
+    other_profile = PlayerProfile.create!(display_name: "Outside coach record", created_by: users(:six))
+    PlayerClaim.create!(claimable: other_profile, person: people(:one), initiated_by_person: people(:one),
+      claimant_account: users(:five).account, status: "pending")
+    sign_in_as(@reviewer)
+
+    get api_v1_player_claims_path, params: { management: 1, status: "pending", claimable_type: "PlayerProfile" }
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal [ own_claim.id ], body.fetch("data").map { |row| row.fetch("id") }
+    assert_equal true, body.dig("data", 0, "can_review")
+
+    sign_in_as(users(:four))
+    get api_v1_player_claims_path, params: { management: 1, status: "pending" }
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body.fetch("data").all? { |row| row["can_review"] == false }
+    post "/api/v1/player_claims/#{own_claim.id}/approve", params: { verification_method: "staff_confirmed" }
+    assert_response :forbidden, "curator visibility must not become claim approval authority"
+  end
+
+  test "management claim history requires a manager role" do
+    sign_in_as(@claimant)
+    get api_v1_player_claims_path, params: { management: 1 }
+    assert_response :forbidden
+  end
+
   test "candidate search respects private profile visibility" do
     private_profile = PlayerProfile.create!(display_name: "John Smith", visibility: "private", created_by: users(:six))
     sign_in_as(@claimant)

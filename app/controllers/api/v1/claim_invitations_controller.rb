@@ -9,6 +9,7 @@ module Api
     # open invitations without a recipient email create a pending staff claim.
     class ClaimInvitationsController < ApplicationController
       include ContentAuthorization
+      include Pagination
 
       rate_limit to: 10, within: 1.minute, only: :create
       rate_limit to: 20, within: 1.minute, only: :redeem
@@ -18,6 +19,8 @@ module Api
       before_action :set_invitation, only: %i[show revoke accept decline]
 
       def index
+        return management_index if params[:management].present?
+
         if params[:claimable_type].blank? && params[:claimable_id].blank?
           invitations = if Current.user.admin?
             ClaimInvitation.all
@@ -34,6 +37,48 @@ module Api
         return render json: { error: "Claimable not found" }, status: :not_found unless subject_owner?
 
         render json: subject.claim_invitations.order(created_at: :desc).map(&:summary)
+      end
+
+      def claimables
+        user = Current.user
+        return render json: { error: "Profile manager access is required" }, status: :forbidden unless user.admin? || user.curator? || user.coach?
+
+        type = params[:claimable_type].presence || "all"
+        return render json: { error: "Unsupported profile type" }, status: :unprocessable_entity unless %w[all PlayerProfile CoachProfile].include?(type)
+        status_filter = params[:status].presence || "active"
+        return render json: { error: "Invalid profile status" }, status: :unprocessable_entity unless %w[all active archived].include?(status_filter)
+        link_filter = params[:link_state].presence || "all"
+        return render json: { error: "Invalid profile link state" }, status: :unprocessable_entity unless %w[all linked unlinked].include?(link_filter)
+
+        relations = type == "all" ? [ PlayerProfile, CoachProfile ] : [ type.constantize ]
+        records = relations.flat_map do |klass|
+          relation = ProfileManagementScope.scope(klass.all, user: user)
+          relation = relation.where(status: status_filter) unless status_filter == "all"
+          relation = relation.left_joins(person: :account)
+          if link_filter == "linked"
+            relation = relation.where("#{klass.table_name}.account_id IS NOT NULL OR accounts.id IS NOT NULL")
+          elsif link_filter == "unlinked"
+            relation = relation.where("#{klass.table_name}.account_id IS NULL AND accounts.id IS NULL")
+          end
+          if params[:q].present?
+            term = "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].to_s.strip)}%"
+            relation = relation.where("#{klass.table_name}.display_name ILIKE :term OR people.first_name ILIKE :term OR people.last_name ILIKE :term", term: term)
+          end
+          relation.order(:id).to_a.map do |profile|
+            can_invite = ProfilePolicy.new(actor: user, profile: profile).invite? && ClaimSubject.for(profile).eligible?
+            {
+              claimable_type: klass.name,
+              claimable_id: profile.id,
+              display_name: profile.full_name,
+              status: profile.status,
+              linked_to_account: profile.account_id.present? || profile.person&.account.present?,
+              can_invite: can_invite
+            }
+          end
+        end
+        records.sort_by! { |row| [ row[:display_name].to_s.downcase, row[:claimable_type], row[:claimable_id] ] }
+        page_records = records.slice((page_param - 1) * per_page_param, per_page_param) || []
+        render json: { data: page_records, meta: pagination_meta(records.length) }
       end
 
       def create
@@ -106,6 +151,42 @@ module Api
       end
 
       private
+
+      def management_index
+        user = Current.user
+        return render json: { error: "Profile manager access is required" }, status: :forbidden unless user.admin? || user.curator? || user.coach?
+
+        invitations = if user.admin? || user.curator?
+          ClaimInvitation.all
+        else
+          player_ids = PlayerProfile.owned_by(user).select(:id)
+          coach_ids = CoachProfile.owned_by(user).select(:id)
+          ClaimInvitation.where(invited_by: user).or(
+            ClaimInvitation.where(claimable_type: "PlayerProfile", claimable_id: player_ids)
+              .or(ClaimInvitation.where(claimable_type: "CoachProfile", claimable_id: coach_ids))
+          )
+        end
+        if params[:status].present? && params[:status] != "all"
+          return render json: { error: "Invalid invitation status" }, status: :unprocessable_entity unless ClaimInvitation::STATUSES.include?(params[:status])
+          invitations = case params[:status]
+          when "active" then invitations.where(status: "active").where("expires_at > ?", Time.current)
+          when "expired" then invitations.where(status: "expired").or(invitations.where(status: "active").where("expires_at <= ?", Time.current))
+          else invitations.where(status: params[:status])
+          end
+        end
+        if params[:claimable_type].present? && params[:claimable_type] != "all"
+          return render json: { error: "Unsupported profile type" }, status: :unprocessable_entity unless ClaimInvitation::SUBJECT_TYPES.include?(params[:claimable_type])
+          invitations = invitations.where(claimable_type: params[:claimable_type])
+        end
+        invitations = invitations.order(created_at: :desc)
+        records, meta = paginate(invitations)
+      render json: { data: records.map { |invitation| invitation.summary(include_claimable_name: true) }, meta: meta }
+      end
+
+      def pagination_meta(total)
+        { page: page_param, per_page: per_page_param, total: total,
+          total_pages: total.zero? ? 0 : (total.to_f / per_page_param).ceil }
+      end
 
       def require_claim_invitation_manager!
         return if Current.user&.admin? || Current.user&.curator? || Current.user&.coach?

@@ -25,6 +25,10 @@ module Api
       end
 
       def index
+        if params[:management].present?
+          return management_index
+        end
+
         account = Current.user&.account
         own_claims = if account
                        PlayerClaim.where(claimant_account: account)
@@ -132,6 +136,34 @@ module Api
 
       private
 
+      def management_index
+        user = Current.user
+        return render json: { error: "Profile manager access is required" }, status: :forbidden unless user.admin? || user.curator? || user.coach?
+
+        claims = if user.admin? || user.curator?
+          PlayerClaim.all
+        else
+          player_ids = PlayerProfile.owned_by(user).select(:id)
+          coach_ids = CoachProfile.owned_by(user).select(:id)
+          PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: player_ids)
+            .or(PlayerClaim.where(claimable_type: "CoachProfile", claimable_id: coach_ids))
+            .or(PlayerClaim.where(claimable_type: nil, player_profile_id: player_ids))
+        end
+        if params[:status].present? && params[:status] != "all"
+          return render json: { error: "Invalid claim status" }, status: :unprocessable_entity unless PlayerClaim::STATUSES.include?(params[:status])
+          claims = claims.where(status: params[:status])
+        end
+        if params[:claimable_type].present? && params[:claimable_type] != "all"
+          return render json: { error: "Unsupported profile type" }, status: :unprocessable_entity unless ProfileClaimability::PROFILE_TYPES.include?(params[:claimable_type])
+          claims = claims.where(claimable_type: params[:claimable_type])
+        end
+        claims = claims.order(created_at: :desc)
+        records, meta = paginate(claims)
+        render json: { data: records.map { |claim|
+          claim.summary(include_profile_name: true, include_review_details: claim.reviewable_by?(user)).merge(can_review: claim.reviewable_by?(user))
+        }, meta: meta }
+      end
+
       def paginate_array(records)
         total = records.length
         [ records.slice((page_param - 1) * per_page_param, per_page_param) || [],
@@ -160,7 +192,7 @@ module Api
       end
 
       def may_view_claim?
-        return true if claimant? || reviewer?
+        return true if claimant? || reviewer? || ProfileManagementScope.allowed?(profile: @claim.subject, user: Current.user)
 
         render_claim_error("Claim not found", :not_found, "not_found")
         false

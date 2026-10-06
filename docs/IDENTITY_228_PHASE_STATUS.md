@@ -8,7 +8,8 @@
 | 4 | Account-based profile claim requests and discovery | Complete | [IDENTITY_228_PHASE_04_PROFILE_CLAIMS.md](IDENTITY_228_PHASE_04_PROFILE_CLAIMS.md) |
 | 5 | Account-based review, approval, and profile linking | Complete | [IDENTITY_228_PHASE_05_CLAIM_APPROVAL.md](IDENTITY_228_PHASE_05_CLAIM_APPROVAL.md) |
 | 6 | Invitations to existing and new Accounts | Complete | [IDENTITY_228_PHASE_06_PROFILE_INVITATIONS.md](IDENTITY_228_PHASE_06_PROFILE_INVITATIONS.md) |
-| 7 | Account profile dashboard | Implemented; verification pending | [IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md](IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md) |
-| 8+ | Subsequent phases | Not started | [beachvolleyballproject-account-identity-plan.md](beachvolleyballproject-account-identity-plan.md) |
+| 7 | Account profile dashboard | Complete | [IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md](IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md) |
+| 8 | Profile management dashboard | Complete | [IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md](IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md) |
+| 9+ | Subsequent phases | Not started | [beachvolleyballproject-account-identity-plan.md](beachvolleyballproject-account-identity-plan.md) |
 
-Phases 1–7 are implemented. Phase 7 test and database migration verification remain pending because the local PostgreSQL socket is unavailable in this environment. Phase 8 is next.
+Phases 1–8 are implemented and their focused frontend/backend checks pass. Phase 9 is next.
