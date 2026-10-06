@@ -4,9 +4,9 @@
 #
 # `claimable` is polymorphic (PlayerProfile, CoachProfile or Person). The legacy
 # `player_profile_id` column is retained for existing rows and clients: a claim
-# carries exactly one of the two, enforced by a check constraint. Partial unique
-# indexes on `player_profile_id` and on `(claimable_type, claimable_id)` prevent
-# two pending claims against the same subject.
+# carries exactly one of the two, enforced by a check constraint. An Account-aware
+# partial unique index prevents duplicate pending claims by the same Account while
+# allowing separate Accounts to submit competing claims.
 #
 # The model name still says "Player" for continuity with the API and the table;
 # see IDENTITY_PHASE_18_UNIFIED_CLAIMS.md for the naming follow-up.
@@ -18,6 +18,8 @@ class PlayerClaim < ApplicationRecord
   belongs_to :person
   belongs_to :initiated_by_person, class_name: "Person"
   belongs_to :reviewed_by_person, class_name: "Person", optional: true
+  belongs_to :claimant_account, class_name: "Account", optional: true
+  belongs_to :reviewed_by_account, class_name: "Account", optional: true
 
   validates :status, inclusion: { in: STATUSES }
   validates :reviewed_at, presence: true, if: -> { %w[approved rejected].include?(status) }
@@ -69,11 +71,9 @@ class PlayerClaim < ApplicationRecord
   # profiles they recorded. Reads `subject`, so it stays correct for a migrated
   # claim whose `player_profile_id` is NULL.
   def reviewable_by?(user)
-    return false if user.nil?
-    return true if user.admin?
     return false unless subject.is_a?(PlayerProfile) || subject.is_a?(CoachProfile)
 
-    user.coach? && subject.respond_to?(:created_by_id) && ProfileOwnership.owned_by?(subject, user)
+    ProfilePolicy.new(actor: user, profile: subject).review_claim?
   end
 
   # Human label for review queues and audit text.

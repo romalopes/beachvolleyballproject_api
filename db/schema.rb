@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_100007) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_100008) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -528,20 +528,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100007) do
   create_table "player_claims", force: :cascade do |t|
     t.bigint "claimable_id"
     t.string "claimable_type"
+    t.bigint "claimant_account_id"
     t.datetime "created_at", null: false
     t.bigint "initiated_by_person_id", null: false
     t.bigint "person_id", null: false
     t.bigint "player_profile_id"
     t.text "rejection_reason"
     t.datetime "reviewed_at"
+    t.bigint "reviewed_by_account_id"
     t.bigint "reviewed_by_person_id"
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
+    t.index ["claimable_type", "claimable_id", "claimant_account_id"], name: "index_player_claims_pending_per_account_and_claimable", unique: true, where: "(((status)::text = 'pending'::text) AND (claimant_account_id IS NOT NULL))"
     t.index ["claimable_type", "claimable_id"], name: "index_player_claims_on_claimable"
-    t.index ["claimable_type", "claimable_id"], name: "index_player_claims_one_pending_per_claimable", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["claimant_account_id"], name: "index_player_claims_on_claimant_account_id"
     t.index ["initiated_by_person_id"], name: "index_player_claims_on_initiated_by_person_id"
     t.index ["person_id"], name: "index_player_claims_on_person_id"
     t.index ["player_profile_id"], name: "index_player_claims_on_player_profile_id"
+    t.index ["reviewed_by_account_id"], name: "index_player_claims_on_reviewed_by_account_id"
     t.index ["reviewed_by_person_id"], name: "index_player_claims_on_reviewed_by_person_id"
     t.check_constraint "claimable_id IS NOT NULL AND player_profile_id IS NULL OR claimable_id IS NULL AND player_profile_id IS NOT NULL", name: "player_claims_single_subject"
     t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'cancelled'::character varying]::text[])", name: "player_claims_valid_status"
@@ -907,6 +911,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_100007) do
   add_foreign_key "player_claim_invitations", "people", column: "created_by_person_id"
   add_foreign_key "player_claim_invitations", "people", column: "used_by_person_id"
   add_foreign_key "player_claim_invitations", "player_profiles"
+  add_foreign_key "player_claims", "accounts", column: "claimant_account_id"
+  add_foreign_key "player_claims", "accounts", column: "reviewed_by_account_id"
   add_foreign_key "player_claims", "people"
   add_foreign_key "player_claims", "people", column: "initiated_by_person_id"
   add_foreign_key "player_claims", "people", column: "reviewed_by_person_id"

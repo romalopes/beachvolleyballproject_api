@@ -2,9 +2,9 @@ module Api
   module V1
     # Coaches are CoachProfile records joined to their Person identity.
     #
-    # Read access is limited to training managers (coach/curator/admin): the
-    # payload carries contact details. Creating a coach additionally requires a
-    # content creator (coach/admin). A coach with no account can be recorded by
+    # Access is governed by ProfilePolicy: linked Accounts can view their own
+    # profiles, while catalogue access remains role-based. Creating a coach
+    # requires a Coach or Admin. A coach with no account can be recorded by
     # staff and used immediately — no Account is created, and no application
     # permissions are granted (those stay role-based on the User).
     class CoachesController < ApplicationController
@@ -27,6 +27,10 @@ module Api
       PROFILE_METHODS = %i[full_name account_status coach_profile_id].freeze
 
       def index
+        unless ProfilePolicy.new(actor: Current.user).can_view_collection?
+          return render json: { error: "Forbidden" }, status: :forbidden
+        end
+
         # See PlayersController: an explicit status filter replaces the active
         # default, so archived coaches stay reachable for restoring.
         #
@@ -141,6 +145,8 @@ module Api
       def update
         policy = ProfilePolicy.new(actor: Current.user, profile: @coach)
         unless policy.view?
+          return render json: { error: "Forbidden" }, status: :forbidden unless policy.manager?
+
           return render json: { error: "Coach not found" }, status: :not_found
         end
         unless policy.update?
@@ -162,6 +168,11 @@ module Api
            !@coach.visibility_change_permitted?(Current.user)
           @coach.errors.add(:visibility, "can only be changed by the coach who recorded this profile or an admin")
           return render json: { errors: @coach.errors.full_messages }, status: :forbidden
+        end
+
+        requested_status = update_params[:status] || update_params["status"]
+        if requested_status.present? && requested_status.to_s != @coach.status.to_s && !policy.archive?
+          return render json: { error: "Forbidden" }, status: :forbidden
         end
 
         if @coach.merged?

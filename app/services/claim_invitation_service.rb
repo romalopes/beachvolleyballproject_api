@@ -175,12 +175,15 @@ class ClaimInvitationService
   # A link by itself does not prove identity. When there is no verified exact
   # email match, possession of the invite authorizes a request for staff review.
   def self.enqueue_for_review!(invitation:, subject:, claimant_person:, user:)
-    raise InvitationError, INVALID_MESSAGE if pending_claim_for?(invitation)
+    account = user.account
+    raise InvitationError, INVALID_MESSAGE unless account
+    raise InvitationError, INVALID_MESSAGE if pending_claim_for?(invitation, account: account)
 
     claim = PlayerClaim.create!(
       claimable: invitation.claimable,
       person: claimant_person,
       initiated_by_person: invitation.invited_by.person || claimant_person,
+      claimant_account: account,
       status: "pending"
     )
     invitation.update!(status: "used", used_by: user, used_at: Time.current)
@@ -188,9 +191,10 @@ class ClaimInvitationService
   end
   private_class_method :enqueue_for_review!
 
-  def self.pending_claim_for?(invitation)
+  def self.pending_claim_for?(invitation, account:)
     PlayerClaim.pending.where(claimable_type: invitation.claimable_type,
-                              claimable_id: invitation.claimable_id).exists?
+                              claimable_id: invitation.claimable_id,
+                              claimant_account: account).exists?
   end
   private_class_method :pending_claim_for?
 end

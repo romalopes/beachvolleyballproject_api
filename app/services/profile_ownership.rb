@@ -1,7 +1,8 @@
 # Central ownership rules for PlayerProfile and CoachProfile.
 #
-# `created_by_id` remains a legacy attribution to User. Application ownership
-# resolves through Account, which is distinct from the profile's creator.
+# Account is the application principal; creator Account remains distinct from
+# linked Account. `created_by_id` is honored only as a compatibility mapping to
+# the same authenticated principal on legacy rows.
 class ProfileOwnership
   def self.account_for(user)
     user.with_lock do

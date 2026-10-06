@@ -18,7 +18,7 @@ class ProfileMergeService
   end
 
   def merge!
-    raise Error, "Only an administrator or curator can merge profiles" unless @actor&.admin? || @actor&.curator?
+    raise Error, "Only an administrator or curator can merge profiles" unless ProfilePolicy.new(actor: @actor, profile: @source).merge?
     raise Error, "A reason is required" if @reason.blank?
     raise Error, "Profiles must be the same type" unless @source.class == @canonical.class && PROFILE_CLASSES.include?(@source.class)
 

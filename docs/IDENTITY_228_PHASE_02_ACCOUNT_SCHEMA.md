@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented and verified against the configured local PostgreSQL database. Work stops at this issue checkpoint; no Phase 3 ownership or authorization changes are included.
+Implemented and verified against the configured local PostgreSQL database. At the Phase 2 checkpoint, no ownership/authorization work had begun; Phase 3 is now implemented separately in `IDENTITY_228_PHASE_03_PROFILE_AUTHORIZATION.md`.
 
 ## Decisions applied
 
@@ -20,8 +20,6 @@ Implemented and verified against the configured local PostgreSQL database. Work 
 - Added `ContactDetail` and Account association/creation validation. Account creation builds ContactDetail in the same Active Record transaction. Existing Person writes synchronize the ContactDetail during this transition.
 - Exposed contact email in the existing account API and account settings form without changing the User login email.
 - Added `AccountIdentityPhase2Backfill` and `bin/rails identity:phase2_backfill`. The default is a read-only dry run; set `APPLY=true` to repeat the idempotent account/profile creator mapping. It reports core counts, unknown creator mappings, profiles with accountless Person records, ambiguities, and preserved history counts.
-- Added Account collections for zero or more player and coach profiles. Account and profile deletion is restricted while these ownership links exist.
-- New profiles inherit an Account only when their linked Person already has that verified Account; accountless profiles stay unclaimed.
 - Extended the production readiness report with the new table and migration version.
 
 ## Verification results

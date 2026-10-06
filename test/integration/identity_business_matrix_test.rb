@@ -22,7 +22,7 @@ class IdentityBusinessMatrixTest < ActionDispatch::IntegrationTest
     sign_in_as(users(:five))
     get candidates_api_v1_player_claims_path
     assert_response :success
-    assert_includes JSON.parse(response.body).map { |row| row["player_profile_id"] }, profile.id
+    assert_includes JSON.parse(response.body).fetch("data").map { |row| row["player_profile_id"] }, profile.id
 
     post api_v1_player_claims_path, params: { player_profile_id: profile.id }
     assert_response :created

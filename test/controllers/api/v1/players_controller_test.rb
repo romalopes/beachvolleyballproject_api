@@ -20,6 +20,36 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_includes player_ids, player_profiles(:pedro_player).id
   end
 
+  test "an authenticated regular Account can only list and view linked profiles" do
+    linked = player_profiles(:john_player)
+    linked.update_columns(account_id: accounts(:one).id)
+    sign_in_as(accounts(:one).user)
+
+    get api_v1_players_path
+    assert_response :success
+    data = JSON.parse(response.body)["data"]
+    assert_equal [linked.id], data.map { |row| row["id"] }
+
+    get api_v1_player_path(linked)
+    assert_response :success
+    assert_equal linked.id, JSON.parse(response.body)["id"]
+  end
+
+  test "client-supplied ownership and creator Account IDs are ignored" do
+    sign_in_as(@trainer)
+    post api_v1_players_path, params: {
+      player: {
+        person: { first_name: "Untrusted", last_name: "Owner" },
+        player_profile: { account_id: accounts(:one).id, created_by_account_id: accounts(:one).id }
+      }
+    }
+
+    assert_response :created
+    profile = PlayerProfile.find(JSON.parse(response.body)["id"])
+    assert_nil profile.account_id
+    assert_equal accounts(:three).id, profile.created_by_account_id
+  end
+
   test "index paginates 20 per page by default" do
     sign_in_as(@admin)
     # Relative to the fixtures rather than a hard-coded total: this test is about

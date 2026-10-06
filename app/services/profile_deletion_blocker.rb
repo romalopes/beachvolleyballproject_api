@@ -51,8 +51,7 @@ class ProfileDeletionBlocker
   end
 
   def self.authorized?(profile:, user:)
-    return true if user&.admin?
-    false
+    ProfilePolicy.new(actor: user, profile: profile).destroy?
   end
 
   def self.destroy!(profile:, user:)

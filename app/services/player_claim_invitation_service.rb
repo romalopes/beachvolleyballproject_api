@@ -67,6 +67,7 @@ class PlayerClaimInvitationService
           # claim request, but never silently edits PlayerProfile.person_id.
           claim = PlayerClaimService.request!(
             player_profile: profile,
+            account: person.account,
             person: person,
             initiated_by_person: invitation.created_by_person
           )

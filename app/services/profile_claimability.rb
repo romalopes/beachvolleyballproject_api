@@ -17,8 +17,11 @@ class ProfileClaimability
     # Claim suggestions must obey the same visibility boundary as profile
     # catalogues and detail endpoints. Organization or coaching relationships
     # alone must not expose a profile its owner marked private.
-    base = profile_class.active.where(person_id: nil).visible_to(user)
-    return base if user.admin? || user.curator?
+    base = profile_class.active
+                        .left_joins(person: :account)
+                        .where(account_id: nil)
+                        .where("people.id IS NULL OR accounts.id IS NULL")
+                        .visible_to(user)
     return profile_class.none unless user.person&.status == "active"
 
     organisation_ids = user.person.organisation_memberships.active.select(:organisation_id)

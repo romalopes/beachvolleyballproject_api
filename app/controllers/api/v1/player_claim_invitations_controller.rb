@@ -98,11 +98,11 @@ module Api
       end
 
       def profile_owner?(profile)
-        Current.user.admin? || (Current.user.coach? && ProfileOwnership.owned_by?(profile, Current.user))
+        ProfilePolicy.new(actor: Current.user, profile: profile).invite?
       end
 
       def invitation_owner?(invitation)
-        Current.user.admin? || (Current.user.coach? && ProfileOwnership.owned_by?(invitation.claimable, Current.user))
+        ProfilePolicy.new(actor: Current.user, profile: invitation.claimable).invite?
       end
 
       def invalid_invitation

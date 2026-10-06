@@ -2,11 +2,10 @@ module Api
   module V1
     # Players are PlayerProfile records joined to their Person identity.
     #
-    # Read access is limited to training managers (coach/curator/admin): the
-    # payload carries contact details and coach observations. Creating a player
-    # additionally requires a content creator (coach/admin). A player with no
-    # account can be recorded by staff and used immediately — no Account is
-    # created (see PersonCreationService).
+    # Access is governed by ProfilePolicy: linked Accounts can view their own
+    # profiles, while catalogue access remains role-based. Creating a player
+    # requires a Coach or Admin. A player with no account can be recorded by
+    # staff and used immediately — no Account is created.
     class PlayersController < ApplicationController
       include ContentAuthorization
       include Pagination
@@ -28,6 +27,10 @@ module Api
       DETAIL_METHODS = PROFILE_METHODS + %i[training_session_count]
 
       def index
+        unless ProfilePolicy.new(actor: Current.user).can_view_collection?
+          return render json: { error: "Forbidden" }, status: :forbidden
+        end
+
         # Archived players are hidden from the catalogue by default (they are no
         # longer schedulable) but stay reachable with `?status=archived`, which
         # is how the SPA offers "show archived" and "restore".
@@ -162,6 +165,8 @@ module Api
       def update
         policy = ProfilePolicy.new(actor: Current.user, profile: @player)
         unless policy.view?
+          return render json: { error: "Forbidden" }, status: :forbidden unless policy.manager?
+
           return render json: { error: "Player not found" }, status: :not_found
         end
         unless policy.update?
@@ -183,6 +188,11 @@ module Api
            !@player.visibility_change_permitted?(Current.user)
           @player.errors.add(:visibility, "can only be changed by the coach who recorded this player or an admin")
           return render json: { errors: @player.errors.full_messages }, status: :forbidden
+        end
+
+        requested_status = update_params[:status] || update_params["status"]
+        if requested_status.present? && requested_status.to_s != @player.status.to_s && !policy.archive?
+          return render json: { error: "Forbidden" }, status: :forbidden
         end
 
         if @player.merged?

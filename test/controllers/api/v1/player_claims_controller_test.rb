@@ -29,7 +29,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
-  test "candidate search requires a linked active Person" do
+  test "candidate search requires an Account with an active identity" do
     sign_in_as(users(:one))
 
     get candidates_api_v1_player_claims_path
@@ -44,7 +44,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     get candidates_api_v1_player_claims_path
 
     assert_response :success
-    candidate = JSON.parse(response.body).find { |row| row["id"] == profile.id }
+    candidate = JSON.parse(response.body).fetch("data").find { |row| row["id"] == profile.id }
     assert_equal "candidate", candidate["result_type"]
     assert_equal "exact_name", candidate["match_type"]
     assert_equal "John Smith", candidate["display_name"]
@@ -59,7 +59,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
 
     get candidates_api_v1_player_claims_path
 
-    row = JSON.parse(response.body).find { |candidate| candidate["id"] == profile.id }
+    row = JSON.parse(response.body).fetch("data").find { |candidate| candidate["id"] == profile.id }
     assert_equal "partial_name", row["match_type"]
   end
 
@@ -69,7 +69,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
 
     get candidates_api_v1_player_claims_path
 
-    row = JSON.parse(response.body).find { |candidate| candidate["id"] == profile.id }
+    row = JSON.parse(response.body).fetch("data").find { |candidate| candidate["id"] == profile.id }
     assert_equal "exact_name", row["match_type"]
   end
 
@@ -79,7 +79,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     sign_in_as(@claimant)
 
     get candidates_api_v1_player_claims_path
-    ids = JSON.parse(response.body).map { |row| row["id"] }
+    ids = JSON.parse(response.body).fetch("data").map { |row| row["id"] }
     assert_includes ids, first.id
     assert_includes ids, second.id
 
@@ -88,7 +88,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     Account.create!(user: user, person: other)
     sign_in_as(user)
     get candidates_api_v1_player_claims_path
-    assert_equal [], JSON.parse(response.body)
+    assert_empty JSON.parse(response.body).fetch("data")
   end
 
   test "candidate search excludes profiles already claimed by any Person" do
@@ -97,12 +97,12 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
 
     get candidates_api_v1_player_claims_path
 
-    ids = JSON.parse(response.body).map { |row| row["id"] }
+    ids = JSON.parse(response.body).fetch("data").map { |row| row["id"] }
     assert_not_includes ids, linked.id
     assert_not_includes ids, player_profiles(:john_player).id
   end
 
-  test "candidate search excludes profiles with a pending claim" do
+  test "candidate search permits competing claim requests" do
     pending_profile = PlayerProfile.create!(display_name: "John Smith", created_by: users(:three))
     PlayerClaim.create!(player_profile: pending_profile, person: people(:two),
                         initiated_by_person: people(:two), status: "pending")
@@ -110,7 +110,32 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
 
     get candidates_api_v1_player_claims_path
 
-    assert_not_includes JSON.parse(response.body).map { |row| row["id"] }, pending_profile.id
+    assert_includes JSON.parse(response.body).fetch("data").map { |row| row["id"] }, pending_profile.id
+  end
+
+  test "candidate search includes an accountless profile already linked to a Person" do
+    person = Person.create!(first_name: "John", last_name: "Smith", creation_source: "coach_created")
+    linked_profile = PlayerProfile.create!(person: person, created_by: users(:three))
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path
+
+    assert_response :success
+    assert_includes JSON.parse(response.body).fetch("data").map { |row| row["id"] }, linked_profile.id
+  end
+
+  test "candidate results support pagination" do
+    PlayerProfile.create!(display_name: "John Smith Alpha", created_by: users(:three))
+    PlayerProfile.create!(display_name: "John Smith Beta", created_by: users(:three))
+    sign_in_as(@claimant)
+
+    get candidates_api_v1_player_claims_path, params: { page: 2, per_page: 1 }
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal 2, body.dig("meta", "page")
+    assert_equal 2, body.dig("meta", "total")
+    assert_equal 1, body.fetch("data").length
   end
 
   test "candidate search respects private profile visibility" do
@@ -119,18 +144,52 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
 
     get candidates_api_v1_player_claims_path
 
-    assert_not_includes JSON.parse(response.body).map { |row| row["id"] }, private_profile.id
+    assert_not_includes JSON.parse(response.body).fetch("data").map { |row| row["id"] }, private_profile.id
+  end
+
+  test "administrators do not get global claim discovery without an organisation or coaching relationship" do
+    profile = PlayerProfile.create!(display_name: "John Smith", created_by: users(:three))
+    person = Person.create!(first_name: "Unrelated", last_name: "Administrator", creation_source: "system")
+    admin = User.create!(name: "Unrelated Administrator", email_address: "unrelated.admin@example.com", password: "password123")
+    admin.add_role(:admin)
+    Account.create!(user: admin, person: person)
+    sign_in_as(admin)
+
+    get candidates_api_v1_player_claims_path
+
+    assert_response :success
+    assert_empty JSON.parse(response.body).fetch("data")
+    assert_nil profile.reload.account_id
+  end
+
+  test "an Account outside the profile organization cannot discover it" do
+    profile = PlayerProfile.create!(display_name: "John Smith", created_by: users(:three))
+    unrelated = User.create!(name: "Unrelated Player", email_address: "unrelated.player@example.com", password: "password123")
+    unrelated_person = Person.create!(first_name: "John", last_name: "Smith", creation_source: "signup")
+    Account.create!(user: unrelated, person: unrelated_person)
+    sign_in_as(unrelated)
+
+    get candidates_api_v1_player_claims_path
+
+    assert_response :success
+    assert_empty JSON.parse(response.body).fetch("data")
+    assert_nil profile.reload.account_id
   end
 
   test "a linked user can request a claim without changing profile identity" do
     sign_in_as(@claimant)
     old_id = @profile.id
-    post api_v1_player_claims_path, params: { player_profile_id: @profile.id, person_id: people(:two).id }
+    post api_v1_player_claims_path, params: {
+      player_profile_id: @profile.id,
+      person_id: people(:two).id,
+      claimant_account_id: users(:six).account.id
+    }
 
     assert_response :created
     claim = PlayerClaim.last
     assert_equal "pending", claim.status
     assert_equal people(:one).id, claim.person_id
+    assert_equal @claimant.account.id, claim.claimant_account_id
     assert_equal people(:one).id, claim.initiated_by_person_id
     assert_equal old_id, claim.player_profile_key
     assert_nil @profile.reload.person_id
@@ -145,7 +204,7 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     get api_v1_player_claims_path
 
     assert_response :success
-    claim = JSON.parse(response.body).find { |row| row["id"] == claim_id }
+    claim = JSON.parse(response.body).fetch("data").find { |row| row["id"] == claim_id }
     assert_equal "pending", claim.fetch("status")
   end
 
@@ -207,13 +266,49 @@ class Api::V1::PlayerClaimsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "pending", PlayerClaim.find(claim_id).status
   end
 
-  test "a second pending request for the same profile is refused" do
+  test "a second pending request by the same Account is refused" do
     sign_in_as(@claimant)
     post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
     post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
 
     assert_response :conflict
     assert_equal 1, PlayerClaim.where(claimable_type: "PlayerProfile", claimable_id: @profile.id, status: "pending").count
+  end
+
+  test "different Accounts may submit competing pending requests for the profile" do
+    sign_in_as(@claimant)
+    post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
+    first_claim = PlayerClaim.last
+
+    second_person = people(:two)
+    OrganisationMembership.find_or_create_by!(
+      person: second_person, organisation: organisations(:sydney_club)
+    ) do |membership|
+      membership.role = "member"
+      membership.status = "active"
+      membership.joined_at = Time.current
+    end
+    sign_in_as(users(:six))
+    post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
+
+    assert_response :created
+    second_claim = PlayerClaim.last
+    assert_equal "pending", first_claim.status
+    assert_equal "pending", second_claim.status
+    assert_not_equal first_claim.claimant_account_id, second_claim.claimant_account_id
+  end
+
+  test "claim index returns a paginated account-scoped result" do
+    sign_in_as(@claimant)
+    post api_v1_player_claims_path, params: { player_profile_id: @profile.id }
+    get api_v1_player_claims_path, params: { page: 1, per_page: 1 }
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal 1, body.dig("meta", "total")
+    assert_equal 1, body.fetch("data").length
+    claim = PlayerClaim.find(body.fetch("data").first.fetch("id"))
+    assert_equal @claimant.account.id, claim.claimant_account_id
   end
 
   test "rejection requires a reason and does not change the profile" do

@@ -90,6 +90,21 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "active", body["status"]
   end
 
+  test "client-supplied Account ownership and creator IDs are ignored" do
+    sign_in_as(@trainer)
+    post api_v1_coaches_path, params: {
+      coach: {
+        person: { first_name: "Untrusted", last_name: "Coach" },
+        coach_profile: { account_id: accounts(:one).id, created_by_account_id: accounts(:one).id }
+      }
+    }
+
+    assert_response :created
+    profile = CoachProfile.find(JSON.parse(response.body)["id"])
+    assert_nil profile.account_id
+    assert_equal accounts(:three).id, profile.created_by_account_id
+  end
+
   test "create returns validation errors" do
     sign_in_as(@admin)
     post api_v1_coaches_path, params: {

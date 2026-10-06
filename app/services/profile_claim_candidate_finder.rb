@@ -1,7 +1,6 @@
 # Name-based suggestions over profiles the centralized claimability policy
 # already permits. Names are hints only; the claimant must still submit a claim.
 class ProfileClaimCandidateFinder
-  LIMIT = 20
   MIN_PARTIAL_LENGTH = 3
 
   Candidate = Data.define(:profile, :type, :match_type) do
@@ -19,45 +18,62 @@ class ProfileClaimCandidateFinder
     end
   end
 
-  def initialize(person:, user:, type: "PlayerProfile")
-    @person = person
+  def initialize(person: nil, account: nil, user:, type: "PlayerProfile")
+    @account = account || user&.account
+    @person = person || @account&.person || user&.person
     @user = user
     @type = type
   end
 
   def matches
-    return [] unless ProfileClaimability::PROFILE_TYPES.include?(@type)
+    page(page: 1, per_page: 100).first
+  end
+
+  def page(page:, per_page:)
+    return [ [], 0 ] unless ProfileClaimability::PROFILE_TYPES.include?(@type)
+    return [ [], 0 ] unless @person&.status == "active"
 
     available = ProfileClaimability.profiles_for(user: @user, type: @type)
-                             .where.not(id: pending_subject_ids)
     names = ([ @person.full_name, @person.first_name, @person.last_name ] + @person.person_aliases.map(&:full_name))
             .map { |name| normalize(name) }.reject(&:blank?).uniq
-    return [] if names.empty?
+    return [ [], 0 ] if names.empty?
 
-    exact = available.where("regexp_replace(lower(trim(display_name)), '[^[:alnum:]]', '', 'g') IN (?)", names)
+    exact = available.where("regexp_replace(lower(trim(#{effective_name_sql})), '[^[:alnum:]]', '', 'g') IN (?)", names)
     terms = names.flat_map { |name| name.split(/[^[:alnum:]]+/) }
                  .select { |term| term.length >= MIN_PARTIAL_LENGTH }.uniq
     partial = if terms.empty?
       available.none
     else
-      available.where(terms.map { "display_name ILIKE ?" }.join(" OR "), *terms.map { |term| "%#{ActiveRecord::Base.sanitize_sql_like(term)}%" })
+      available.where(terms.map { "#{effective_name_sql} ILIKE ?" }.join(" OR "), *terms.map { |term| "%#{ActiveRecord::Base.sanitize_sql_like(term)}%" })
     end
 
-    exact_rows = exact.order(Arel.sql("LOWER(display_name)"), :id).limit(LIMIT).to_a
-    remaining = LIMIT - exact_rows.length
-    partial_rows = remaining.positive? ? partial.where.not(id: exact_rows.map(&:id)).order(Arel.sql("LOWER(display_name)"), :id).limit(remaining).to_a : []
-    (exact_rows.map { |row| Candidate.new(profile: row, type: @type, match_type: "exact_name") } +
-      partial_rows.map { |row| Candidate.new(profile: row, type: @type, match_type: "partial_name") })
+    partial = partial.where.not(id: exact.select(:id))
+    exact_count = exact.count
+    partial_count = partial.count
+    total = exact_count + partial_count
+    offset = (page - 1) * per_page
+
+    exact_rows = if offset < exact_count
+      exact.order(Arel.sql("LOWER(display_name)"), :id).offset(offset).limit(per_page).to_a
+    else
+      []
+    end
+    remaining = per_page - exact_rows.length
+    partial_offset = [ offset - exact_count, 0 ].max
+    partial_rows = if remaining.positive?
+      partial.order(Arel.sql("LOWER(display_name)"), :id).offset(partial_offset).limit(remaining).to_a
+    else
+      []
+    end
+    candidates = exact_rows.map { |row| Candidate.new(profile: row, type: @type, match_type: "exact_name") } +
+      partial_rows.map { |row| Candidate.new(profile: row, type: @type, match_type: "partial_name") }
+    [ candidates, total ]
   end
 
   private
 
-  def pending_subject_ids
-    polymorphic = PlayerClaim.pending.where(claimable_type: @type).select(:claimable_id)
-    return polymorphic unless @type == "PlayerProfile"
-
-    legacy = PlayerClaim.pending.where.not(player_profile_id: nil).select(:player_profile_id)
-    PlayerProfile.where(id: polymorphic).or(PlayerProfile.where(id: legacy)).select(:id)
+  def effective_name_sql
+    "COALESCE(NULLIF(trim(display_name), ''), NULLIF(trim(concat_ws(' ', people.first_name, people.last_name)), ''))"
   end
 
   def normalize(value)

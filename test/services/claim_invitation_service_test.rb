@@ -83,7 +83,7 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_equal ClaimInvitationService::INVALID_MESSAGE, error.message
     assert_nil @subject.reload.person_id
   end
-  test "one pending claim per subject even when a second person tries" do
+  test "different Accounts can submit competing invitation claims for one subject" do
     other = User.create!(name: "Second", email_address: "second@example.com",
                          password: "password123", email_verified_at: Time.current)
     Account.create!(user: other)
@@ -91,9 +91,10 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
 
     _second, second_token = issue
-    assert_raises(ClaimInvitationService::InvitationError) do
-      ClaimInvitationService.redeem!(raw_token: second_token, user: other)
-    end
+    result = ClaimInvitationService.redeem!(raw_token: second_token, user: other)
+    assert_equal :pending_review, result.fetch(:outcome)
+    assert_equal other.account.id, result.fetch(:claim).claimant_account_id
+    assert_equal 2, PlayerClaim.pending.where(claimable: @subject).count
   end
 
   test "issuing another invitation revokes the earlier live link" do

@@ -83,11 +83,7 @@ class CoachProfile < ApplicationRecord
 
   # See PlayerProfile#visible_to_user?.
   def visible_to_user?(user)
-    return true if shared?
-    return true if user.nil?
-    return true if user.admin? || user.curator?
-
-    ProfileOwnership.owned_by?(self, user)
+    ProfilePolicy.new(actor: user, profile: self).view?
   end
 
   def owner?(user)

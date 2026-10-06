@@ -121,7 +121,7 @@ module Api
         return Current.user.admin? || Current.user.coach? if record.is_a?(Person)
         return Current.user.admin? unless record.respond_to?(:created_by_id)
 
-        Current.user.admin? || (Current.user.coach? && ProfileOwnership.owned_by?(record, Current.user))
+        ProfilePolicy.new(actor: Current.user, profile: record).invite?
       end
 
       # Resolved from the invitation rather than the request params: the member

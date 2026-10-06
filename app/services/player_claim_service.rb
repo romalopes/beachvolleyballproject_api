@@ -1,24 +1,28 @@
 class PlayerClaimService
   class ClaimError < StandardError; end
 
-  def self.request!(person:, initiated_by_person:, claimable: nil, player_profile: nil)
+  def self.request!(person: nil, account: nil, initiated_by_person: nil, claimable: nil, player_profile: nil)
     profile = claimable || player_profile
     raise ClaimError, "Profile cannot be claimed" unless profile.is_a?(PlayerProfile) || profile.is_a?(CoachProfile)
+    person ||= account&.person
+    initiated_by_person ||= person
+    raise ClaimError, "An account is required to request a claim" unless account
+    raise ClaimError, "A verified active identity is required to request a claim" unless person&.status == "active"
 
     PlayerClaim.transaction do
       profile.with_lock do
         subject = ClaimSubject.for(profile)
         raise ClaimError, "Profile cannot be claimed" unless subject.eligible?
         raise ClaimError, "Profile needs a display name before it can be claimed" if profile.full_name.blank?
-        if PlayerClaim.pending.where(claimable: profile).exists?
-          raise ClaimError, "A pending claim already exists for this profile"
+        if PlayerClaim.pending.where(claimable: profile, claimant_account: account).exists?
+          raise ClaimError, "Your account already has a pending claim for this profile"
         end
-        raise ClaimError, "Person cannot submit a claim" unless person&.status == "active"
 
         PlayerClaim.create!(
           claimable: profile,
           person: person,
           initiated_by_person: initiated_by_person,
+          claimant_account: account,
           status: "pending"
         )
       end

@@ -5,24 +5,34 @@ module Api
     # are never exposed to a claimant by a claim lookup.
     class PlayerClaimsController < ApplicationController
       include ContentAuthorization
+      include Pagination
 
       before_action :require_authentication
       before_action :require_content_creator!, only: %i[approve reject]
       before_action :set_claim, only: %i[show approve reject cancel]
 
       def candidates
-        person = Current.user&.person
-        return render json: { error: "A linked Person is required to search for profiles" }, status: :unprocessable_entity unless person&.status == "active"
+        account = Current.user&.account
+        person = account&.person
+        return render json: { error: "An active Account is required to search for profiles" }, status: :unprocessable_entity unless account && person&.status == "active"
 
         type = params[:claimable_type].presence || "PlayerProfile"
         return render json: { error: "Unsupported profile type" }, status: :unprocessable_entity unless ProfileClaimability::PROFILE_TYPES.include?(type)
 
-        results = ProfileClaimCandidateFinder.new(person: person, user: Current.user, type: type).matches
-        render json: results.map(&:as_json)
+        results, total = ProfileClaimCandidateFinder.new(account: account, user: Current.user, type: type)
+          .page(page: page_param, per_page: per_page_param)
+        render json: { data: results.map(&:as_json), meta: pagination_meta(total) }
       end
 
       def index
-        own_claims = PlayerClaim.where(person: Current.user&.person).order(created_at: :desc)
+        account = Current.user&.account
+        own_claims = if account
+                       PlayerClaim.where(claimant_account: account)
+                         .or(PlayerClaim.where(claimant_account_id: nil, person: account.person))
+                     else
+                       PlayerClaim.none
+                     end
+        own_claims = own_claims.order(created_at: :desc)
         review_claims = if Current.user&.admin?
                           PlayerClaim.pending.order(:created_at)
         elsif Current.user&.coach?
@@ -34,11 +44,12 @@ module Api
                           PlayerClaim.none
         end
 
-        payloads = own_claims.map do |claim|
+        payloads = own_claims.to_a.map do |claim|
           [ claim.id, claim.summary(include_profile_name: claim.reviewable_by?(Current.user)) ]
         end.to_h
         review_claims.each { |claim| payloads[claim.id] = claim.summary(include_profile_name: true) }
-        render json: payloads.values
+        records, meta = paginate_array(payloads.values.sort_by { |claim| claim[:created_at] || claim["created_at"] }.reverse)
+        render json: { data: records, meta: meta }
       end
 
       def show
@@ -48,8 +59,9 @@ module Api
       end
 
       def create
-        person = Current.user&.person
-        return render json: { error: "A linked Person is required to request a claim" }, status: :unprocessable_entity unless person
+        account = Current.user&.account
+        person = account&.person
+        return render json: { error: "An Account with an active identity is required to request a claim" }, status: :unprocessable_entity unless account && person&.status == "active"
 
         type = params[:claimable_type].presence || "PlayerProfile"
         unless ProfileClaimability::PROFILE_TYPES.include?(type)
@@ -62,7 +74,7 @@ module Api
 
         claim = PlayerClaimService.request!(
           claimable: profile,
-          person: person,
+          account: account,
           initiated_by_person: person
         )
         render json: claim.summary, status: :created
@@ -106,13 +118,27 @@ module Api
 
       private
 
+      def paginate_array(records)
+        total = records.length
+        [ records.slice((page_param - 1) * per_page_param, per_page_param) || [],
+          pagination_meta(total) ]
+      end
+
+      def pagination_meta(total)
+        { page: page_param, per_page: per_page_param, total: total,
+          total_pages: total.zero? ? 0 : (total.to_f / per_page_param).ceil }
+      end
+
       def set_claim
         @claim = PlayerClaim.find_by(id: params[:id])
         render json: { error: "Claim not found" }, status: :not_found unless @claim
       end
 
       def claimant?
-        Current.user&.person&.id == @claim.person_id
+        account = Current.user&.account
+        return account.id == @claim.claimant_account_id if account && @claim.claimant_account_id
+
+        account&.person_id == @claim.person_id
       end
 
       def reviewer?

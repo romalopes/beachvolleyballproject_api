@@ -18,22 +18,26 @@ class ProfilePolicy
     return false unless @profile && @actor
     return true if linked_account?(@profile)
     return true if admin? || curator?
-    return @profile.visibility == "shared" if training_manager?
+    return true if coach? && ProfileOwnership.created_by?(@profile, @actor)
+    return true if @profile.visibility == "shared" && training_manager?
+    return true if player_peer_access?
 
     false
   end
 
   def update?
     return false unless @profile
-    return true if admin? || curator?
-    return false unless coach?
+    return true if admin?
+    coach? && view?
+  end
 
-    ProfileOwnership.created_by?(@profile, @actor) || linked_account?(@profile)
+  def can_view_collection?
+    manager? || @account.present?
   end
 
   def invite?
     return false unless @profile
-    return true if admin? || curator?
+    return true if admin?
 
     coach? && ProfileOwnership.created_by?(@profile, @actor)
   end
@@ -54,7 +58,7 @@ class ProfilePolicy
   end
 
   def archive?
-    admin? || curator?
+    update?
   end
 
   def destroy?
@@ -66,7 +70,14 @@ class ProfilePolicy
     return relation.none unless actor
     return relation if policy.manager?
 
-    policy.account ? relation.where(account_id: policy.account.id) : relation.none
+    scoped = if policy.account
+      relation.where(account_id: policy.account.id)
+    elsif actor.is_a?(User)
+      relation.where(created_by_id: actor.id)
+    else
+      relation.none
+    end
+    scoped
   end
 
   def account = @account
@@ -74,10 +85,13 @@ class ProfilePolicy
 
   private
 
-  attr_reader :account
-
   def linked_account?(profile)
-    account && profile.account_id == account.id
+    ProfileOwnership.linked_to?(profile, @actor)
+  end
+
+  def player_peer_access?
+    @profile.is_a?(PlayerProfile) && training_manager? && @user&.person &&
+      @user.person.shares_organisation_with?(@profile.person)
   end
 
   def admin? = @account&.admin? || @user&.admin? || false

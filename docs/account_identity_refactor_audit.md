@@ -1,6 +1,6 @@
 # Issue #228 — Account-Centric Identity Refactor Audit
 
-**Status:** Phase 1 complete; read-only audit. No application code, schema, or migration was changed.
+**Status:** Phase 1 audit completed; additive Phase 2, Account-based Phase 3 authorization, and Phase 4 Account claimant records/discovery are implemented in their separate phase documents. Phase 5 review and approval remains next.
 
 **Issue:** [#228 — Account-centric identity refactoring plan](https://github.com/romalopes/beachvolleyballproject_api/issues/228)
 
@@ -126,7 +126,7 @@ This is the audited recommendation for review before schema work:
 6. Before removing Person, approve a storage target for accountless names/contact data and for shared identity across accountless profiles. Then migrate each Person foreign key, polymorphic subject, audit actor, JSON reference and API consumer independently, validating row counts and relationship invariants.
 7. Only after all API and frontend consumers switch should a separately reviewed contract migration remove Person columns/table. Keep the existing profile-level histories and merge records.
 
-The accountless-membership representation, accountless-contact storage, and role principal are **approval blockers**. The required Account→ContactDetails relationship and separation of contact email from login email are now confirmed. The current schema alone cannot decide the remaining blockers without a product/domain decision.
+The accountless-membership representation and accountless-contact storage remain unresolved before Person can be removed. The required Account→ContactDetail relationship and separation of contact email from login email are confirmed. Roles remain on User, with Account exposing role predicates for policy use. The current schema alone cannot decide the accountless identity target without a product/domain decision.
 
 Suggested phase sequencing after decisions: additive profile ownership/contact schema; ownership/policy changes; claim and invitation migrations; dashboards; membership/organization identity migration; retire Person workflows; deletion and merge audit; security/regression audit; production rollout; separately approved contract cleanup. Each issue checkpoint remains in force.
 
@@ -145,7 +145,7 @@ Suggested phase sequencing after decisions: additive profile ownership/contact s
 | 9. Merge/archive/delete and audit | `app/services/person_consolidation_service.rb`, profile merge/deletion services, controllers and tests; identity/deletion docs | Preserve identity and history audit; do not equate linking with merging or deletion. |
 | 10. Contract and rollout | New separately approved migration(s), `db/schema.rb`, production runbook/report | Remove legacy columns/table only after staging, row-count, FK, rollback and production approvals. |
 
-The user approved Phase 2 with these boundaries: each Account has one required ContactDetail; its contact email stays separate from User login email; profile ownership Account links are nullable; roles remain on User; accountless roster and profile data stays intact; Person references remain operational. Phase 2 implementation is now complete and documented separately. The issue's checkpoint still requires reporting migration verification and stopping before Phase 3.
+The user approved Phase 2 with these boundaries: each Account has one required ContactDetail; its contact email stays separate from User login email; profile ownership Account links are nullable; roles remain on User; accountless roster and profile data stays intact; Person references remain operational. Phase 2 and Phase 3 are documented separately in `IDENTITY_228_PHASE_02_ACCOUNT_SCHEMA.md` and `IDENTITY_228_PHASE_03_PROFILE_AUTHORIZATION.md`. Accountless membership/contact representation must be resolved before Person can be retired.
 
 ## 7. Phase 1 verification
 

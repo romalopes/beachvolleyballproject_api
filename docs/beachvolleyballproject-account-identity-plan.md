@@ -399,6 +399,8 @@ STOP: Report the final permission matrix and passing tests.
 
 ### Phase 4 — Profile claims
 
+**Status:** Implemented. See [`IDENTITY_228_PHASE_04_PROFILE_CLAIMS.md`](IDENTITY_228_PHASE_04_PROFILE_CLAIMS.md). Phase 5 (Account-based review and approval/linking) remains next.
+
 The Account dashboard allows claims of eligible, currently unclaimed profiles.
 
 Adjust this proposed API contract to established conventions:

@@ -113,15 +113,7 @@ class PlayerProfile < ApplicationRecord
   # catalogue, the detail endpoints and any future caller must use this
   # instead of reimplementing the rules.
   def visible_to_user?(user)
-    return true if shared?
-    return true if user.nil?
-    return true if user.admin? || user.curator?
-    return true if ProfileOwnership.owned_by?(self, user)
-    # §15, the single-row counterpart of the `visible_to` scope. Both must agree,
-    # or a list and an item can disagree about who may see what.
-    return false if person.nil? || user.person.nil?
-
-    user.person.shares_organisation_with?(person)
+    ProfilePolicy.new(actor: user, profile: self).view?
   end
 
   def owner?(user)
