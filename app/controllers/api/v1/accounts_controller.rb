@@ -4,15 +4,20 @@ module Api
       before_action :require_authentication
 
       def show
-        render json: account_payload(Current.user.account || Current.user.build_account)
+        target = requested_account_id ? viewable_account! : current_account
+        return if performed?
+
+        render json: account_payload(target, include_contact: can_manage_account?(target))
       end
 
       def update
-        account = Current.user.account || Current.user.build_account
+        account = requested_account_id ? editable_account! : current_account
+        return if performed?
+
         account.build_account_address unless account.account_address
 
         if account.update(account_params)
-          render json: account_payload(account)
+          render json: account_payload(account, include_contact: true)
         else
           render json: { errors: account.errors.full_messages }, status: :unprocessable_entity
         end
@@ -44,25 +49,64 @@ module Api
 
       private
 
-      def account
+      def current_account
         Current.user.account || Current.user.build_account
       end
 
-      def account_payload(account)
+      def editable_account!
+        target = Account.find(requested_account_id)
+        return target if can_manage_account?(target)
+
+        render json: { error: "Forbidden" }, status: :forbidden
+        nil
+      end
+
+      def viewable_account!
+        target = Account.find(requested_account_id)
+        return target if can_view_account?(target)
+
+        render json: { error: "Forbidden" }, status: :forbidden
+        nil
+      end
+
+      def can_view_account?(target)
+        can_manage_account?(target) || Current.user.coach?
+      end
+
+      def can_manage_account?(target)
+        return false unless target
+        return true if Current.user.account&.id == target.id
+
+        Current.user.admin? || Current.user.curator?
+      end
+
+      def requested_account_id
+        params[:account_id].presence || params[:id].presence
+      end
+
+      def account_payload(account, include_contact:)
         address = account.account_address
         {
           id: account.id,
-          first_name: account.first_name,
-          last_name: account.last_name,
-          email: account.email,
-          phone: account.phone,
-          date_of_birth: account.date_of_birth,
+          first_name: include_contact ? account.first_name : nil,
+          last_name: include_contact ? account.last_name : nil,
+          full_name: account.full_name.presence || "Account ##{account.id}",
+          email: include_contact ? account.email : nil,
+          phone: include_contact ? account.phone : nil,
+          date_of_birth: include_contact ? account.date_of_birth : nil,
+          can_edit: can_manage_account?(account),
           address: {
-            street_address: address&.street_address,
-            city: address&.city,
-            state: address&.state,
-            postal_code: address&.postal_code,
-            country: address&.country
+            street_address: include_contact ? address&.street_address : nil,
+            city: include_contact ? address&.city : nil,
+            state: include_contact ? address&.state : nil,
+            postal_code: include_contact ? address&.postal_code : nil,
+            country: include_contact ? address&.country : nil
+          },
+          player_profiles: account.player_profiles.active.order(:id).map { |profile|
+            { id: profile.id, name: profile.full_name.presence || profile.display_name || "Player profile ##{profile.id}" }
+          },
+          coach_profiles: account.coach_profiles.active.order(:id).map { |profile|
+            { id: profile.id, name: profile.full_name.presence || profile.display_name || "Coach profile ##{profile.id}" }
           }
         }
       end

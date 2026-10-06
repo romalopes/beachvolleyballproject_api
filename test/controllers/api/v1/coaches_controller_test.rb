@@ -105,6 +105,20 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "active", body["status"]
   end
 
+  test "create a profile-only coach without running Person duplicate detection" do
+    sign_in_as(@trainer)
+
+    post api_v1_coaches_path, params: {
+      coach: { coach_profile: { display_name: "New Coach", visibility: "shared" } }
+    }
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_equal "New Coach", body["display_name"]
+    assert_nil body["person"]
+    assert_equal [], body["possible_duplicates"]
+  end
+
   test "client-supplied Account ownership and creator IDs are ignored" do
     sign_in_as(@trainer)
     post api_v1_coaches_path, params: {
@@ -154,7 +168,7 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test "create coach links the requested Person and provisions the creator Account" do
+  test "create coach links the requested Person and records the creator Account" do
     sign_in_as(@admin)
     person = Person.create!(first_name: "Linkable", last_name: "Coach", creation_source: "system")
     people_before = Person.count
@@ -166,8 +180,8 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
     body = JSON.parse(response.body)
     assert_equal person.id, body["person_id"]
-    assert_equal people_before + 1, Person.count, "the creator's Account provisions its Person"
-    assert_equal @admin.id, @admin.reload.account.person.created_by_id
+    assert_equal people_before, Person.count, "creating a profile must not create a Person for the Account"
+    assert @admin.reload.account.present?
     assert_equal @admin.account.id, CoachProfile.find(body["id"]).created_by_account_id
     assert_equal "system", person.reload.creation_source, "linking must not rewrite provenance"
   end
@@ -175,7 +189,7 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
   test "a Person may have multiple independently addressable coach profiles" do
     person = people(:two)
     original_profile = coach_profiles(:maria_coach)
-    account_id = person.account.id
+    account_id = original_profile.account_id
     player_profile = PlayerProfile.create!(person: person, display_name: "Maria's player record")
     player_profile_ids = person.reload.player_profiles.pluck(:id)
     membership_ids = person.organisation_memberships.pluck(:id)
@@ -191,7 +205,7 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_equal person.id, created["person_id"]
     assert_not_equal original_profile.id, created["id"]
     assert_equal sibling_ids + [ created["id"] ], person.reload.coach_profiles.order(:id).pluck(:id)
-    assert_equal account_id, person.account.id
+    assert_equal account_id, original_profile.reload.account_id
     assert_equal player_profile_ids, person.player_profiles.pluck(:id)
     assert_equal membership_ids, person.organisation_memberships.pluck(:id)
     assert original_profile.reload.persisted?
@@ -200,7 +214,7 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
   test "archiving one coach profile leaves its Person and sibling profiles intact" do
     person = people(:two)
     second = CoachProfile.create!(person: person, coaching_level: "advanced", created_by: @admin)
-    account_id = person.account.id
+    account_id = coach_profiles(:maria_coach).account_id
     player_profile_ids = person.player_profiles.pluck(:id)
     sign_in_as(@admin)
 
@@ -209,7 +223,7 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal "archived", second.reload.status
     assert_equal "active", coach_profiles(:maria_coach).reload.status
-    assert_equal account_id, person.reload.account.id
+    assert_equal account_id, coach_profiles(:maria_coach).reload.account_id
     assert_equal player_profile_ids, person.player_profiles.pluck(:id)
     assert_equal [ coach_profiles(:maria_coach).id, second.id ], person.coach_profiles.order(:id).pluck(:id)
   end

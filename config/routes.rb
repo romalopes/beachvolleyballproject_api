@@ -127,6 +127,9 @@ Rails.application.routes.draw do
       resources :coaches, only: %i[index show create update destroy] do
         member { post :merge }
       end
+      # A read-only account page for the profile catalogues. Editing continues
+      # to use the existing singleton `/account` endpoint.
+      resources :accounts, only: :show
       resources :player_claims, only: %i[index show create] do
         collection do
           get :candidates

@@ -85,7 +85,8 @@ module Api
                 }
               }
             },
-            created_by: { only: %i[id name] }
+            created_by: { only: %i[id name] },
+            account: { only: :id, methods: :full_name }
           },
           methods: PROFILE_METHODS
         )
@@ -95,6 +96,7 @@ module Api
         # Phase 18 made `person` nullable for coaches, so a coach recorded
         # without an account also arrives without the key.
         payload["person"] = nil unless payload.key?("person")
+        payload["account"] = nil unless payload.key?("account")
         redact_person_contact!(payload, @coach)
 
         # Attribution history (plan 4.2): the count and a recent slice of the
@@ -246,19 +248,26 @@ module Api
         else
           { only: %i[id first_name last_name] }
         end
-        profile.as_json(
+        payload = profile.as_json(
           only: PROFILE_ONLY,
           include: {
             person: person_options,
-            created_by: { only: %i[id name] }
+            created_by: { only: %i[id name] },
+            account: { only: :id, methods: :full_name }
           },
           methods: PROFILE_METHODS
         )
+        payload["created_by"] = nil unless payload.key?("created_by")
+        payload["person"] = nil unless payload.key?("person")
+        payload["account"] = nil unless payload.key?("account")
+        payload
       end
 
       # People who may already describe this human, matched by email then name.
       # The person just created is excluded so it never suggests itself.
       def possible_duplicates_for(person)
+        return [] unless person
+
         PersonDuplicateFinder.new(
           first_name: person.first_name,
           last_name: person.last_name,

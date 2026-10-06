@@ -89,6 +89,7 @@ module Api
               }
             },
             created_by: { only: %i[id name] },
+            account: { only: :id, methods: :full_name },
             training_session_participants: {
               only: %i[id status notes created_at],
               include: {
@@ -102,6 +103,7 @@ module Api
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
         payload["person"] = nil unless payload.key?("person")
+        payload["account"] = nil unless payload.key?("account")
         redact_person_contact!(payload, @player)
 
         # Coaching history (plan 4.2): the count is published rows only, and
@@ -275,7 +277,8 @@ module Api
           only: PROFILE_ONLY,
           include: {
             person: person_options,
-            created_by: { only: %i[id name] }
+            created_by: { only: %i[id name] },
+            account: { only: :id, methods: :full_name }
           },
           methods: PROFILE_METHODS
         )
@@ -283,6 +286,7 @@ module Api
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
         payload["person"] = nil unless payload.key?("person")
+        payload["account"] = nil unless payload.key?("account")
         payload
       end
 
