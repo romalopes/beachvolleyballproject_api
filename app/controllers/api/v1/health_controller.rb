@@ -7,9 +7,14 @@ module Api
     # GET /api/v1/health/detailed — admin-only diagnostics: infrastructure
     #                               info plus record counts for the domain
     #                               resources the SPA consumes.
+    # GET /api/v1/health/email/transport — read-only send-test-email metadata:
+    #                               configured MAIL_TRANSPORT plus the effective
+    #                               delivery name (no auth).
+    # POST /api/v1/health/email/test — admin-only one-off test email whose
+    #                               subject/body embed the effective transport.
     class HealthController < ApplicationController
-      allow_test_access only: :index
-      before_action :authorize_admin!, only: :detailed
+      allow_test_access only: [ :index, :email_transport ]
+      before_action :authorize_admin!, only: [ :detailed, :send_test_email ]
 
       def index
         if database_connected?
@@ -18,6 +23,60 @@ module Api
           render json: { status: "error", version: backend_version },
                  status: :service_unavailable
         end
+      end
+
+      # GET /api/v1/health/email/transport
+      def email_transport
+        render json: {
+          configured_transport: configured_transport,
+          effective_transport: MailTransport.effective_transport_name(ENV, logger: Rails.logger)
+        }
+      end
+
+      # POST /api/v1/health/email/test
+      #
+      # Accepts { to, content, subject? }. Delivers a one-off test email whose
+      # subject and body embed the effectively used transport, and echoes the
+      # configured/effective transports in the JSON reply.
+      def send_test_email
+        to = params[:to].to_s.strip
+        content = params[:content].to_s.strip
+        subject = params[:subject].to_s.presence
+
+        if to.blank?
+          return render json: { error: "A 'to' recipient is required." }, status: :unprocessable_entity
+        end
+        if content.blank?
+          return render json: { error: "An email 'content' is required." }, status: :unprocessable_entity
+        end
+
+        configured = configured_transport
+        effective = MailTransport.effective_transport_name(ENV, logger: Rails.logger)
+
+        begin
+          TestEmailMailer.test_email(
+            to: to,
+            content: content,
+            transport: effective,
+            subject: subject
+          ).deliver_now
+        rescue StandardError => error
+          return render json: {
+            configured_transport: configured,
+            effective_transport: effective,
+            status: "error",
+            message: "Delivery failed via #{effective}: #{error.class}: #{error.message.to_s.truncate(300)}",
+            recipients: [ to ]
+          }, status: :internal_server_error
+        end
+
+        render json: {
+          configured_transport: configured,
+          effective_transport: effective,
+          status: "delivered",
+          message: "Test email delivered to 1 recipient(s) via the #{effective} transport.",
+          recipients: [ to ]
+        }
       end
 
       def detailed
@@ -38,6 +97,15 @@ module Api
       end
 
       private
+
+      # DISPLAY value for the send-test-email tool: the configured MAIL_TRANSPORT
+      # as normalized by the resolver ("auto" or blank fall back to automatic
+      # selection). The delivery name Action Mailer will actually use is
+      # reported separately by MailTransport.effective_transport_name.
+      def configured_transport
+        configured = ENV["MAIL_TRANSPORT"].to_s.strip.downcase
+        (configured.blank? || configured == "auto") ? "auto" : configured
+      end
 
       # Backend version. Prefers the value set on the Rails Application config
       # in config/application.rb (freshly booted process), then the

@@ -8,6 +8,16 @@ class MailTransport
 
   def self.resolve(env = ENV, logger: nil) = new(env, logger: logger).resolve
 
+  # Delivery-method name string Action Mailer will actually use for the current
+  # environment (eg "brevo", "resend", "smtp", "file"). The boot initializer
+  # exits early in test and keeps Action Mailer on the default :test delivery,
+  # so the test environment reports "test" here regardless of credentials.
+  def self.effective_transport_name(env = ENV, logger: nil)
+    return "test" if Rails.env.test?
+
+    resolve(env, logger: logger)
+  end
+
   def initialize(env, logger: nil)
     @env = env
     @logger = logger

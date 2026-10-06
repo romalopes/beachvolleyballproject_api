@@ -148,6 +148,107 @@ class Api::V1::HealthControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # Send-test-email read-only metadata.
+
+  test "email_transport is reachable without an admin session and reports config" do
+    get "/api/v1/health/email/transport"
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_includes [ "auto", "brevo", "resend", "smtp", "file" ], body["configured_transport"]
+    assert_equal "test", body["effective_transport"]
+  end
+
+  # Send-test-email guarded POST.
+
+  test "send_test_email requires authentication" do
+    post "/api/v1/health/email/test", params: { to: "ops@example.com", content: "hi" }, as: :json
+    assert_response :unauthorized
+  end
+
+  test "send_test_email rejects a non-admin user" do
+    sign_in_as(@player)
+    persist_session_cookie!
+    post "/api/v1/health/email/test", params: { to: "ops@example.com", content: "hi" }, as: :json
+    assert_response :forbidden
+  end
+
+  test "send_test_email rejects a missing recipient" do
+    sign_in_as(@admin)
+    persist_session_cookie!
+    post "/api/v1/health/email/test", params: { content: "hi" }, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/'to'/, JSON.parse(response.body)["error"])
+  end
+
+  test "send_test_email rejects missing content" do
+    sign_in_as(@admin)
+    persist_session_cookie!
+    post "/api/v1/health/email/test", params: { to: "ops@example.com" }, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/'content'/, JSON.parse(response.body)["error"])
+  end
+
+  test "send_test_email delivers via the effective transport and on the test adapter" do
+    sign_in_as(@admin)
+    persist_session_cookie!
+    assert_difference("ActionMailer::Base.deliveries.count") do
+      post "/api/v1/health/email/test",
+           params: { to: "ops@example.com", content: "Can you read this?" }, as: :json
+    end
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "auto", body["configured_transport"]
+    assert_equal "test", body["effective_transport"]
+    assert_equal "delivered", body["status"]
+    assert_equal [ "ops@example.com" ], body["recipients"]
+    assert_includes body["message"], "test"
+
+    message = ActionMailer::Base.deliveries.last
+    assert_equal [ "ops@example.com" ], message.to
+    assert_includes message.subject.to_s, "test"
+    assert_includes message.decoded.to_s, "test"
+    assert_includes message.decoded.to_s, "Can you read this?"
+  end
+
+  test "send_test_email keeps the caller recipient when app test mode is on" do
+    AppSetting.set!(:test, true)
+    begin
+      sign_in_as(@admin)
+      persist_session_cookie!
+      assert_difference("ActionMailer::Base.deliveries.count") do
+        post "/api/v1/health/email/test",
+             params: { to: "ops@example.com", content: "Bypass the redirect." }, as: :json
+      end
+      assert_response :success
+      message = ActionMailer::Base.deliveries.last
+      assert_equal [ "ops@example.com" ], message.to
+      assert_includes message.subject.to_s, "[TEST]"
+      assert_includes message.subject.to_s, "test"
+    ensure
+      AppSetting.set!(:test, false)
+    end
+  end
+
+  test "send_test_email returns 500 with a bounded message when delivery raises" do
+    sign_in_as(@admin)
+    persist_session_cookie!
+    failing = Object.new
+    failing.define_singleton_method(:deliver_now) { raise StandardError, "boom" }
+    original = TestEmailMailer.method(:test_email)
+    TestEmailMailer.define_singleton_method(:test_email) { |**| failing }
+    begin
+      post "/api/v1/health/email/test",
+           params: { to: "ops@example.com", content: "Will fail." }, as: :json
+    ensure
+      TestEmailMailer.define_singleton_method(:test_email, original)
+    end
+    assert_response :internal_server_error
+    body = JSON.parse(response.body)
+    assert_equal "error", body["status"]
+    assert_match(/boom/, body["message"])
+    assert_equal "test", body["effective_transport"]
+  end
+
   private
 
   # Simulates a database outage without extra stubbing gems: temporarily

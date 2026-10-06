@@ -46,6 +46,12 @@ Rails.application.routes.draw do
       get "health", to: "health#index"
       get "health/detailed", to: "health#detailed"
 
+      # Health diagnostics send-test-email tool (Issue 226): read-only config
+      # plus a manual, admin-only POST that delivers a one-off message whose
+      # subject/body embed the effectively used transport.
+      get "health/email/transport", to: "health#email_transport"
+      post "health/email/test", to: "health#send_test_email"
+
       # Private test-access gate (see TestAccessToken): password -> signed
       # token; token verification for the SPA on boot.
       post "test_access", to: "test_access#create"
