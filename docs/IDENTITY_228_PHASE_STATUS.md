@@ -10,6 +10,7 @@
 | 6 | Invitations to existing and new Accounts | Complete | [IDENTITY_228_PHASE_06_PROFILE_INVITATIONS.md](IDENTITY_228_PHASE_06_PROFILE_INVITATIONS.md) |
 | 7 | Account profile dashboard | Complete | [IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md](IDENTITY_228_PHASE_07_ACCOUNT_DASHBOARD.md) |
 | 8 | Profile management dashboard | Complete | [IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md](IDENTITY_228_PHASE_08_PROFILE_MANAGEMENT.md) |
-| 9+ | Subsequent phases | Not started | [beachvolleyballproject-account-identity-plan.md](beachvolleyballproject-account-identity-plan.md) |
+| 9 | Remove People workflows | Partially implemented; backend dependency cutover remains | [IDENTITY_228_PHASE_09_PEOPLE_WORKFLOWS.md](IDENTITY_228_PHASE_09_PEOPLE_WORKFLOWS.md) |
+| 10+ | Subsequent phases | Not started | [beachvolleyballproject-account-identity-plan.md](beachvolleyballproject-account-identity-plan.md) |
 
-Phases 1–8 are implemented and their focused frontend/backend checks pass. Phase 9 is next.
+Phases 1–8 are implemented and their focused frontend/backend checks pass. Phase 9 removes the active Person workflows from profile management but is not complete: active backend and roster dependencies still require Person. See its detailed audit before proceeding.

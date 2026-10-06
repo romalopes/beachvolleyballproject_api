@@ -126,7 +126,7 @@ class PlayerProfile < ApplicationRecord
   end
 
   def full_name
-    person&.full_name || display_name
+    display_name.presence || person&.full_name
   end
 
   def merged?

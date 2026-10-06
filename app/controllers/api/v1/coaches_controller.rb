@@ -19,7 +19,7 @@ module Api
 
       # Permitted input.
       PERSON_ATTRS = %i[first_name last_name email phone date_of_birth].freeze
-      PROFILE_ATTRS = %i[coaching_level qualifications status visibility].freeze
+      PROFILE_ATTRS = %i[display_name coaching_level qualifications status visibility].freeze
 
       # Serializable output.
       PROFILE_ONLY = %i[id person_id display_name coaching_level qualifications status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
