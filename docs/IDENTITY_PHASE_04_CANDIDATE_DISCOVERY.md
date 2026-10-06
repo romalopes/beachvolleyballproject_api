@@ -2,11 +2,11 @@
 
 ## Delivered
 
-- Added `GET /api/v1/player_claims/candidates`, requiring authentication and an active Person linked to the signed-in account.
-- The finder compares the caller's current full/first/last name and recorded Person aliases with active, unlinked `PlayerProfile.display_name` values. Exact normalized name matches are ranked before partial token matches.
-- Only profiles visible under the existing `PlayerProfile.visible_to` policy are considered. Profiles already linked to any Person and profiles with a pending claim are excluded.
+- Added `GET /api/v1/player_claims/candidates`, requiring authentication and an Account for the signed-in user.
+- The finder searches active, unlinked profile display names. A supplied query requires at least three characters; without one, it suggests exact and partial matches against the account's existing profile display names.
+- Only active, unlinked profiles visible under the existing profile visibility policy are considered. The search can include profiles outside the claimant's organisation or coaching relationships because selecting a result creates a pending claim that staff must approve; it does not link an account directly.
 - Results are capped at 20, deterministic, and explicitly labeled `result_type: "candidate"` with `match_type: "exact_name"` or `"partial_name"`. The response contains only profile ID and display name. It does not include email, phone, date of birth, owner, notes, assessments, memberships, or claim authority.
-- Search uses the caller's own recorded identity fields and aliases; it does not accept arbitrary search text, so the endpoint cannot be used to enumerate the player catalogue by trying names.
+- Search accepts a display-name query so a player can locate the club record they believe is theirs. It returns only profile ID and display name, and a selection still requires staff approval.
 - Candidate discovery does not create claims, associate a profile, merge People, or imply identity confirmation. The user must submit a separate claim request and a coach/admin review is still required.
 - Added the frontend API client method and candidate type. The search/review interaction UI remains Phase 12 work.
 

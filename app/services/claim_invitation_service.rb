@@ -1,8 +1,8 @@
 # Issues, redeems and revokes claim invitations for any subject kind.
 #
-# The authorization rule is a matching verified email. Whether the application
-# sent or the coach manually shared the link does not change ownership proof.
-# An open profile invitation without an email recipient creates a pending claim.
+# Redeeming an active invitation is the recipient's acceptance of the profile.
+# An email-addressed invitation still requires the verified recipient account;
+# an open link is a bearer invitation and links the authenticated redeemer.
 class ClaimInvitationService
   class InvitationError < StandardError; end
 
@@ -54,10 +54,8 @@ class ClaimInvitationService
     [ invitation, raw_token ]
   end
 
-  # Returns what happened, so the caller can tell an immediate link from a
-  # request awaiting review:
-  #   { invitation:, outcome: :linked, account: }
-  #   { invitation:, outcome: :pending_review, claim: }
+  # Returns the linked account. Staff-reviewed claims are created only through
+  # the separate profile-claim workflow, never by redeeming an invitation.
   def self.redeem!(raw_token:, user:)
     raise InvitationError, INVALID_MESSAGE if raw_token.to_s.strip.empty?
 
@@ -108,11 +106,7 @@ class ClaimInvitationService
               # locks so stale links cannot revive an ineligible record.
               raise NotRedeemable unless subject.eligible? && subject.still_unclaimed?
 
-              outcome = if invitation.verified_email_match?(user)
-                          auto_link!(invitation: invitation, subject: subject, account: account, user: user)
-              else
-                          enqueue_for_review!(invitation: invitation, subject: subject, account: account, user: user)
-              end
+              outcome = auto_link!(invitation: invitation, subject: subject, account: account, user: user)
             end
           end
         end
@@ -211,28 +205,4 @@ class ClaimInvitationService
   end
   private_class_method :auto_link!
 
-  # A link by itself does not prove identity. When there is no verified exact
-  # email match, possession of the invite authorizes a request for staff review.
-  def self.enqueue_for_review!(invitation:, subject:, account:, user:)
-    account = user.account
-    raise InvitationError, INVALID_MESSAGE unless account
-    raise InvitationError, INVALID_MESSAGE if pending_claim_for?(invitation, account: account)
-
-    claim = PlayerClaim.create!(
-      claimable: invitation.claimable,
-      claimant_account: account,
-      initiated_by_account: invitation.invited_by.account,
-      status: "pending"
-    )
-    invitation.update!(status: "used", used_by: user, used_at: Time.current)
-    { invitation: invitation, outcome: :pending_review, claim: claim }
-  end
-  private_class_method :enqueue_for_review!
-
-  def self.pending_claim_for?(invitation, account:)
-    PlayerClaim.pending.where(claimable_type: invitation.claimable_type,
-                              claimable_id: invitation.claimable_id,
-                              claimant_account: account).exists?
-  end
-  private_class_method :pending_claim_for?
 end

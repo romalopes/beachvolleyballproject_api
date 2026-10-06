@@ -15,7 +15,7 @@ The codebase already had a unified `ClaimInvitation` for Person, PlayerProfile, 
 
 ## Changes in this phase
 
-- Profile invitations now allow an authorized issuer to edit or correct a Person-backed profile's recorded email. An explicit recipient email takes precedence over the stored Person email; leaving it blank creates an open invitation that requires review.
+- Profile invitations now allow an authorized issuer to edit or correct a Person-backed profile's recorded email. An explicit recipient email takes precedence over the stored Person email; leaving it blank creates an open bearer invitation. Redeeming either invitation accepts it and links the signed-in account immediately; an email-addressed invitation additionally requires the recipient to verify that exact address.
 - Curators may issue invitations for profiles within the existing oversight scope. Coaches remain limited to profiles they recorded; admins retain oversight. Curators can list invitations within that same profile scope. Person invitations remain under their existing coach/admin policy.
 - The detail-page panel exposes the recipient email field for PlayerProfile and CoachProfile invitations. The Identity invitation list also includes Curators and collects invitations without exposing the one-time token after creation.
 - The unauthenticated invitation route carries its fragment through sign-in and registration. The app temporarily stores the internal return path in browser local storage while email verification is pending, then restores the user to `/identity#claim_token=…` after verification and sign-in. Successful redemption clears this saved path.
@@ -55,7 +55,7 @@ Content-Type: application/json
 { "token": "one-time-secret" }
 ```
 
-The response has outcome `linked` for an exact verified email match or `pending_review` for an open invitation. The established `/api/v1/player_claim_invitations` endpoint remains as a compatibility route.
+The response has outcome `linked` when the recipient redeems an active invitation. The established `/api/v1/player_claim_invitations` endpoint remains as a compatibility route.
 
 ## UI flow for a new recipient
 

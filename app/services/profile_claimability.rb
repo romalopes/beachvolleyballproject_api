@@ -1,10 +1,9 @@
 # Canonical eligibility for discovering/requesting an unlinked profile.
 #
-# Scope is derived from existing domain links: the profile creator belongs to
-# one of the claimant's active organisations, or a current PlayerCoach row joins
-# the profile to one of the claimant's opposite-kind profiles. An issued
-# invitation is a separate, explicit authorization and does not require the
-# invitee to be discoverable through this search policy.
+# Candidate search exposes only active, unlinked profiles that are already
+# visible to the signed-in user. A selected profile still creates a pending
+# claim; staff approval, rather than organisation or coaching membership, is
+# the safeguard against an incorrect self-claim.
 class ProfileClaimability
   PROFILE_TYPES = %w[PlayerProfile CoachProfile].freeze
 
@@ -20,22 +19,7 @@ class ProfileClaimability
     base = profile_class.active.where(account_id: nil).visible_to(user)
     return profile_class.none unless user.account
 
-    organisation_ids = user.account.organisation_memberships.active.select(:organisation_id)
-    organisation_people = Person.joins(:organisation_memberships)
-                                .where(organisation_memberships: { organisation_id: organisation_ids, status: "active" })
-                                .select(:id)
-    creator_accounts = Account.where(id: OrganisationMembership.where(organisation_id: organisation_ids, status: "active").select(:account_id))
-    creator_users = creator_accounts.select(:user_id)
-    same_organisation = base.where(created_by_account_id: creator_accounts)
-                             .or(base.where(created_by_id: creator_users))
-
-    same_coach = if type == "PlayerProfile"
-      base.where(id: PlayerCoach.current.where(coach_profile_id: user.account.coach_profiles.select(:id)).select(:player_profile_id))
-    else
-      base.where(id: PlayerCoach.current.where(player_profile_id: user.account.player_profiles.select(:id)).select(:coach_profile_id))
-    end
-
-    same_organisation.or(same_coach)
+    base
   end
 
   def self.allowed?(profile:, user:)

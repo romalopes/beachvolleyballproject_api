@@ -1,8 +1,7 @@
 require "test_helper"
 
-# The auto-approve gate is the security-critical rule of the unified workflow:
-# an invitation links an identity immediately ONLY when the club actually emailed
-# it to the address the recipient controls. Everything else goes to staff review.
+# Redeeming a unified invitation is acceptance of the linked profile. A
+# recipient-email invitation adds verification of that exact email address.
 class ClaimInvitationServiceTest < ActiveSupport::TestCase
   setup do
     @coach = users(:three)
@@ -49,13 +48,14 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_equal "used", result[:invitation].status
   end
 
-  test "an invitation with no address can never auto-approve" do
+  test "redeeming an open invitation links the profile to the signed-in account" do
     _invitation, token = issue
 
     result = ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
 
-    assert_equal :pending_review, result[:outcome]
-    assert_nil @subject.reload.person_id
+    assert_equal :linked, result[:outcome]
+    assert_equal @claimer.account.id, @subject.reload.account_id
+    assert_equal "used", result[:invitation].status
   end
 
   test "a verified newly registered User receives an Account and links the invited profile" do
@@ -97,18 +97,14 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_equal ClaimInvitationService::INVALID_MESSAGE, error.message
     assert_nil @subject.reload.person_id
   end
-  test "different Accounts can submit competing invitation claims for one subject" do
-    other = User.create!(name: "Second", email_address: "second@example.com",
-                         password: "password123", email_verified_at: Time.current)
-    Account.create!(user: other)
+  test "a redeemed invitation makes the profile unavailable for another invitation" do
     _invitation, token = issue
     ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
 
-    _second, second_token = issue
-    result = ClaimInvitationService.redeem!(raw_token: second_token, user: other)
-    assert_equal :pending_review, result.fetch(:outcome)
-    assert_equal other.account.id, result.fetch(:claim).claimant_account_id
-    assert_equal 2, PlayerClaim.pending.where(claimable: @subject).count
+    error = assert_raises(ClaimInvitationService::InvitationError) do
+      issue
+    end
+    assert_match(/already linked/i, error.message)
   end
 
   test "issuing another invitation revokes the earlier live link" do
@@ -125,7 +121,8 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
 
     result = ClaimInvitationService.redeem!(raw_token: token, user: @claimer)
 
-    assert_equal :pending_review, result[:outcome]
+    assert_equal :linked, result[:outcome]
+    assert_equal @claimer.account.id, coach.reload.account_id
     assert_equal "CoachProfile", invitation.claimable_type
     assert_equal coach.id, invitation.claimable_id
   end

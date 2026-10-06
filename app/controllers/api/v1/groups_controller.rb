@@ -16,9 +16,10 @@ module Api
       include Pagination
 
       before_action :require_authentication
-      before_action :require_training_manager!
+      before_action :require_training_manager!, except: :show
       before_action :require_content_creator!, only: %i[create update destroy add_members remove_member]
       before_action :set_group, only: %i[show update destroy add_members remove_member]
+      before_action :require_group_reader!, only: :show
       before_action :check_visibility!, only: %i[show update destroy add_members remove_member]
       before_action :authorize_owner!, only: %i[update destroy add_members remove_member]
 
@@ -230,6 +231,13 @@ module Api
         return if @group.visible_to_user?(Current.user)
 
         render json: { error: "Group not found" }, status: :not_found
+      end
+
+      def require_group_reader!
+        return if Current.user&.content_manager?
+        return if @group&.group_memberships&.active&.exists?(account_id: Current.user&.account&.id)
+
+        render json: { error: "Forbidden" }, status: :forbidden
       end
 
       def authorize_owner!

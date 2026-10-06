@@ -5,8 +5,8 @@ module Api
     # controllers this unified; both remain routed for one release.
     #
     # Raw tokens are returned only by create and are never serialized from the
-    # model. Redemption links immediately for a verified exact-email match;
-    # open invitations without a recipient email create a pending staff claim.
+    # model. Redemption accepts the invitation and links the signed-in account;
+    # recipient-email invitations additionally require a verified exact match.
     class ClaimInvitationsController < ApplicationController
       include ContentAuthorization
       include Pagination
@@ -193,8 +193,8 @@ module Api
         render_unauthorized_or_forbidden
       end
 
-      # Two shapes, so the SPA can tell "you are linked now" from "a coach has
-      # to look at this".
+      # The unified invitation workflow always links on redemption. The
+      # pending-review shape remains for the separate manual profile-claim flow.
       def redeem_payload(result)
         payload = { invitation: result[:invitation].summary, outcome: result[:outcome].to_s }
         if result[:outcome] == :linked

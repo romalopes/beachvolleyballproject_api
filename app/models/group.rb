@@ -108,6 +108,7 @@ class Group < ApplicationRecord
     return true if shared?
     return true if user.nil?
     return true if user.admin? || user.curator?
+    return true if user.account && group_memberships.active.exists?(account_id: user.account.id)
 
     created_by_id.present? && created_by_id == user.id
   end

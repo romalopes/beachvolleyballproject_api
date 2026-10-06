@@ -10,9 +10,9 @@
 #   claimable_type "PlayerProfile" -> the profile links to an Account
 #   claimable_type "CoachProfile"  -> the profile links to an Account
 #
-# A verified exact-email match permits immediate linking, whether the link was
-# emailed by the application or shared manually. A profile invitation without a
-# specific recipient email remains a request for staff review.
+# Redeeming an active invitation links the signed-in account immediately. An
+# email-addressed invitation adds the extra requirement that the recipient
+# controls that exact verified email address.
 class ClaimInvitation < ApplicationRecord
   STATUSES = %w[active used revoked expired declined].freeze
   DEFAULT_EXPIRATION = 7.days

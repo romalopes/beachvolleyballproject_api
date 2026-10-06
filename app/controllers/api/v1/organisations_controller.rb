@@ -16,13 +16,14 @@ module Api
       include Pagination
 
       before_action :require_authentication
-      before_action :require_training_manager!
+      before_action :require_training_manager!, except: :show
       # Loaded before the authority checks, not after: every organisation rule below
       # needs the record it is judging, and a rule that silently passed because the
       # record was nil would be the worst kind of bug here.
       before_action :set_organisation,
                     only: %i[show update archive restore logo destroy
                              members create_member update_member end_member join]
+      before_action :require_organisation_reader!, only: :show
       # Creating a node and moving one are claims made *to other clubs* about the
       # tree, so they stay admin-only.
       before_action :require_organisation_admin!, only: %i[create]
@@ -511,6 +512,15 @@ module Api
                         .find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Organisation not found" }, status: :not_found
+      end
+
+      # A member may read the organisation they belong to from their Identity
+      # dashboard. Catalogue and management access remain training-manager only.
+      def require_organisation_reader!
+        return if Current.user&.content_manager?
+        return if @organisation&.organisation_memberships&.active&.exists?(account_id: Current.user&.account&.id)
+
+        render json: { error: "Forbidden" }, status: :forbidden
       end
 
       # `status` is writable so a client can archive or restore in one call, but

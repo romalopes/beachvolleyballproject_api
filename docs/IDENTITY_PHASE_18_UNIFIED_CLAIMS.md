@@ -61,9 +61,9 @@ hold:
 
 Whether the link was emailed or copied by hand does not affect this proof. An
 unverified matching address is asked to verify and may retry; the invitation
-remains active. A profile invitation without a recipient email creates a
-**pending claim for staff review** instead. `redeem!` returns `outcome: "linked"` or
-`outcome: "pending_review"`, and `/identity` says which happened.
+remains active. Redeeming an active profile invitation accepts it and links the
+signed-in account immediately. `redeem!` returns `outcome: "linked"`; manual
+profile claims remain the separate staff-review path.
 
 The verified matching email is the authorization check. `emailed_at` remains
 delivery telemetry, but delivery failure does not turn a verified, matching
