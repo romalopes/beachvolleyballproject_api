@@ -28,6 +28,24 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal invitation.id, JSON.parse(response.body).first.fetch("id")
   end
 
+  test "a coach profile invitation can be redeemed by its verified recipient" do
+    coach_profile = CoachProfile.create!(display_name: "Unclaimed Coach", created_by: @coach)
+    sign_in_as(@coach)
+    post "/api/v1/claim_invitations",
+         params: { claimable_type: "CoachProfile", claimable_id: coach_profile.id,
+                   invitee_email: @claimer.email_address }
+    assert_response :created
+    token = JSON.parse(response.body).fetch("token")
+
+    sign_in_as(@claimer)
+    post "/api/v1/claim_invitations/redeem", params: { token: token }
+
+    assert_response :created
+    assert_equal "linked", JSON.parse(response.body).fetch("outcome")
+    assert_equal @claimer.account.id, coach_profile.reload.account_id
+    assert_equal @claimer.person.id, coach_profile.person_id
+  end
+
   test "redeeming a hand-copied link with the verified recipient address links immediately" do
     invitation, raw_token = ClaimInvitationService.issue!(
       claimable: @profile, invited_by: @coach, invitee_email: @claimer.email_address
@@ -68,6 +86,22 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
 
     assert_empty ClaimInvitation.where(claimable_type: "PlayerProfile", claimable_id: @profile.id)
+  end
+
+  test "a curator may issue an invitation within the oversight profile scope" do
+    sign_in_as(users(:four))
+
+    post "/api/v1/claim_invitations",
+         params: { claimable_type: "PlayerProfile", claimable_id: @profile.id }
+
+    assert_response :created
+    invitation = ClaimInvitation.find(JSON.parse(response.body).dig("invitation", "id"))
+    assert_equal users(:four).id, invitation.invited_by_id
+
+    issued_by_coach, = ClaimInvitationService.issue!(claimable: CoachProfile.create!(display_name: "Scoped Coach", created_by: @coach), invited_by: @coach)
+    get "/api/v1/claim_invitations"
+    assert_response :success
+    assert_includes JSON.parse(response.body).map { |row| row.fetch("id") }, issued_by_coach.id
   end
 
   test "an unknown subject type is refused rather than guessing a class" do

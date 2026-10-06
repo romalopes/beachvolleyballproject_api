@@ -37,7 +37,7 @@ class ProfilePolicy
 
   def invite?
     return false unless @profile
-    return true if admin?
+    return true if admin? || curator?
 
     coach? && ProfileOwnership.created_by?(@profile, @actor)
   end

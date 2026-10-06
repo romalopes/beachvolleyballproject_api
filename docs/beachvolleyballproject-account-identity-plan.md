@@ -463,7 +463,7 @@ STOP: Provide endpoint examples and test results.
 
 ### Phase 5 — Claim approval and linking
 
-**Status:** Implemented. See [`IDENTITY_228_PHASE_05_CLAIM_APPROVAL.md`](IDENTITY_228_PHASE_05_CLAIM_APPROVAL.md). Phase 6 is next.
+**Status:** Implemented. See [`IDENTITY_228_PHASE_05_CLAIM_APPROVAL.md`](IDENTITY_228_PHASE_05_CLAIM_APPROVAL.md).
 
 Approval is an identity operation, not merely a status update.
 
@@ -503,6 +503,8 @@ STOP: Show tests proving two Accounts cannot claim the same profile concurrently
 ```
 
 ### Phase 6 — Invitations to existing or new Accounts
+
+**Status:** Implemented. See [`IDENTITY_228_PHASE_06_PROFILE_INVITATIONS.md`](IDENTITY_228_PHASE_06_PROFILE_INVITATIONS.md). Phase 7 is next.
 
 Support emails belonging to an existing User with an Account, and emails not yet belonging to a User.
 

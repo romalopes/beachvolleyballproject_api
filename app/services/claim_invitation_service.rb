@@ -23,13 +23,17 @@ class ClaimInvitationService
 
     # A Person subject always carries its own address; a profile only when the
     # club supplies one, so a placeholder player stays an open bearer link.
-    address = subject.default_email || invitee_email.presence
     raw_token = SecureRandom.urlsafe_base64(32)
 
     invitation = ClaimInvitation.transaction do
       claimable.with_lock do
         subject = ClaimSubject.for(claimable)
         raise InvitationError, subject.ineligibility_reason unless subject.eligible?
+        address = if claimable.is_a?(Person)
+          subject.default_email
+        else
+          invitee_email.presence || subject.default_email
+        end
 
         now = Time.current
         claimable.claim_invitations.active.each do |prior|

@@ -6,8 +6,18 @@ module Api
       def create
         user = User.new(registration_params)
 
-        if user.save
+        registered = User.transaction do
+          next false unless user.save
+
           user.add_role(:player)
+          # Every newly registered authentication identity receives its
+          # Account and required ContactDetail atomically. Email verification
+          # still gates session creation and invitation acceptance.
+          Account.create!(user: user) unless user.account
+          true
+        end
+
+        if registered
 
           # Email verification is required before ANY session (API grant or
           # cookie) may be created — an unverified signup must get 202

@@ -58,6 +58,20 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_nil @subject.reload.person_id
   end
 
+  test "a verified newly registered User receives an Account and links the invited profile" do
+    new_user = User.create!(name: "New Invitee", email_address: "new-invitee@example.com",
+                            password: "password123", email_verified_at: Time.current)
+    _invitation, token = issue(invitee_email: new_user.email_address)
+
+    result = ClaimInvitationService.redeem!(raw_token: token, user: new_user)
+
+    assert_equal :linked, result.fetch(:outcome)
+    assert new_user.reload.account
+    assert new_user.account.contact_detail
+    assert_equal new_user.account.id, @subject.reload.account_id
+    assert_equal new_user.person.id, @subject.person_id
+  end
+
   test "an unverified address cannot redeem an address-restricted invitation" do
     invitation, token = issue(invitee_email: @claimer.email_address)
     @claimer.update!(email_verified_at: nil)
@@ -127,6 +141,15 @@ class ClaimInvitationServiceTest < ActiveSupport::TestCase
     assert_equal :linked, result[:outcome]
     assert_equal person.id, @claimer.reload.account.person_id
     assert_equal person.id, coach.reload.person_id
+  end
+
+  test "an authorized issuer can override a stale recorded email address" do
+    person = accountless_person("old-address@example.com")
+    coach = CoachProfile.create!(person: person, created_by: @coach)
+    invitation, = ClaimInvitationService.issue!(claimable: coach, invited_by: @coach,
+                                                  invitee_email: "new-address@example.com")
+
+    assert_equal "new-address@example.com", invitation.invitee_email
   end
 
   test "a player profile linked to an accountless Person invites that Person's account" do

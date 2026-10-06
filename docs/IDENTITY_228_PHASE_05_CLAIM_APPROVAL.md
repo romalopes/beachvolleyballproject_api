@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented. Claim review uses the authenticated reviewer's Account, applies the existing profile review policy, and links the claimant Account to the existing player or coach profile in one transaction. Phase 6 remains next.
+Implemented. Claim review uses the authenticated reviewer's Account, applies the existing profile review policy, and links the claimant Account to the existing player or coach profile in one transaction. Phase 6 invitations are documented separately.
 
 ## Behavior before this phase
 
@@ -76,4 +76,4 @@ Example conflict response:
 
 - The legacy `PlayerClaim`/`player_claims` naming remains for compatibility even though the subject can be either profile type.
 - Delivery is asynchronous; transient enqueue failures are logged and do not roll back the approval. Operational mail delivery monitoring remains important.
-- Phase 6 will build invitation flows on this account-based claim and linking behavior.
+- Phase 6 invitation acceptance builds on this account-based claim and linking behavior.

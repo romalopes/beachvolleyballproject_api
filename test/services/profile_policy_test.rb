@@ -58,6 +58,7 @@ class ProfilePolicyTest < ActiveSupport::TestCase
     assert admin.destroy?
     assert curator.view?
     assert_not curator.update?
+    assert curator.invite?
     assert curator.merge?
     assert_not curator.destroy?
   end

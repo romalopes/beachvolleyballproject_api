@@ -14,13 +14,21 @@ module Api
       rate_limit to: 20, within: 1.minute, only: :redeem
 
       before_action :require_authentication
-      before_action :require_content_creator!, only: %i[index create revoke]
+      before_action :require_claim_invitation_manager!, only: %i[index create revoke]
       before_action :set_invitation, only: %i[show revoke]
 
       def index
         if params[:claimable_type].blank? && params[:claimable_id].blank?
-          invitations = Current.user.admin? ? ClaimInvitation.all : ClaimInvitation.where(invited_by: Current.user)
-          return render json: invitations.order(created_at: :desc).limit(200).map(&:summary)
+          invitations = if Current.user.admin?
+            ClaimInvitation.all
+          elsif Current.user.curator?
+            ClaimInvitation.includes(:claimable).order(created_at: :desc).limit(200)
+              .select { |invitation| subject_owner?(invitation.claimable) }
+          else
+            ClaimInvitation.where(invited_by: Current.user)
+          end
+          rows = invitations.is_a?(Array) ? invitations : invitations.order(created_at: :desc).limit(200).to_a
+          return render json: rows.map(&:summary)
         end
         return render json: { error: "Claimable not found" }, status: :not_found unless subject
         return render json: { error: "Claimable not found" }, status: :not_found unless subject_owner?
@@ -76,6 +84,12 @@ module Api
       end
 
       private
+
+      def require_claim_invitation_manager!
+        return if Current.user&.admin? || Current.user&.curator? || Current.user&.coach?
+
+        render_unauthorized_or_forbidden
+      end
 
       # Two shapes, so the SPA can tell "you are linked now" from "a coach has
       # to look at this".

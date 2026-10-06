@@ -2,7 +2,7 @@ require "test_helper"
 
 class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
   test "registers a new user with a cookie session by default" do
-    assert_difference("User.count") do
+    assert_difference([ "User.count", "Account.count", "ContactDetail.count" ]) do
       post "/api/v1/registrations", params: { user: {
         name: "New Player",
         email_address: "newbie@example.com",
@@ -19,12 +19,16 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert_includes body["roles"], "player"
     assert_not_nil body["verification_token"], "raw verification token should be returned"
     assert_equal "pending_verification", body["status"]
+    account = User.find(body.fetch("id")).account
+    assert account
+    assert_equal "New", account.contact_detail.first_name
+    assert_equal "newbie@example.com", account.contact_detail.email
   end
 
   test "registers a new user and returns pending_verification even with api=true" do
     # Regression: the API-grant branch previously bypassed email verification
     # entirely, letting unverified signups straight in with a session token.
-    assert_difference("User.count") do
+    assert_difference([ "User.count", "Account.count", "ContactDetail.count" ]) do
       assert_no_difference("Session.count") do
         post "/api/v1/registrations", params: {
           user: {
@@ -50,7 +54,7 @@ class Api::V1::RegistrationsControllerTest < ActionDispatch::IntegrationTest
     prev = ENV["REQUIRE_EMAIL_VERIFICATION"]
     ENV["REQUIRE_EMAIL_VERIFICATION"] = "false"
     begin
-      assert_difference(["User.count", "Session.count"]) do
+      assert_difference(["User.count", "Account.count", "ContactDetail.count", "Session.count"]) do
         post "/api/v1/registrations", params: {
           user: {
             name: "Token Check",
