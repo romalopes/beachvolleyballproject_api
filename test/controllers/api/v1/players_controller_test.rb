@@ -539,6 +539,50 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert PlayerProfile.exists?(player.id)
   end
 
+  test "hard delete refuses an Account-linked profile even when it has no Person history" do
+    profile = PlayerProfile.create!(display_name: "Linked profile", account: accounts(:one))
+    sign_in_as(@admin)
+
+    delete "/api/v1/players/#{profile.id}"
+
+    assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body)["blockers"], "profile_account"
+    assert PlayerProfile.exists?(profile.id)
+  end
+
+  test "admin explicitly merges a player profile and keeps the source redirect" do
+    source = PlayerProfile.create!(display_name: "Duplicate player")
+    canonical = PlayerProfile.create!(display_name: "Canonical player")
+    participant = TrainingSessionParticipant.create!(training_session: training_sessions(:one), player_profile: source, status: "attended")
+    sign_in_as(@admin)
+
+    post "/api/v1/players/#{source.id}/merge", params: {
+      canonical_profile_id: canonical.id,
+      reason: "Club confirmed these profiles are the same player"
+    }
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal source.id, body["source_profile_id"]
+    assert_equal canonical.id, body["canonical_profile_id"]
+    assert_equal "archived", source.reload.status
+    assert_equal canonical.id, source.merged_into_profile_id
+    assert_equal canonical.id, participant.reload.player_profile_id
+    assert_equal "Club confirmed these profiles are the same player", ProfileMerge.last.reason
+  end
+
+  test "a coach cannot merge player profiles" do
+    source = PlayerProfile.create!(display_name: "Source")
+    canonical = PlayerProfile.create!(display_name: "Target")
+    sign_in_as(@trainer)
+
+    post "/api/v1/players/#{source.id}/merge", params: { canonical_profile_id: canonical.id, reason: "Not allowed" }
+
+    assert_response :forbidden
+    assert_equal "active", source.reload.status
+    assert_empty ProfileMerge.all
+  end
+
   test "admin can hard delete an unused player profile linked to a Person while retaining the Person" do
     person = Person.create!(first_name: "Unused", last_name: "Player", creation_source: "system")
     player = PlayerProfile.create!(person: person, display_name: "Unused player")

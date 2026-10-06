@@ -329,6 +329,23 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert CoachProfile.exists?(coach.id)
   end
 
+  test "admin explicitly merges a coach profile and retains its audit record" do
+    source = CoachProfile.create!(display_name: "Duplicate coach")
+    canonical = CoachProfile.create!(display_name: "Canonical coach")
+    sign_in_as(@admin)
+
+    post "/api/v1/coaches/#{source.id}/merge", params: {
+      canonical_profile_id: canonical.id,
+      reason: "Verified duplicate coach profile"
+    }
+
+    assert_response :success
+    assert_equal "archived", source.reload.status
+    assert_equal canonical.id, source.merged_into_profile_id
+    assert_equal "CoachProfile", ProfileMerge.last.source_profile_type
+    assert_equal canonical.id, JSON.parse(response.body)["canonical_profile_id"]
+  end
+
   test "admin can hard delete an unused coach profile linked to a Person while retaining the Person" do
     person = Person.create!(first_name: "Unused", last_name: "Coach", creation_source: "system")
     coach = CoachProfile.create!(person: person, display_name: "Unused coach")

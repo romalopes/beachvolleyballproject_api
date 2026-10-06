@@ -52,7 +52,11 @@ class ProfileMergeService
   def validate_current_state!
     raise Error, "Profiles must be different records" if @source.id == @canonical.id
     raise Error, "Only active profiles can be merged" unless @source.status == "active" && @canonical.status == "active"
-    raise Error, "Profiles must already belong to the same Person (or both be unlinked)" unless @source.person_id == @canonical.person_id
+    source_account_id = @source.account_id || @source.person&.account_id
+    canonical_account_id = @canonical.account_id || @canonical.person&.account_id
+    unless source_account_id == canonical_account_id
+      raise Error, "Profiles linked to different Accounts cannot be merged"
+    end
     raise Error, "Source profile has already been merged" if @source.merged_into_profile_id.present? || ProfileMerge.exists?(source_profile: @source)
     raise Error, "Canonical profile is already merged" if @canonical.merged_into_profile_id.present?
     if PlayerClaim.pending.where(claimable: @source).exists? || PlayerClaim.pending.where(claimable: @canonical).exists?
@@ -115,6 +119,9 @@ class ProfileMergeService
   end
 
   def move_references!
+    # This is intentionally an explicit list of profile foreign keys. Snapshot
+    # JSON and person-owned memberships remain attached to the retained source
+    # records so the merge never rewrites historical evidence indiscriminately.
     counts = {}
     if @source.is_a?(PlayerProfile)
       counts["assessments_as_player"] = Assessment.where(player_profile_id: @source.id).update_all(player_profile_id: @canonical.id)
