@@ -30,6 +30,7 @@ class PlayerProfile < ApplicationRecord
   belongs_to :merged_by_account, class_name: "Account", optional: true
   has_many :merged_profiles, class_name: "PlayerProfile", foreign_key: :merged_into_profile_id, dependent: :restrict_with_error
   has_many :claim_invitations, as: :claimable, dependent: :restrict_with_error
+  has_many :organisation_memberships, as: :memberable, dependent: :restrict_with_error
 
   has_many :training_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile
   has_many :assessment_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile

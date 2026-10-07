@@ -10,6 +10,22 @@ module Api
         render json: account_payload(target, include_contact: can_manage_account?(target))
       end
 
+      # Roster management searches recorded Accounts, including Accounts that
+      # have not yet been claimed by a login User.
+      def search
+        return render json: { error: "Forbidden" }, status: :forbidden unless Current.user.content_manager?
+
+        term = params[:q].to_s.strip
+        return render json: [] if term.length < 2
+
+        pattern = "%#{ActiveRecord::Base.sanitize_sql_like(term)}%"
+        accounts = Account.joins(:contact_detail)
+                          .where("contact_details.first_name ILIKE :q OR contact_details.last_name ILIKE :q OR CONCAT_WS(' ', contact_details.first_name, contact_details.last_name) ILIKE :q", q: pattern)
+                          .order("contact_details.last_name", "contact_details.first_name", :id)
+                          .limit(25)
+        render json: accounts.map { |account| { id: account.id, full_name: account.full_name, account_status: account.claimed? ? "connected" : "unclaimed" } }
+      end
+
       def update
         account = requested_account_id ? editable_account! : current_account
         return if performed?

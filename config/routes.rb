@@ -109,7 +109,9 @@ Rails.application.routes.draw do
       end
       # A read-only account page for the profile catalogues. Editing continues
       # to use the existing singleton `/account` endpoint.
-      resources :accounts, only: :show
+      resources :accounts, only: :show do
+        collection { get :search }
+      end
       resources :player_claims, only: %i[index show create] do
         collection do
           get :candidates
@@ -195,8 +197,8 @@ Rails.application.routes.draw do
           post :members, action: :create_member
           # Distinct `as:` names: two routes cannot share one helper name, and both
           # verbs address the same person.
-          patch "members/:person_id", action: :update_member, as: :update_member
-          delete "members/:person_id", action: :end_member, as: :end_member
+          patch "members/:account_id", action: :update_member, as: :update_member
+          delete "members/:account_id", action: :end_member, as: :end_member
           # Self-service, so it is a separate route rather than another verb on
           # `members`: `post :members` writes somebody *else's* roster row and is
           # gated on `can_manage_members`, while `join` writes your own and must

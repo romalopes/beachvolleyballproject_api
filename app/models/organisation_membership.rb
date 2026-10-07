@@ -20,15 +20,18 @@ class OrganisationMembership < ApplicationRecord
   MANAGEMENT_ROLES = %w[owner administrator].freeze
 
   belongs_to :organisation
-  belongs_to :account
+  belongs_to :account, optional: true
+  belongs_to :memberable, polymorphic: true
 
   validates :role, presence: true, inclusion: { in: ROLES }
   validates :status, presence: true, inclusion: { in: STATUSES }
-  validates :account_id, uniqueness: { scope: :organisation_id,
-                                       message: "is already a member of this organisation" }
+  validates :memberable_type, inclusion: { in: %w[Account PlayerProfile CoachProfile] }
+  validates :memberable_id, uniqueness: { scope: %i[organisation_id memberable_type],
+                                           message: "is already a member of this organisation" }
   validate :ended_membership_has_left_at
   validate :one_active_owner_per_organisation
 
+  before_validation :derive_memberable_from_account
   before_validation :stamp_lifecycle_timestamps
 
   scope :active, -> { where(status: "active") }
@@ -80,7 +83,7 @@ class OrganisationMembership < ApplicationRecord
   end
 
   def display_name
-    account.full_name
+    memberable.full_name
   end
 
   # The move a membership makes in ordinary use. Kept here rather than in a service
@@ -99,6 +102,8 @@ class OrganisationMembership < ApplicationRecord
       id: id,
       organisation_id: organisation_id,
       account_id: account_id,
+      memberable_type: memberable_type,
+      memberable_id: memberable_id,
       person_name: display_name,
       role: role,
       role_label: role_label,
@@ -113,6 +118,12 @@ class OrganisationMembership < ApplicationRecord
   end
 
   private
+
+  # Existing Account memberships predate the polymorphic subject columns. Keep
+  # Account writes compatible and repair an old row when it is next saved.
+  def derive_memberable_from_account
+    self.memberable = account if account.present? && memberable.nil?
+  end
 
   # Joined/left timestamps follow the status rather than being set independently, so
   # the two can never contradict each other. Mirrored by a database check on

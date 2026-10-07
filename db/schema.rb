@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_100001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_100002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -400,12 +400,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_100001) do
     t.datetime "created_at", null: false
     t.datetime "joined_at"
     t.datetime "left_at"
+    t.bigint "memberable_id", null: false
+    t.string "memberable_type", null: false
     t.bigint "organisation_id", null: false
     t.string "role", default: "member", null: false
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_organisation_memberships_on_account_id"
+    t.index ["memberable_type", "memberable_id"], name: "index_organisation_memberships_on_memberable"
     t.index ["organisation_id", "account_id"], name: "index_org_memberships_on_org_and_account", unique: true, where: "(account_id IS NOT NULL)"
+    t.index ["organisation_id", "memberable_type", "memberable_id"], name: "index_organisation_memberships_on_subject", unique: true
     t.index ["organisation_id", "status"], name: "index_org_memberships_on_organisation_and_status"
     t.index ["organisation_id"], name: "index_org_memberships_single_active_owner", unique: true, where: "(((role)::text = 'owner'::text) AND ((status)::text = 'active'::text))"
     t.index ["organisation_id"], name: "index_organisation_memberships_on_organisation_id"

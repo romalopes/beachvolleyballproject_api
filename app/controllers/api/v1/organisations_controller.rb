@@ -128,7 +128,7 @@ module Api
         # Re-joining after an ending reactivates the same row rather than adding a
         # second one, so the earlier stint's history stays on the record — the same
         # rule organisation memberships already follow.
-        membership = existing || @organisation.organisation_memberships.build(account: account)
+        membership = existing || @organisation.organisation_memberships.build(account: account, memberable: account)
         membership.role = "member"
         membership.status = "active"
         membership.joined_at ||= Time.current

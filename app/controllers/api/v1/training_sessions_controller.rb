@@ -72,12 +72,7 @@ module Api
           render json: { errors: @training_session.errors.full_messages }, status: :unprocessable_entity
         end
       rescue ActiveRecord::RecordInvalid => e
-        if e.record.is_a?(Person)
-          # An inline-created accountless player failed validation.
-          render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
-        else
-          render json: { errors: [ duplicate_reference_message(e) ] }, status: :unprocessable_entity
-        end
+        render json: { errors: e.record.errors.full_messages.presence || [ duplicate_reference_message(e) ] }, status: :unprocessable_entity
       rescue ActiveRecord::RecordNotUnique => e
         render json: { errors: [ duplicate_reference_message(e) ] }, status: :unprocessable_entity
       rescue ActiveRecord::InvalidForeignKey
@@ -189,7 +184,13 @@ module Api
             include: {
               player_profile: {
                 only: %i[id preferred_position level],
-                include: { person: { only: %i[id first_name last_name email phone] } }
+                include: {
+                  account: {
+                    only: :id,
+                    methods: :full_name,
+                    include: { contact_detail: { only: %i[email phone] } }
+                  }
+                }
               }
             }
           }

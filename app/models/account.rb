@@ -10,6 +10,7 @@ class Account < ApplicationRecord
   has_many :player_profiles, dependent: :restrict_with_error
   has_many :coach_profiles, dependent: :restrict_with_error
   has_many :organisation_memberships, dependent: :restrict_with_error
+  has_many :profile_organisation_memberships, as: :memberable, class_name: "OrganisationMembership", dependent: :restrict_with_error
   has_many :group_memberships, dependent: :restrict_with_error
   has_many :organisations, through: :organisation_memberships
   has_many :groups, through: :group_memberships

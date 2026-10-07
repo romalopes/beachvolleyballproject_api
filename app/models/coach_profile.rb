@@ -29,6 +29,7 @@ class CoachProfile < ApplicationRecord
   # existed. Phase 18 adds one: a coach recorded with only a display name can
   # claim their profile later, exactly as a player can.
   has_many :claim_invitations, as: :claimable, dependent: :restrict_with_error
+  has_many :organisation_memberships, as: :memberable, dependent: :restrict_with_error
   has_many :player_claims, as: :claimable, dependent: :restrict_with_error
   has_many :assessment_sessions, dependent: :restrict_with_error
 

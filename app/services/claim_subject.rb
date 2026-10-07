@@ -34,7 +34,17 @@ class ClaimSubject
   end
 
   def effect!(claimant_account:, **_unused)
-    record.update!(account: claimant_account)
+    OrganisationMembership.transaction do
+      record.organisation_memberships.find_each do |membership|
+        existing = OrganisationMembership.find_by(organisation: membership.organisation, memberable: claimant_account)
+        if existing
+          membership.destroy!
+        else
+          membership.update!(memberable: claimant_account, account: claimant_account)
+        end
+      end
+      record.update!(account: claimant_account)
+    end
     record
   end
 end
