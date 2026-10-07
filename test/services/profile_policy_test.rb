@@ -16,7 +16,7 @@ class ProfilePolicyTest < ActiveSupport::TestCase
 
   test "a coach can manage visible content but invite and review only profiles they created" do
     coach = users(:three)
-    own = PlayerProfile.new(person: people(:accountless_player), display_name: "Coach owned")
+    own = PlayerProfile.new(display_name: "Coach owned")
     ProfileOwnership.stamp!(own, coach)
     own.save!
     other = player_profiles(:john_player)
@@ -33,7 +33,7 @@ class ProfilePolicyTest < ActiveSupport::TestCase
 
   test "private profiles remain hidden from unrelated coaches" do
     private_profile = PlayerProfile.create!(
-      person: Person.create!(first_name: "Policy", last_name: "Private", creation_source: "system"),
+      display_name: "Policy Private",
       visibility: "private",
       created_by: users(:three),
       created_by_account: accounts(:three)

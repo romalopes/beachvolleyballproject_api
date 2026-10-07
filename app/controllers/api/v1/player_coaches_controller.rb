@@ -34,7 +34,7 @@ module Api
 
       def index
         relationships = visible_relationships(
-          PlayerCoach.includes(player_profile: :person, coach_profile: :person).ordered
+          PlayerCoach.includes(:player_profile, :coach_profile).ordered
         )
 
         if (player_id = params[:player_profile_id].presence)
@@ -176,7 +176,7 @@ module Api
       end
 
       def set_relationship
-        @relationship = PlayerCoach.includes(player_profile: :person, coach_profile: :person)
+        @relationship = PlayerCoach.includes(:player_profile, :coach_profile)
                                    .find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Coaching relationship not found" }, status: :not_found

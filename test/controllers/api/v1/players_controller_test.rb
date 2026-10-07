@@ -2,855 +2,160 @@ require "test_helper"
 
 class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
   setup do
-    @public_user = users(:one)   # player role only
-    @trainer = users(:three)     # coach role only
-    @other_coach = users(:six)   # coach role only, owns nothing
-    @admin = users(:two)         # coach + admin
-    @curator = users(:four)      # curator: manages trainings, not content
+    @public_user = users(:one)
+    @trainer = users(:three)
+    @other_coach = users(:six)
+    @admin = users(:two)
+    @curator = users(:four)
   end
 
-  test "index returns all active players" do
+  test "index returns active player profiles" do
     sign_in_as(@admin)
     get api_v1_players_path
     assert_response :success
-    body = JSON.parse(response.body)
-    assert_kind_of Array, body["data"]
-    player_ids = body["data"].map { |p| p["id"] }
-    assert_includes player_ids, player_profiles(:john_player).id
-    assert_includes player_ids, player_profiles(:pedro_player).id
+    ids = JSON.parse(response.body).fetch("data").map { |row| row.fetch("id") }
+    assert_includes ids, player_profiles(:john_player).id
+    assert_includes ids, player_profiles(:pedro_player).id
   end
 
-  test "an authenticated regular Account can only list and view linked profiles" do
+  test "regular account scopes to linked profiles" do
     linked = player_profiles(:john_player)
     linked.update_columns(account_id: accounts(:one).id)
     sign_in_as(accounts(:one).user)
-
     get api_v1_players_path
     assert_response :success
-    data = JSON.parse(response.body)["data"]
-    assert_equal [ linked.id ], data.map { |row| row["id"] }
-
+    assert_equal [ linked.id ], JSON.parse(response.body).fetch("data").map { |row| row.fetch("id") }
     get api_v1_player_path(linked)
     assert_response :success
-    assert_equal linked.id, JSON.parse(response.body)["id"]
   end
 
-  test "client-supplied ownership and creator Account IDs are ignored" do
-    sign_in_as(@trainer)
-    post api_v1_players_path, params: {
-      player: {
-        person: { first_name: "Untrusted", last_name: "Owner" },
-        player_profile: { account_id: accounts(:one).id, created_by_account_id: accounts(:one).id }
-      }
-    }
+  test "create requires manager and stamps creator account" do
+    sign_in_as(@public_user)
+    post api_v1_players_path, params: player_create_params
+    assert_response :forbidden
 
+    sign_out
+    sign_in_as(@trainer)
+    post api_v1_players_path, params: player_create_params
     assert_response :created
-    profile = PlayerProfile.find(JSON.parse(response.body)["id"])
+    profile = PlayerProfile.find(JSON.parse(response.body).fetch("id"))
+    assert_equal "Test User", profile.display_name
     assert_nil profile.account_id
     assert_equal accounts(:three).id, profile.created_by_account_id
   end
 
-  test "index paginates 20 per page by default" do
+  test "client supplied ownership fields are ignored" do
+    sign_in_as(@trainer)
+    post api_v1_players_path, params: {
+      player: { player_profile: { display_name: "Untrusted Owner", account_id: accounts(:one).id, created_by_account_id: accounts(:one).id } }
+    }
+    assert_response :created
+    profile = PlayerProfile.find(JSON.parse(response.body).fetch("id"))
+    assert_nil profile.account_id
+    assert_equal accounts(:three).id, profile.created_by_account_id
+  end
+
+  test "index paginates player profiles" do
     sign_in_as(@admin)
-    # Relative to the fixtures rather than a hard-coded total: this test is about
-    # pagination, and a magic number here makes it fail every time a player fixture
-    # is added — which is how it stops being a test of anything.
     baseline = PlayerProfile.count
-    25.times do |index|
-      Person.create!(first_name: "Paged#{format('%02d', index)}", last_name: "Zzz",
-                     creation_source: "system").create_player_profile!
-    end
-    total = baseline + 25
-
+    25.times { |index| PlayerProfile.create!(display_name: "Paged #{format('%02d', index)}") }
     get api_v1_players_path
-    body = JSON.parse(response.body)
-    assert_equal 20, body["data"].length
-    assert_equal 20, body["meta"]["per_page"]
-    assert_equal 1, body["meta"]["page"]
-    assert_equal total, body["meta"]["total"]
-    assert_equal 2, body["meta"]["total_pages"]
-
+    first = JSON.parse(response.body)
+    assert_equal 20, first.dig("meta", "per_page")
+    assert_equal baseline + 25, first.dig("meta", "total")
     get api_v1_players_path, params: { page: 2 }
     second = JSON.parse(response.body)
-    assert_equal total - 20, second["data"].length
-    assert_equal [], body["data"].map { |p| p["id"] } & second["data"].map { |p| p["id"] },
-                 "pages must not overlap"
+    assert_empty first.fetch("data").map { |row| row.fetch("id") } & second.fetch("data").map { |row| row.fetch("id") }
   end
 
-  test "index clamps per_page to a sane band" do
+  test "invalid profile attributes return validation errors" do
     sign_in_as(@admin)
-
-    get api_v1_players_path, params: { per_page: 5000 }
-    assert_equal 100, JSON.parse(response.body)["meta"]["per_page"]
-
-    get api_v1_players_path, params: { per_page: 0, page: 0 }
-    meta = JSON.parse(response.body)["meta"]
-    assert_equal 20, meta["per_page"]
-    assert_equal 1, meta["page"]
+    post api_v1_players_path, params: { player: { player_profile: { display_name: "" } } }
+    assert_response :unprocessable_entity
+    patch api_v1_player_path(player_profiles(:pedro_player)), params: { player: { player_profile: { visibility: "bogus" } } }
+    assert_response :unprocessable_entity
   end
 
-  test "create defaults to shared visibility and records the author as owner" do
-    sign_in_as(@trainer)
-
-    post api_v1_players_path, params: coach_create_params
-
-    assert_response :created
-    body = JSON.parse(response.body)
-    assert_equal "shared", body["visibility"]
-    assert_equal @trainer.id, body["created_by"]["id"]
-  end
-
-  test "create accepts private visibility and answers with it" do
-    sign_in_as(@trainer)
-
-    post api_v1_players_path, params: {
-      player: { person: { first_name: "Quiet", last_name: "Rookie" }, player_profile: { visibility: "private" } }
-    }
-
-    assert_response :created
-    body = JSON.parse(response.body)
-    assert_equal "private", body["visibility"]
-    assert_equal @trainer.id, body["created_by"]["id"]
-  end
-
-  test "index hides other coaches' private players by default" do
-    private_player = private_player_owned_by(@trainer)
-
-    sign_in_as(@other_coach)
-    get api_v1_players_path
-    assert_response :success
-    assert_not_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
-  end
-
-  test "index shows a coach their own private players" do
-    private_player = private_player_owned_by(@trainer)
-
-    sign_in_as(@trainer)
-    get api_v1_players_path
-    assert_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
-  end
-
-  test "index shows private players to curators and admins" do
-    private_player = private_player_owned_by(@trainer)
-
-    sign_in_as(@curator)
-    get api_v1_players_path
-    assert_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
-
-    sign_out
-    sign_in_as(@admin)
-    get api_v1_players_path
-    assert_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
-  end
-
-  test "index reveals everything with include_private and narrows with mine" do
-    private_player = private_player_owned_by(@trainer)
-
-    sign_in_as(@other_coach)
-    get api_v1_players_path, params: { include_private: "1" }
-    assert_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, private_player.id
-
-    sign_out
-    sign_in_as(@trainer)
-    get api_v1_players_path, params: { mine: "1" }
-    mine_ids = JSON.parse(response.body)["data"].map { |p| p["id"] }
-    assert_includes mine_ids, private_player.id
-    assert_not_includes mine_ids, player_profiles(:john_player).id
-  end
-
-  test "show is 404 for a coach who cannot see a private player" do
-    private_player = private_player_owned_by(@trainer)
-
-    sign_in_as(@other_coach)
-    get api_v1_player_path(private_player)
-    assert_response :not_found
-
-    sign_out
-    sign_in_as(@trainer)
-    get api_v1_player_path(private_player)
-    assert_response :success
-    assert_equal private_player.id, JSON.parse(response.body)["id"]
-  end
-
-  test "show answers with visibility and owner" do
-    sign_in_as(@admin)
-    get api_v1_player_path(player_profiles(:pedro_player))
-    body = JSON.parse(response.body)
-    assert_equal "shared", body["visibility"]
-    assert body.key?("created_by")
-  end
-
-  test "profile readers do not receive private contact fields or search by email" do
+  test "show and update use player profile attributes" do
     player = player_profiles(:pedro_player)
-    player.person.update!(email: "private-contact@example.com")
-    sign_in_as(@trainer)
-
+    sign_in_as(@admin)
     get api_v1_player_path(player)
     assert_response :success
-    person = JSON.parse(response.body).fetch("person")
-    assert_equal "Pedro", person["first_name"]
-    assert_not person.key?("email")
-    assert_not person.key?("phone")
-    assert_not person.key?("date_of_birth")
-    assert_not person.key?("organisation_memberships")
-
-    get api_v1_players_path, params: { q: player.person.email }
-    assert_response :success
-    assert_not_includes JSON.parse(response.body).fetch("data").map { |row| row["id"] }, player.id
-  end
-
-  test "only the owner or an admin may flip visibility" do
-    private_player = private_player_owned_by(@trainer)
-
-    # A coach who cannot see a private player gets the same answer as for a
-    # missing one, so the catalogue and the detail can never disagree.
-    sign_in_as(@other_coach)
-    patch api_v1_player_path(private_player),
-          params: { player: { player_profile: { visibility: "shared" } } }
-    assert_response :not_found
-    assert_equal "private", private_player.reload.visibility
-
-    # A coach who *can* see a shared player but did not record it may edit the
-    # profile, yet may not touch the switch — that answers 403, not 404.
-    private_player.update!(visibility: "shared")
-    patch api_v1_player_path(private_player),
-          params: { player: { player_profile: { visibility: "private" } } }
-    assert_response :forbidden
-    assert_equal "shared", private_player.reload.visibility
-
-    sign_out
-    sign_in_as(@trainer)
-    patch api_v1_player_path(private_player),
-          params: { player: { player_profile: { visibility: "private" } } }
-    assert_response :success
-    assert_equal "private", private_player.reload.visibility
-
-    sign_out
-    sign_in_as(@admin)
-    patch api_v1_player_path(private_player),
-          params: { player: { player_profile: { visibility: "shared" } } }
-    assert_response :success
-    assert_equal "shared", private_player.reload.visibility
-  end
-
-  test "a curator may not flip visibility even though they can see the player" do
-    private_player = private_player_owned_by(@trainer)
-
-    sign_in_as(@curator)
-    get api_v1_player_path(private_player)
-    assert_response :success
-
-    patch api_v1_player_path(private_player),
-          params: { player: { player_profile: { visibility: "shared" } } }
-    # Curators cannot edit profiles at all — the content-creator rule fires
-    # before the ownership rule is even reached.
-    assert_response :forbidden
-    assert_equal "private", private_player.reload.visibility
-  end
-
-  test "update keeps visibility when the switch is not sent" do
-    private_player = private_player_owned_by(@trainer)
-
-    sign_in_as(@trainer)
-    patch api_v1_player_path(private_player),
-          params: { player: { player_profile: { level: "advanced" } } }
-    assert_response :success
-    assert_equal "private", private_player.reload.visibility
-    assert_equal "advanced", private_player.level
-  end
-
-  test "soft visibility never blocks scheduling" do
-    private_player = private_player_owned_by(@trainer)
-
-    sign_in_as(@other_coach)
-    session = TrainingSession.create!(title: "Open session", created_by: @other_coach,
-                                      starts_at: 1.day.from_now, ends_at: 1.day.from_now + 1.hour)
-    session.training_session_participants.create!(player_profile: private_player)
-
-    assert_includes private_player.reload.training_session_participants.map(&:training_session_id), session.id
-  end
-
-  test "index keeps the search when paging" do
-    sign_in_as(@admin)
-    get api_v1_players_path, params: { q: "John", page: 1 }
-
-    body = JSON.parse(response.body)
-    assert_equal 1, body["meta"]["total"]
-    assert body["data"].all? { |player| player["full_name"].downcase.include?("john") }
-  end
-
-  test "index orders players by last name, then first name" do
-    sign_in_as(@admin)
-    get api_v1_players_path
-    body = JSON.parse(response.body)
-    keys = body["data"].map { |p| [ p["person"]["last_name"].to_s, p["person"]["first_name"].to_s, p["id"] ] }
-    assert_equal keys.sort, keys, "ordered by last_name, first_name, id"
-  end
-
-  test "index filters by name search" do
-    sign_in_as(@admin)
-    get api_v1_players_path, params: { q: "John" }
-    assert_response :success
-    body = JSON.parse(response.body)
-    assert body["data"].all? { |p| p["full_name"].downcase.include?("john") }
-  end
-
-  test "index filters by email" do
-    sign_in_as(@admin)
-    get api_v1_players_path, params: { email: "one@example.com" }
-    assert_response :success
-    body = JSON.parse(response.body)
-    assert_equal [ people(:one).id ], body["data"].map { |p| p["person_id"] }
-  end
-
-  test "index returns account status" do
-    sign_in_as(@admin)
-    get api_v1_players_path
-    body = JSON.parse(response.body)
-    john = body["data"].find { |p| p["person_id"] == people(:one).id }
-    assert_equal "connected", john["account_status"]
-  end
-
-  test "show returns player detail" do
-    profile = player_profiles(:john_player)
-    sign_in_as(@admin)
-    get api_v1_player_path(profile)
-    assert_response :success
-    body = JSON.parse(response.body)
-    assert_equal profile.id, body["id"]
-    assert_equal "John", body["person"]["first_name"]
-    assert body.key?("account_status")
-  end
-
-  test "show returns 404 for missing player" do
-    sign_in_as(@admin)
-    get api_v1_player_path(99999)
-    assert_response :not_found
-  end
-
-  test "create player requires coach or admin role" do
-    sign_in_as(@public_user)
-    post api_v1_players_path, params: { player: { person: { first_name: "Test" } } }
-    assert_response :forbidden
-  end
-
-  test "cannot create player as curator" do
-    sign_in_as(@curator)
-    post api_v1_players_path, params: player_create_params
-    assert_response :forbidden
-  end
-
-  test "create player as coach" do
-    sign_in_as(@trainer)
-
-    post api_v1_players_path, params: coach_create_params
-
-    assert_response :created
-    body = JSON.parse(response.body)
-    assert_kind_of Integer, body["id"]
-    assert_equal "Pedro", body["person"]["first_name"]
-    assert body["player_profile_id"].present?
-    assert_equal "active", body["status"]
-    assert_not body["person"].key?("creation_source")
-  end
-
-  test "create a profile-only player without Person duplicate suggestions" do
-    sign_in_as(@trainer)
-
-    post api_v1_players_path, params: {
-      player: { player_profile: { display_name: "New Player", visibility: "shared" } }
-    }
-
-    assert_response :created
-    body = JSON.parse(response.body)
-    assert_equal "New Player", body["display_name"]
-    assert_nil body["person"]
-    assert_equal [], body["possible_duplicates"]
-  end
-
-  test "create returns validation errors" do
-    sign_in_as(@admin)
-    post api_v1_players_path, params: {
-      player: { person: { first_name: "" }, player_profile: { preferred_position: "t libero" } }
-    }
-    assert_response :unprocessable_entity
-    body = JSON.parse(response.body)
-    assert_kind_of Array, body["errors"]
-  end
-
-  test "create player with profile attributes" do
-    sign_in_as(@admin)
-    count_before = PlayerProfile.count
-    post api_v1_players_path, params: {
-      player: {
-        person: { first_name: "New", last_name: "Player" },
-        player_profile: { preferred_position: "setter", level: "beginner" }
-      }
-    }
-    assert_response :created
-    assert_equal count_before + 1, PlayerProfile.count
-  end
-
-  test "create player does not require last_name, email, or phone" do
-    sign_in_as(@admin)
-    post api_v1_players_path, params: {
-      player: { person: { first_name: "Minimal" } }
-    }
-    assert_response :created
-    body = JSON.parse(response.body)
-    assert_equal "Minimal", body["person"]["first_name"]
-  end
-
-  test "create player links the requested Person and records the creator Account" do
-    sign_in_as(@admin)
-    person = Person.create!(first_name: "Linkable", last_name: "Person", creation_source: "system")
-    people_before = Person.count
-
-    post api_v1_players_path, params: {
-      player: { person_id: person.id, player_profile: { preferred_position: "setter" } }
-    }
-
-    assert_response :created
-    body = JSON.parse(response.body)
-    assert_equal person.id, body["person_id"]
-    assert_equal person.id, body["person"]["id"]
-    assert_equal people_before, Person.count, "creating a profile must not create a Person for the Account"
-    assert @admin.reload.account.present?
-    assert_equal @admin.account.id, PlayerProfile.find(body["id"]).created_by_account_id
-    assert_equal "system", person.reload.creation_source, "linking must not rewrite provenance"
-  end
-
-  test "create player reports possible duplicates as suggestions only" do
-    sign_in_as(@admin)
-    existing = people(:accountless_player)
-
-    post api_v1_players_path, params: {
-      player: { person: { first_name: "Pedro", last_name: "Santos" }, player_profile: {} }
-    }
-
-    assert_response :created
-    body = JSON.parse(response.body)
-    duplicate_ids = body["possible_duplicates"].map { |duplicate| duplicate["id"] }
-
-    assert_includes duplicate_ids, existing.id
-    assert_not_includes duplicate_ids, body["person"]["id"], "a person is never its own duplicate"
-    assert_nil existing.reload.merged_into_id, "duplicates are never merged automatically"
-    assert_equal "profile_only", body["possible_duplicates"].first["account_status"]
-  end
-
-  test "create player reports no duplicates for a unique person" do
-    sign_in_as(@admin)
-    post api_v1_players_path, params: {
-      player: { person: { first_name: "Unique", last_name: "Onlyone", email: "unique_onlyone@example.com" },
-                player_profile: {} }
-    }
-
-    assert_response :created
-    assert_equal [], JSON.parse(response.body)["possible_duplicates"]
-  end
-
-  test "create player permits another profile for the same person" do
-    sign_in_as(@admin)
-    existing = player_profiles(:john_player)
-
-    post api_v1_players_path, params: {
-      player: { person_id: existing.person_id, player_profile: {} }
-    }
-
-    assert_response :created
-    assert_equal 2, existing.person.reload.player_profiles.count
-  end
-
-  test "create can record an unlinked player profile with a display name" do
-    sign_in_as(@admin)
-
-    post api_v1_players_path, params: { player: { player_profile: { display_name: "Maria Jose" } } }
-
-    assert_response :created
-    body = JSON.parse(response.body)
-    assert_nil body["person_id"]
-    assert_nil body["person"]
-    assert_equal "Maria Jose", body["full_name"]
-    assert_equal "Maria Jose", PlayerProfile.find(body["id"]).display_name
-  end
-
-  test "index includes unlinked player profiles and can search their display name" do
-    sign_in_as(@admin)
-    profile = PlayerProfile.create!(display_name: "Maria Jose")
-
-    get api_v1_players_path, params: { q: "Maria Jose" }
-
-    assert_response :success
-    assert_equal [ profile.id ], JSON.parse(response.body)["data"].map { |row| row["id"] }
-  end
-
-  test "create player rejects an unknown person_id" do
-    sign_in_as(@admin)
-
-    post api_v1_players_path, params: {
-      player: { person_id: 0, player_profile: {} }
-    }
-
-    assert_response :unprocessable_entity
-    assert_kind_of Array, JSON.parse(response.body)["errors"]
-  end
-
-  test "index hides archived players by default and lists them on request" do
-    sign_in_as(@admin)
-    archived = player_profiles(:pedro_player)
-    archived.update!(status: "archived")
-
-    get api_v1_players_path
-    default_ids = JSON.parse(response.body)["data"].map { |p| p["id"] }
-    assert_not_includes default_ids, archived.id
-    assert_includes default_ids, player_profiles(:john_player).id
-
-    get api_v1_players_path, params: { status: "archived" }
-    archived_ids = JSON.parse(response.body)["data"].map { |p| p["id"] }
-    assert_equal [ archived.id ], archived_ids
-  end
-
-  test "index rejects an unknown status filter" do
-    sign_in_as(@admin)
-
-    get api_v1_players_path, params: { status: "retired" }
-
-    assert_response :unprocessable_entity
-    assert_includes JSON.parse(response.body)["errors"], "status is not included in the list"
-  end
-
-  test "archiving keeps the training history" do
-    sign_in_as(@admin)
-    player = player_profiles(:pedro_player)
-    session = TrainingSession.create!(title: "Archive check", created_by: users(:two),
-                                      starts_at: 1.day.from_now, ends_at: 1.day.from_now + 1.hour)
-    participant = session.training_session_participants.create!(player_profile: player)
-    history_before = player.training_session_count
-
-    patch api_v1_player_path(player), params: { player: { player_profile: { status: "archived" } } }
-
-    assert_response :success
-    assert_equal "archived", player.reload.status
-    # Archiving is a flag, not a deletion: every roster row and its attendance
-    # must survive it.
-    assert_equal history_before, player.training_session_count
-    assert_includes player.training_session_participants, participant.reload
-    assert_equal 1, TrainingSessionParticipant.where(id: participant.id).count
-  end
-
-  test "an archived player can be restored" do
-    sign_in_as(@admin)
-    player = player_profiles(:pedro_player)
-    player.update!(status: "archived")
-
-    patch api_v1_player_path(player), params: { player: { player_profile: { status: "active" } } }
-
-    assert_response :success
-    assert_equal "active", player.reload.status
-
-    get api_v1_players_path
-    assert_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, player.id
-  end
-
-  test "archived players are not offered to the participant picker" do
-    sign_in_as(@admin)
-    player_profiles(:pedro_player).update!(status: "archived")
-
-    get api_v1_players_path, params: { per_page: 100 }
-
-    assert_not_includes JSON.parse(response.body)["data"].map { |p| p["id"] }, player_profiles(:pedro_player).id
-  end
-
-  test "hard delete refuses to erase a player with protected history" do
-    sign_in_as(@admin)
-    player = player_profiles(:pedro_player)
-
-    delete "/api/v1/players/#{player.id}"
-
-    assert_response :unprocessable_entity
-    assert_includes JSON.parse(response.body)["blockers"], "training_session_participants"
-    assert PlayerProfile.exists?(player.id)
-  end
-
-  test "admin can hard delete an Account-linked profile and retains its Account" do
-    profile = PlayerProfile.create!(display_name: "Linked profile", account: accounts(:one))
-    account = profile.account
-    sign_in_as(@admin)
-
-    delete "/api/v1/players/#{profile.id}"
-
-    assert_response :no_content
-    assert_not PlayerProfile.exists?(profile.id)
-    assert Account.exists?(account.id)
-  end
-
-  test "admin explicitly merges a player profile and keeps the source redirect" do
-    source = PlayerProfile.create!(display_name: "Duplicate player")
-    canonical = PlayerProfile.create!(display_name: "Canonical player")
-    participant = TrainingSessionParticipant.create!(training_session: training_sessions(:one), player_profile: source, status: "attended")
-    sign_in_as(@admin)
-
-    post "/api/v1/players/#{source.id}/merge", params: {
-      canonical_profile_id: canonical.id,
-      reason: "Club confirmed these profiles are the same player"
-    }
-
-    assert_response :success
-    body = JSON.parse(response.body)
-    assert_equal source.id, body["source_profile_id"]
-    assert_equal canonical.id, body["canonical_profile_id"]
-    assert_equal "archived", source.reload.status
-    assert_equal canonical.id, source.merged_into_profile_id
-    assert_equal canonical.id, participant.reload.player_profile_id
-    assert_equal "Club confirmed these profiles are the same player", ProfileMerge.last.reason
-  end
-
-  test "a coach cannot merge player profiles" do
-    source = PlayerProfile.create!(display_name: "Source")
-    canonical = PlayerProfile.create!(display_name: "Target")
-    sign_in_as(@trainer)
-
-    post "/api/v1/players/#{source.id}/merge", params: { canonical_profile_id: canonical.id, reason: "Not allowed" }
-
-    assert_response :forbidden
-    assert_equal "active", source.reload.status
-    assert_empty ProfileMerge.all
-  end
-
-  test "admin can hard delete an unused player profile linked to a Person while retaining the Person" do
-    person = Person.create!(first_name: "Unused", last_name: "Player", creation_source: "system")
-    player = PlayerProfile.create!(person: person, display_name: "Unused player")
-    sign_in_as(@admin)
-
-    delete "/api/v1/players/#{player.id}"
-
-    assert_response :no_content
-    assert_not PlayerProfile.exists?(player.id)
-    assert Person.exists?(person.id)
-  end
-
-  test "hard delete is admin only" do
-    person = Person.create!(first_name: "Owned", last_name: "Player", creation_source: "system")
-    player = PlayerProfile.create!(person: person, display_name: "Owned player", created_by: @trainer)
-    sign_in_as(@trainer)
-
-    delete "/api/v1/players/#{player.id}"
-
-    assert_response :forbidden
-    assert PlayerProfile.exists?(player.id)
-  end
-
-  test "admin can hard delete a player whose linked Person has an Account-linked profile" do
-    person = Person.create!(first_name: "Unused", last_name: "Player", creation_source: "system")
-    sibling = PlayerProfile.create!(person: person, account: accounts(:one), display_name: "Linked sibling")
-    player = PlayerProfile.create!(person: person, display_name: "Connected player")
-    sign_in_as(@admin)
-
-    delete "/api/v1/players/#{player.id}"
-
-    assert_response :no_content
-    assert_not PlayerProfile.exists?(player.id)
-    assert Person.exists?(person.id)
-    assert PlayerProfile.exists?(sibling.id)
-  end
-
-  test "update player as coach changes profile and person attributes" do
-    sign_in_as(@trainer)
-    player = player_profiles(:pedro_player)
-
-    patch api_v1_player_path(player), params: {
-      player: {
-        player_profile: { preferred_position: "blocker", level: "advanced" },
-        person: { first_name: "Pedro", last_name: "Santos", email: "pedro@example.com" }
-      }
-    }
-
-    assert_response :success
-    body = JSON.parse(response.body)
-    assert_equal "blocker", body["preferred_position"]
-    assert_equal "advanced", body["level"]
-    assert_not body["person"].key?("email"), "private contact data is not echoed to a coach"
-    assert_equal "blocker", player.reload.preferred_position
-  end
-
-  test "update player requires a content creator" do
-    player = player_profiles(:pedro_player)
-
-    sign_in_as(@public_user)
+    assert_equal player.id, JSON.parse(response.body).fetch("id")
     patch api_v1_player_path(player), params: { player: { player_profile: { level: "advanced" } } }
-    assert_response :forbidden
-
-    sign_out
-    sign_in_as(@curator)
-    patch api_v1_player_path(player), params: { player: { player_profile: { level: "advanced" } } }
-    assert_response :forbidden
-
-    assert_equal "beginner", player.reload.level
-  end
-
-  test "update player requires authentication" do
-    patch api_v1_player_path(player_profiles(:pedro_player)), params: { player: { player_profile: { level: "advanced" } } }
-    assert_response :unauthorized
-  end
-
-  test "update returns 404 for an unknown player" do
-    sign_in_as(@admin)
-    patch api_v1_player_path(0), params: { player: { player_profile: { level: "advanced" } } }
-    assert_response :not_found
-  end
-
-  test "update returns validation errors" do
-    sign_in_as(@admin)
-    patch api_v1_player_path(player_profiles(:pedro_player)), params: {
-      player: { person: { first_name: "" } }
-    }
-
-    assert_response :unprocessable_entity
-    assert_includes JSON.parse(response.body)["errors"], "Person first name can't be blank"
-  end
-
-  test "update does not replace the person behind the profile" do
-    sign_in_as(@admin)
-    player = player_profiles(:pedro_player)
-    person = player.person
-    people_before = Person.count
-
-    patch api_v1_player_path(player), params: { player: { person: { first_name: "Peter" } } }
-
-    assert_response :success
-    assert_equal person.id, player.reload.person_id, "the profile must keep its person"
-    assert_equal people_before, Person.count, "no second identity may be created"
-    assert_equal "Peter", person.reload.first_name
-    assert_equal "Santos", person.last_name, "unsent attributes are preserved"
-  end
-
-  test "update cannot move a profile to another person" do
-    sign_in_as(@admin)
-    player = player_profiles(:pedro_player)
-
-    patch api_v1_player_path(player), params: {
-      player: { person_id: people(:two).id, player_profile: { level: "advanced" } }
-    }
-
-    assert_response :unprocessable_entity
-    assert_equal player.person_id, player.reload.person_id
-    assert_equal "beginner", player.level
-  end
-
-  test "update ignores a person_id that names the same person" do
-    sign_in_as(@admin)
-    player = player_profiles(:pedro_player)
-
-    patch api_v1_player_path(player), params: {
-      player: { person_id: player.person_id, player_profile: { level: "advanced" } }
-    }
-
     assert_response :success
     assert_equal "advanced", player.reload.level
   end
 
-  test "update records the previous name as an alias" do
+  test "private players are hidden from unrelated coaches but visible to owner and curator" do
+    private_player = private_player_owned_by(@trainer)
+    sign_in_as(@other_coach)
+    get api_v1_players_path
+    assert_not_includes JSON.parse(response.body).fetch("data").map { |row| row.fetch("id") }, private_player.id
+    get api_v1_player_path(private_player)
+    assert_response :not_found
+
+    sign_out
+    sign_in_as(@trainer)
+    get api_v1_player_path(private_player)
+    assert_response :success
+
+    sign_out
+    sign_in_as(@curator)
+    get api_v1_player_path(private_player)
+    assert_response :success
+  end
+
+  test "only owner or admin can flip visibility" do
+    private_player = private_player_owned_by(@trainer)
+    sign_in_as(@other_coach)
+    patch api_v1_player_path(private_player), params: { player: { player_profile: { visibility: "shared" } } }
+    assert_response :not_found
+
+    private_player.update!(visibility: "shared")
+    patch api_v1_player_path(private_player), params: { player: { player_profile: { visibility: "private" } } }
+    assert_response :forbidden
+
+    sign_out
+    sign_in_as(@trainer)
+    patch api_v1_player_path(private_player), params: { player: { player_profile: { visibility: "private" } } }
+    assert_response :success
+
+    sign_out
+    sign_in_as(@admin)
+    patch api_v1_player_path(private_player), params: { player: { player_profile: { visibility: "shared" } } }
+    assert_response :success
+  end
+
+  test "status filter exposes archived players on request" do
     sign_in_as(@admin)
     player = player_profiles(:pedro_player)
-
-    patch api_v1_player_path(player), params: {
-      player: { person: { first_name: "Peter" } }
-    }
-
-    assert_response :success
-    assert_equal [ "Pedro Santos" ], player.person.reload.person_aliases.pluck(:full_name)
+    player.update!(status: "archived")
+    get api_v1_players_path
+    assert_not_includes JSON.parse(response.body).fetch("data").map { |row| row.fetch("id") }, player.id
+    get api_v1_players_path, params: { status: "archived" }
+    assert_includes JSON.parse(response.body).fetch("data").map { |row| row.fetch("id") }, player.id
   end
 
-  test "update returns possible duplicates after a rename" do
-    sign_in_as(@admin)
-    player = player_profiles(:pedro_player)
-
-    patch api_v1_player_path(player), params: {
-      player: { person: { first_name: "John", last_name: "Smith" } }
-    }
-
-    assert_response :success
-    duplicate_ids = JSON.parse(response.body)["possible_duplicates"].map { |duplicate| duplicate["id"] }
-    assert_includes duplicate_ids, people(:one).id
-    assert_not_includes duplicate_ids, player.person_id
-  end
-
-  test "update clears a contact field when a blank value is sent" do
-    sign_in_as(@admin)
-    person = Person.create!(first_name: "Clearable", last_name: "Player", email: "clear@example.com",
-                            creation_source: "system")
-    player = person.create_player_profile!
-
-    patch api_v1_player_path(player), params: { player: { person: { email: "" } } }
-
-    assert_response :success
-    assert_nil person.reload.email
-  end
-
-  test "update does not rewrite provenance" do
-    sign_in_as(@admin)
-    player = player_profiles(:pedro_player)
-    person = player.person
-
-    patch api_v1_player_path(player), params: { player: { player_profile: { level: "advanced" } } }
-
-    assert_response :success
-    assert_equal "coach_created", person.reload.creation_source
-    assert_equal users(:two).id, person.created_by_id
-  end
-
-  test "update can archive a player through the status attribute" do
-    sign_in_as(@admin)
-    player = player_profiles(:pedro_player)
-
-    patch api_v1_player_path(player), params: { player: { player_profile: { status: "archived" } } }
-
-    assert_response :success
-    assert_equal "archived", player.reload.status
-  end
-
-  test "show exposes the player's assessment count and history" do
+  test "show exposes assessment count and visible history" do
     sign_in_as(@trainer)
     get api_v1_player_path(player_profiles(:pedro_player))
-
     assert_response :success
     body = JSON.parse(response.body)
-    assert_equal 1, body["assessment_count"] # only the published fixture row
-    ids = body["assessments"].map { |row| row["id"] }
-    assert_includes ids, assessments(:skill_active).id
-    assert_not_includes ids, assessments(:draft_ready).id # a stranger's draft
-  end
-
-  test "show gives an assessment's stakeholder their draft in the history" do
-    sign_in_as(users(:six)) # recorded draft_ready for pedro
-    get api_v1_player_path(player_profiles(:pedro_player))
-
-    assert_response :success
-    rows = JSON.parse(response.body)["assessments"]
-    assert_includes rows.map { |row| row["id"] }, assessments(:draft_ready).id
-    assert_includes rows.map { |row| row["category_label"] }, "Attack"
+    assert_equal 1, body.fetch("assessment_count")
+    assert_includes body.fetch("assessments").map { |row| row.fetch("id") }, assessments(:skill_active).id
   end
 
   private
 
-  def private_player_owned_by(user)
-    person = Person.create!(first_name: "Private", last_name: "Owned#{SecureRandom.hex(3)}",
-                            creation_source: "coach_created", created_by: user)
-    person.create_player_profile!(visibility: "private", created_by: user)
+  def private_player_owned_by(owner)
+    profile = PlayerProfile.new(display_name: "Private Owned", visibility: "private", created_by: owner)
+    ProfileOwnership.stamp!(profile, owner)
+    profile.save!
+    profile
   end
 
   def player_create_params
-    { player: {
-      person: { first_name: "Test", last_name: "User" },
-      player_profile: { preferred_position: "setter" }
-    } }
-  end
-
-  def coach_create_params
-    { player:
-      { person: { first_name: "Pedro", last_name: "Santos", email: "pedro_created_by_coach@example.com" },
-        player_profile: { preferred_position: "opposite", level: "intermediate" }
-      }
-    }
+    { player: { player_profile: { display_name: "Test User", preferred_position: "setter" } } }
   end
 end

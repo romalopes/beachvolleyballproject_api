@@ -5,29 +5,24 @@ class CoachProfileTest < ActiveSupport::TestCase
     assert coach_profiles(:maria_coach).valid?
   end
 
-  # Phase 18 reversed Phase 2's "requires a person": a coach recorded with only
-  # a display name is the state a claim invitation is issued against, exactly as
-  # for a player. The name is what identifies it in the meantime.
-  test "a personless coach profile requires a display name instead of a person" do
+  test "a coach profile requires a display name when it has no account" do
     profile = CoachProfile.new
     assert_not profile.valid?
     assert_includes profile.errors.attribute_names, :display_name
 
-    # A profile with a Person needs no display name: that is the normal case.
-    assert CoachProfile.new(person_id: people(:two).id).valid?
+    assert CoachProfile.new(account: accounts(:two)).valid?
     assert CoachProfile.new(display_name: "Alex Coach").valid?
-    # Neither a Person nor a name: nothing identifies this profile.
     assert_not CoachProfile.new.valid?
   end
 
-  test "a person may have multiple coach profiles" do
-    person = people(:two)
-    assert CoachProfile.new(person: person).valid?
-    assert CoachProfile.new(person: person).valid?
+  test "an account may have multiple coach profiles" do
+    account = accounts(:two)
+    assert CoachProfile.new(account: account).valid?
+    assert CoachProfile.new(account: account).valid?
   end
 
   test "validates status" do
-    profile = CoachProfile.new(person: people(:one), status: "bogus")
+    profile = CoachProfile.new(display_name: "Invalid", status: "bogus")
     assert_not profile.valid?
   end
 
@@ -37,7 +32,7 @@ class CoachProfileTest < ActiveSupport::TestCase
 
     owner = users(:three)
     private_profile = CoachProfile.create!(
-      person: Person.create!(first_name: "Quiet", last_name: "Coach", creation_source: "coach_created"),
+      display_name: "Quiet Coach",
       visibility: "private", created_by: owner
     )
 

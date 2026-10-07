@@ -9,12 +9,13 @@ class AccountTest < ActiveSupport::TestCase
   end
 
   test "every account automatically gets one ContactDetail on creation" do
-    account = Account.create!(user: users(:four))
+    user = User.create!(email_address: "curator-four@example.com", password: "password123")
+    account = Account.create!(user: user)
 
     assert account.contact_detail.persisted?
-    assert_equal "Curator", account.contact_detail.first_name
-    assert_equal "Four", account.contact_detail.last_name
-    assert_equal "four@example.com", account.contact_detail.email
+    assert_equal "curator-four", account.contact_detail.first_name
+    assert_nil account.contact_detail.last_name
+    assert_equal "curator-four@example.com", account.contact_detail.email
     assert_equal 1, ContactDetail.where(account_id: account.id).count
   end
 
@@ -29,7 +30,7 @@ class AccountTest < ActiveSupport::TestCase
   end
 
   test "an account without profiles is valid" do
-    account = Account.create!(user: users(:four))
+    account = create_account!(first_name: "Profileless", last_name: "Account")
 
     assert_empty account.player_profiles
     assert_empty account.coach_profiles
@@ -55,12 +56,12 @@ class AccountTest < ActiveSupport::TestCase
   end
 
   test "user_id remains unique" do
-    duplicate = Account.new(user: users(:one))
+    duplicate = Account.new(user: accounts(:one).user)
     assert_not duplicate.valid?
   end
 
   test "destroying an account removes its private details and leaves roster identity untouched" do
-    account = Account.create!(user: users(:four))
+    account = create_account!(first_name: "Disposable", last_name: "Account")
     detail_id = account.contact_detail.id
 
     assert account.destroy

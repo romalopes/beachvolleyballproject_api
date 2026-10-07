@@ -23,7 +23,7 @@ class Api::V1::RankingConsolidationsController < ApplicationController
     consolidations = RankingConsolidation.ordered
                                          .includes(:assessment_definition, :created_by,
                                                    consolidation_sessions: :assessment_session,
-                                                   rows: { player_profile: :person })
+                                                   rows: :player_profile)
     render json: { ranking_consolidations: consolidations.map { |c| serialize(c) } }
   end
 
@@ -182,7 +182,7 @@ class Api::V1::RankingConsolidationsController < ApplicationController
   def set_consolidation
     @consolidation = RankingConsolidation.includes(:assessment_definition, :created_by,
                                                    consolidation_sessions: :assessment_session,
-                                                   rows: { player_profile: :person })
+                                                    rows: :player_profile)
                                          .find(params[:id])
   end
 

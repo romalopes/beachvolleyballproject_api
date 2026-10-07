@@ -27,11 +27,10 @@ class IdentityProductionReadinessReport
   ].freeze
 
   REQUIRED_TABLES = %w[
-    users people accounts contact_details player_profiles coach_profiles assessments
+    users accounts contact_details player_profiles coach_profiles assessments
     training_session_participants assessment_session_participants
-    organisation_memberships group_memberships player_coaches person_aliases
-    player_claims player_claim_invitations person_account_invitations
-    claim_invitations person_consolidations profile_merges
+    organisation_memberships group_memberships player_coaches
+    player_claims claim_invitations profile_merges
   ].freeze
 
   ORPHAN_CHECKS = {
@@ -41,34 +40,12 @@ class IdentityProductionReadinessReport
     "player_profile_creators_without_accounts" => [ "player_profiles", "created_by_account_id", "accounts" ],
     "coach_profiles_without_accounts" => [ "coach_profiles", "account_id", "accounts" ],
     "coach_profile_creators_without_accounts" => [ "coach_profiles", "created_by_account_id", "accounts" ],
-    "player_profiles_without_people" => [ "player_profiles", "person_id", "people" ],
-    "coach_profiles_without_people" => [ "coach_profiles", "person_id", "people" ],
     "assessments_without_player_profiles" => [ "assessments", "player_profile_id", "player_profiles" ],
     "assessments_without_coach_profiles" => [ "assessments", "coach_profile_id", "coach_profiles" ],
     "training_participants_without_player_profiles" => [ "training_session_participants", "player_profile_id", "player_profiles" ],
     "assessment_participants_without_player_profiles" => [ "assessment_session_participants", "player_profile_id", "player_profiles" ],
-    "organisation_memberships_without_people" => [ "organisation_memberships", "person_id", "people" ],
-    "group_memberships_without_people" => [ "group_memberships", "person_id", "people" ],
     "organisation_memberships_without_accounts" => [ "organisation_memberships", "account_id", "accounts" ],
     "group_memberships_without_accounts" => [ "group_memberships", "account_id", "accounts" ],
-    "claims_without_people" => [ "player_claims", "person_id", "people" ],
-    "claims_without_initiators" => [ "player_claims", "initiated_by_person_id", "people" ],
-    "claims_without_reviewers" => [ "player_claims", "reviewed_by_person_id", "people" ],
-    "claims_without_claimant_accounts" => [ "player_claims", "claimant_account_id", "accounts" ],
-    "claims_without_reviewer_accounts" => [ "player_claims", "reviewed_by_account_id", "accounts" ],
-    "invitations_without_player_profiles" => [ "player_claim_invitations", "player_profile_id", "player_profiles" ],
-    "invitations_without_creators" => [ "player_claim_invitations", "created_by_person_id", "people" ],
-    "invitations_without_users" => [ "player_claim_invitations", "used_by_person_id", "people" ],
-    "person_invitations_without_people" => [ "person_account_invitations", "person_id", "people" ],
-    "person_invitations_without_issuers" => [ "person_account_invitations", "invited_by_id", "users" ],
-    "person_invitations_without_users" => [ "person_account_invitations", "used_by_id", "users" ],
-    "claim_invitation_issuers_without_users" => [ "claim_invitations", "invited_by_id", "users" ],
-    "claim_invitation_users_without_users" => [ "claim_invitations", "used_by_id", "users" ],
-    "consolidations_without_source_people" => [ "person_consolidations", "source_person_id", "people" ],
-    "consolidations_without_canonical_people" => [ "person_consolidations", "canonical_person_id", "people" ],
-    "consolidations_without_performers" => [ "person_consolidations", "performed_by_id", "users" ],
-    "people_without_merge_actors" => [ "people", "merged_by_id", "users" ],
-    "person_aliases_without_people" => [ "person_aliases", "person_id", "people" ],
     "organisation_memberships_without_organisations" => [ "organisation_memberships", "organisation_id", "organisations" ],
     "group_memberships_without_groups" => [ "group_memberships", "group_id", "groups" ],
     "assessment_sessions_without_coaches" => [ "assessment_sessions", "coach_profile_id", "coach_profiles" ],
@@ -94,13 +71,13 @@ class IdentityProductionReadinessReport
       add_anomaly(anomalies, "accounts_without_contact_details", "blocker", missing_contact_details,
                   "Create and validate a ContactDetail for every Account before deploying the account-centric contract.")
     end
-    add_anomaly(anomalies, "duplicate_canonical_emails", "warning", duplicate_canonical_email_groups,
-                "Review matching email groups; this report does not decide whether records describe the same person.")
-    add_anomaly(anomalies, "duplicate_canonical_names", "warning", duplicate_canonical_name_groups,
+    add_anomaly(anomalies, "duplicate_contact_emails", "warning", duplicate_contact_email_groups,
+                "Review matching email groups; this report does not decide whether records describe the same account holder.")
+    add_anomaly(anomalies, "duplicate_contact_names", "warning", duplicate_contact_name_groups,
                 "Review matching name groups as possible duplicates; common names are not automatically merged.")
     if @connection.column_exists?(:player_profiles, :display_name)
-      add_anomaly(anomalies, "player_profiles_without_person_or_name", "warning",
-                  PlayerProfile.where(person_id: nil).where("display_name IS NULL OR display_name = ''").count,
+      add_anomaly(anomalies, "player_profiles_without_account_or_name", "warning",
+                  PlayerProfile.where(account_id: nil).where("display_name IS NULL OR display_name = ''").count,
                   "These profiles cannot be identified in the claim workflow; curate their display names.")
     end
     add_anomaly(anomalies, "invalid_player_profile_status", "blocker",
@@ -128,17 +105,6 @@ class IdentityProductionReadinessReport
                                            "PlayerProfile" => "player_profiles", "CoachProfile" => "coach_profiles"),
                   "Restore each claim's polymorphic subject before enabling claims.")
     end
-    if table_exists?(:player_claim_invitations)
-      add_anomaly(anomalies, "invalid_invitation_status", "blocker",
-                  PlayerClaimInvitation.where.not(status: PlayerClaimInvitation::STATUSES).count,
-                  "Restore a valid invitation lifecycle status before deployment.")
-      add_anomaly(anomalies, "expired_active_invitations", "warning",
-                  PlayerClaimInvitation.active.where("expires_at <= ?", Time.current).count,
-                  "Expired invitations are rejected at redemption and transition to expired on use/revoke.")
-      add_anomaly(anomalies, "duplicate_active_invitations_per_profile", "blocker",
-                  duplicate_count(:player_claim_invitations, :player_profile_id, "status = 'active'"),
-                  "Resolve duplicate active invitations before relying on the partial unique index.")
-    end
     if table_exists?(:claim_invitations)
       add_anomaly(anomalies, "invalid_unified_invitation_status", "blocker",
                   ClaimInvitation.where.not(status: ClaimInvitation::STATUSES).count,
@@ -157,7 +123,7 @@ class IdentityProductionReadinessReport
                   "Resolve duplicate active invitations for the same subject before deployment.")
       add_anomaly(anomalies, "invitations_without_claimables", "blocker",
                   polymorphic_orphan_count("claim_invitations", "claimable_type", "claimable_id",
-                                           "PlayerProfile" => "player_profiles", "CoachProfile" => "coach_profiles", "Person" => "people"),
+                                           "PlayerProfile" => "player_profiles", "CoachProfile" => "coach_profiles"),
                   "Restore each invitation's polymorphic subject before deployment.")
     end
     if table_exists?(:profile_merges)
@@ -173,21 +139,6 @@ class IdentityProductionReadinessReport
                   orphan_count("profile_merges", "merged_by_account_id", "accounts"),
                   "Restore each profile merge's actor Account before deployment.")
     end
-    if @connection.column_exists?(:people, :merged_into_id)
-      add_anomaly(anomalies, "merged_people_without_canonical_person", "blocker",
-                  Person.where(status: "merged", merged_into_id: nil).count,
-                  "Repair merged-person references before deploying consolidation APIs.")
-      add_anomaly(anomalies, "unmerged_people_with_canonical_person", "blocker",
-                  Person.where.not(status: "merged").where.not(merged_into_id: nil).count,
-                  "Repair status/reference disagreement before deploying consolidation APIs.")
-    end
-    if table_exists?(:person_consolidations)
-      add_anomaly(anomalies, "consolidation_source_not_marked_merged", "blocker",
-                  PersonConsolidation.joins("INNER JOIN people ON people.id = person_consolidations.source_person_id")
-                                    .where.not(people: { status: "merged" }).count,
-                  "Reconcile consolidation audit state with source Person state.")
-    end
-
     orphan_counts = ORPHAN_CHECKS.each_with_object({}) do |(name, (table, foreign_key, target)), result|
       result[name] = orphan_count(table, foreign_key, target) if table_exists?(table) && table_exists?(target) && @connection.column_exists?(table, foreign_key)
     end
@@ -203,12 +154,12 @@ class IdentityProductionReadinessReport
       missing_required_tables: missing_tables,
       counts: counts,
       cardinality: {
-        people_with_multiple_player_profiles: multiple_profile_people_count(PlayerProfile),
-        people_with_multiple_coach_profiles: multiple_profile_people_count(CoachProfile),
-        unlinked_player_profiles: PlayerProfile.where(person_id: nil).count,
+        accounts_with_multiple_player_profiles: multiple_profile_account_count(PlayerProfile),
+        accounts_with_multiple_coach_profiles: multiple_profile_account_count(CoachProfile),
+        unlinked_player_profiles: PlayerProfile.where(account_id: nil).count,
         accounts_without_contact_detail: Account.left_joins(:contact_detail).where(contact_details: { id: nil }).count,
-        duplicate_canonical_email_groups: duplicate_canonical_email_groups,
-        duplicate_canonical_name_groups: duplicate_canonical_name_groups
+        duplicate_contact_email_groups: duplicate_contact_email_groups,
+        duplicate_contact_name_groups: duplicate_contact_name_groups
       },
       preservation_counts: preservation_counts,
       orphan_counts: orphan_counts,
@@ -224,7 +175,6 @@ class IdentityProductionReadinessReport
 
   def counts
     {
-      people: Person.count,
       accounts: Account.count,
       contact_details: table_exists?(:contact_details) ? ContactDetail.count : nil,
       player_profiles: PlayerProfile.count,
@@ -233,10 +183,7 @@ class IdentityProductionReadinessReport
       group_memberships: GroupMembership.count
     }.tap do |result|
       result[:player_claims] = PlayerClaim.count if table_exists?(:player_claims)
-      result[:player_claim_invitations] = PlayerClaimInvitation.count if table_exists?(:player_claim_invitations)
-      result[:person_account_invitations] = PersonAccountInvitation.count if table_exists?(:person_account_invitations)
       result[:claim_invitations] = ClaimInvitation.count if table_exists?(:claim_invitations)
-      result[:person_consolidations] = PersonConsolidation.count if table_exists?(:person_consolidations)
       result[:profile_merges] = ProfileMerge.count if table_exists?(:profile_merges)
       result[:player_profiles_with_accounts] = PlayerProfile.where.not(account_id: nil).count if @connection.column_exists?(:player_profiles, :account_id)
       result[:coach_profiles_with_accounts] = CoachProfile.where.not(account_id: nil).count if @connection.column_exists?(:coach_profiles, :account_id)
@@ -251,7 +198,6 @@ class IdentityProductionReadinessReport
       player_coach_relationships: [ "player_coaches", PlayerCoach ],
       organisation_memberships: [ "organisation_memberships", OrganisationMembership ],
       group_memberships: [ "group_memberships", GroupMembership ],
-      person_aliases: [ "person_aliases", PersonAlias ],
       contact_details: [ "contact_details", ContactDetail ]
     }.transform_values { |table, model| table_exists?(table) ? model.count : nil }
   end
@@ -321,16 +267,16 @@ class IdentityProductionReadinessReport
     missing_targets + unknown_types
   end
 
-  def multiple_profile_people_count(profile_class)
-    profile_class.where.not(person_id: nil).group(:person_id).having("COUNT(*) > 1").count.length
+  def multiple_profile_account_count(profile_class)
+    profile_class.where.not(account_id: nil).group(:account_id).having("COUNT(*) > 1").count.length
   end
 
-  def duplicate_canonical_email_groups
-    Person.canonical.where.not(email: [ nil, "" ]).group("LOWER(BTRIM(email))").having("COUNT(*) > 1").count.length
+  def duplicate_contact_email_groups
+    ContactDetail.where.not(email: [ nil, "" ]).group("LOWER(BTRIM(email))").having("COUNT(*) > 1").count.length
   end
 
-  def duplicate_canonical_name_groups
-    Person.canonical.group("LOWER(BTRIM(first_name || ' ' || COALESCE(last_name, '')))").having("COUNT(*) > 1").count.length
+  def duplicate_contact_name_groups
+    ContactDetail.group("LOWER(BTRIM(COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')))").having("COUNT(*) > 1").count.length
   end
 
   def add_anomaly(list, code, severity, count, remediation)

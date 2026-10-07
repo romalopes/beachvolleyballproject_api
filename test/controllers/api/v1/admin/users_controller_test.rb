@@ -29,17 +29,12 @@ class Api::V1::Admin::UsersControllerTest < ActionDispatch::IntegrationTest
     assert_equal 20, body["meta"]["per_page"]
   end
 
-  test "index searches by name and email, case-insensitively" do
+  test "index searches by email case-insensitively" do
     sign_in_as(@admin)
-    get "/api/v1/admin/users", params: { search: User.find(@coach.id).name.upcase }
+    get "/api/v1/admin/users", params: { search: @player.email_address.upcase }
     assert_response :success
     ids = JSON.parse(response.body)["data"].map { |u| u["id"] }
-    assert_includes ids, @coach.id
-
-    get "/api/v1/admin/users", params: { search: @player.email_address }
-    ids = JSON.parse(response.body)["data"].map { |u| u["id"] }
     assert_includes ids, @player.id
-    # Search should not return unrelated users
     refute ids.include?(@coach.id)
   end
 

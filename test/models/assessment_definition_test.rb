@@ -158,10 +158,8 @@ class AssessmentDefinitionTest < ActiveSupport::TestCase
   # on purpose: no assessment fixture may change the Phase 4 counts the
   # existing controller tests pin.
   def freeze_with_result
-    person = Person.create!(first_name: "Frozen", last_name: "Case", creation_source: "system")
-    profile = person.create_player_profile!
-    other_person = Person.create!(first_name: "Frozen", last_name: "Coach", creation_source: "system")
-    coach = other_person.create_coach_profile!
+    profile = PlayerProfile.create!(display_name: "Frozen Case")
+    coach = CoachProfile.create!(display_name: "Frozen Coach")
 
     Assessment.create!(
       player_profile: profile,

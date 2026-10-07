@@ -1,11 +1,8 @@
 # A single-use invitation that lets one human attach themselves to an identity the
 # club already recorded.
 #
-# This replaces two near-duplicate models. `PlayerClaimInvitation` attached an
-# unlinked PlayerProfile to a Person; `PersonAccountInvitation` attached a login
-# Account to an accountless Person. Both had the same token digest, expiry,
-# revocation and one-active-per-subject rule, and disagreed about who the issuer
-# is. One polymorphic subject replaces both.
+# A polymorphic subject supports the same token digest, expiry, revocation and
+# one-active-per-subject rules for both profile kinds.
 #
 #   claimable_type "PlayerProfile" -> the profile links to an Account
 #   claimable_type "CoachProfile"  -> the profile links to an Account

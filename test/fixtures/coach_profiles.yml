@@ -1,5 +1,5 @@
 maria_coach:
-  person: two
   account: two
+  display_name: Maria Silva
   coaching_level: level_2
   status: active

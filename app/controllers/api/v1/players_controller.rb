@@ -1,6 +1,6 @@
 module Api
   module V1
-    # Players are PlayerProfile records joined to their Person identity.
+    # Players are PlayerProfile records, optionally linked to an Account.
     #
     # Access is governed by ProfilePolicy: linked Accounts can view their own
     # profiles, while catalogue access remains role-based. Creating a player
@@ -17,12 +17,10 @@ module Api
       before_action :validate_status_filter!, only: :index
 
       # Permitted input.
-      PERSON_ATTRS = %i[first_name last_name email phone date_of_birth].freeze
       PROFILE_ATTRS = %i[display_name preferred_position level status visibility].freeze
 
       # Serializable output.
       PROFILE_ONLY = %i[id account_id display_name preferred_position level status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
-      PERSON_ONLY = %i[id first_name last_name email phone date_of_birth creation_source].freeze
       PROFILE_METHODS = %i[full_name account_status player_profile_id].freeze
       DETAIL_METHODS = PROFILE_METHODS + %i[training_session_count]
 
@@ -94,7 +92,7 @@ module Api
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
         payload["account"] = nil unless payload.key?("account")
-        redact_person_contact!(payload, @player)
+        redact_contact!(payload, @player)
 
         # Coaching history (plan 4.2): the count is published rows only, and
         # the history is whatever exists for this caller — drafts and
@@ -112,14 +110,9 @@ module Api
         render json: { error: "Player not found" }, status: :not_found
       end
 
-      # A player recorded through the API is a person a coach entered (not a
-      # self-signup): PersonCreationService stamps the provenance and the author
-      # so identity resolution can tell the two apart. The response carries
-      # `possible_duplicates` — suggestions only, never an automatic merge.
-      #
-      # Two ways to name the player: `person_id` links a PlayerProfile to a
-      # person that already exists (found through /api/v1/people), while nested
-      # `person` attributes record a new one.
+      # A player recorded through the API is a profile a coach/admin entered.
+      # The response carries `possible_duplicates` for API compatibility;
+      # profile consolidation happens explicitly through the merge endpoint.
       def create
         attributes = player_params
         profile = PlayerProfile.new(attributes)
@@ -136,17 +129,10 @@ module Api
         else
           render json: { errors: profile.errors.full_messages }, status: :unprocessable_entity
         end
-      rescue ActiveRecord::RecordNotFound
-        render json: { errors: [ "Person not found" ] }, status: :unprocessable_entity
       end
 
-      # Editing a profile is a content change: a coach or admin may correct the
-      # player's own attributes and the person's contact details. The profile
-      # cannot be re-pointed at another person (`person_id`) — that is a merge,
-      # not an edit — and the person's provenance is never rewritten.
-      #
-      # The response mirrors show, plus `possible_duplicates`: a correction
-      # ("that was Maria, not Ana") is exactly when a duplicate shows up.
+      # Editing a profile is a content change. Identity consolidation is explicit
+      # through the merge endpoint rather than hidden inside an update.
       #
       # Soft visibility applies to the edit too: a coach may not edit a private
       # player they cannot see (404, same as show), and the visibility switch
@@ -260,7 +246,7 @@ module Api
         account && profile.account_id == account.id
       end
 
-      def redact_person_contact!(payload, profile)
+      def redact_contact!(payload, profile)
         return if can_view_contact_details?(profile)
 
         payload.delete("contact_detail")
@@ -273,9 +259,6 @@ module Api
         profile_attrs
       end
 
-      # On update the person already exists, so the nested attributes are
-      # assigned whenever the key is sent at all — a blank value is meaningful
-      # there (clearing a phone number or an email address).
       def player_update_params
         attrs = params.require(:player)
         profile_attrs = normalize_attrs(attrs[:player_profile] || attrs[:player_profile_attributes] || {}, PROFILE_ATTRS)
@@ -291,34 +274,6 @@ module Api
         end
       end
 
-      # A blank contact field means "no value", so it is stored as NULL rather
-      # than an empty string — and on update it is how a field gets cleared.
-      def normalize_person_attrs(source)
-        normalize_attrs(source, PERSON_ATTRS).transform_values do |value|
-          value.is_a?(String) && value.strip.empty? ? nil : value
-        end
-      end
-
-      # Permit nested organisation_memberships_attributes for a person hash.
-      # Rails strong-parameters unwrap nested hashes to the parent key, so the
-      # permitted result is a hash of the attribute name to the row array — the
-      # caller assigns that array, not the wrapper, or Rails sees a second hash
-      # where it expects one row per element ("no implicit conversion").
-      def permit_memberships(source)
-        return nil unless source.respond_to?(:permit)
-
-        permitted = source
-                    .permit(organisation_memberships_attributes: [ :id, :organisation_id, :role, :status, :_destroy ])
-                    .to_h["organisation_memberships_attributes"]
-
-        # A single row arrives as a hash, not as a one-element array (that is
-        # how a form posts it), so normalise it before it reaches Rails. An
-        # absent key stays nil, so the caller's `present?` check skips the
-        # assignment rather than sending Rails an empty "destroy all" array.
-        return nil if permitted.blank?
-
-        permitted.is_a?(Array) ? permitted : [ permitted ]
-      end
     end
   end
 end

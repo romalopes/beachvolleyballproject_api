@@ -21,7 +21,7 @@ class ClaimInvitationService
     subject = ClaimSubject.for(claimable)
     raise InvitationError, subject.ineligibility_reason unless subject.eligible?
 
-    unless ProfileClaimability::PROFILE_TYPES.include?(claimable.class.name) || claimable.is_a?(Person)
+    unless ProfileClaimability::PROFILE_TYPES.include?(claimable.class.name)
       raise InvitationError, "Only player and coach profiles can be invited."
     end
     raw_token = SecureRandom.urlsafe_base64(32)

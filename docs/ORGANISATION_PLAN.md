@@ -25,10 +25,11 @@ per level. Depth is unbounded; no code may branch on `organisation_type` to deci
 behaviour. A club and an academy behave identically, and a new type needs no
 migration.
 
-### 2.2 `Person`, not `User`
-Organisation membership is keyed on `Person`, never on `User` or on a player
-profile. A club must be able to record the people who are genuinely part of it — a
-committee member, a parent, a volunteer coach — and not only those who signed up.
+### 2.2 `Account`, not `User`
+Organisation membership is keyed on `Account`, never directly on `User` or on a
+player profile. A club must be able to record the accounts that are genuinely part
+of it — a committee member, a parent, a volunteer coach — including staff-recorded
+accounts that have not yet been claimed by a login.
 
 ### 2.3 The hierarchy grants nothing
 Being *above* an organisation in the tree is not the same as being *in* it. A
@@ -46,7 +47,7 @@ explicable by the membership that existed when it was recorded.
 
 ### 2.6 Ownership has exactly one source of truth
 `OrganisationMembership#role == "owner"` decides who owns an organisation.
-`organisations.created_by_person_id` is **audit only** — who recorded the row — and
+`organisations.created_by_account_id` is **audit only** — who recorded the row — and
 is never consulted for authority. Two answers to "who runs this club" is how a
 transferred club ends up unmanageable by anyone.
 
@@ -60,7 +61,7 @@ transferred club ends up unmanageable by anyone.
 | `organisation_type` | free-form; never load-bearing (§2.1) |
 | `description` | |
 | `status` | `active` / `archived`, check-constrained |
-| `created_by_person_id` | audit only (§2.6) |
+| `created_by_account_id` | audit only (§2.6) |
 | `logo` | Active Storage, one attachment |
 
 Archive and restore are lifecycle transitions, not deletion (§2.4). Depth,
@@ -73,7 +74,7 @@ order a tree walk needs.
 | Column | Notes |
 | --- | --- |
 | `organisation_id` | |
-| `person_id` | never `user_id` or `player_profile_id` (§2.2) |
+| `account_id` | never `user_id` or `player_profile_id` (§2.2) |
 | `role` | `owner` / `administrator` / `coach` / `member` |
 | `status` | `pending` / `active` / `suspended` / `ended` |
 | `joined_at` | stamped when the membership becomes active |
@@ -83,8 +84,8 @@ Roles and statuses are check-constrained in the database, so a rule that holds o
 in tests is impossible.
 
 ### 4.1 Role is not volleyball role
-`role` describes what a person does *for this organisation*. It is never derived
-from the Person's own roles: a national coach can be an ordinary `member` of one
+`role` describes what an account does *for this organisation*. It is never derived
+from the user's global roles: a national coach can be an ordinary `member` of one
 club and the `owner` of an academy.
 
 ### 4.2 `coach` is not a grant
@@ -105,7 +106,7 @@ choose between them.
 principle that "adding somebody to a roster is an invitation, and an invitation is
 not a grant". That principle was sound and the system could not honour it: there is
 no acceptance endpoint, no inbox, and no channel at all by which an accountless
-person could respond. So `pending` was an inert state only an officer could clear,
+unclaimed account could respond. So `pending` was an inert state only an officer could clear,
 requiring a second call, and a pending row could sit between a club and being
 deletable.
 
@@ -133,7 +134,7 @@ Creating a node and moving one are claims made *to other clubs* about the tree, 
 they are site-level. Editing the record is the club's own business.
 
 ### 6.1 The creator grant expires
-`created_by_person` is a `Person` and is never cleared, so keying authority on it
+`created_by_account` is an `Account` and is never cleared, so keying authority on it
 alone would let a founder who resigned keep renaming the club forever while their
 roster rights had correctly lapsed. The creator grant is therefore conditional on
 holding an **active membership**. Owner and administrator grants expire with the
@@ -168,8 +169,8 @@ POST   /api/v1/organisations/:id/restore             editor
 POST   /api/v1/organisations/:id/logo                editor, multipart
 GET    /api/v1/organisations/:id/members
 POST   /api/v1/organisations/:id/members             manager
-PATCH  /api/v1/organisations/:id/members/:person_id  manager
-DELETE /api/v1/organisations/:id/members/:person_id  manager (ends, never destroys)
+PATCH  /api/v1/organisations/:id/members/:account_id  manager
+DELETE /api/v1/organisations/:id/members/:account_id  manager (ends, never destroys)
 ```
 
 Every serialised organisation carries `can_edit` and `can_delete`. The SPA gates on
@@ -263,8 +264,8 @@ visibility, eligibility and registration rules are to be designed before any cod
   protocol and URL generation.
 
 
-### 4.4 One row per person per organisation
-Unique on `(organisation_id, person_id)`. Re-joining after an ended membership
+### 4.4 One row per account per organisation
+Unique on `(organisation_id, account_id)`. Re-joining after an ended membership
 reactivates the same row, so the first stint's history is preserved.
 
 ### 4.5 Lifecycle timestamps follow the status

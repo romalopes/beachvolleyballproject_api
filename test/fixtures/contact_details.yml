@@ -17,3 +17,9 @@ three:
   first_name: Nadia
   last_name: Osei
   email: three@example.com
+
+admin:
+  account: admin
+  first_name: Admin
+  last_name: User
+  email: two@example.com

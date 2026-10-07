@@ -1,6 +1,6 @@
 module Api
   module V1
-    # Coaches are CoachProfile records joined to their Person identity.
+    # Coaches are CoachProfile records, optionally linked to an Account.
     #
     # Access is governed by ProfilePolicy: linked Accounts can view their own
     # profiles, while catalogue access remains role-based. Creating a coach
@@ -17,13 +17,10 @@ module Api
       before_action :set_coach, only: %i[show update merge destroy]
       before_action :validate_status_filter!, only: :index
 
-      # Permitted input.
-      PERSON_ATTRS = %i[first_name last_name email phone date_of_birth].freeze
       PROFILE_ATTRS = %i[display_name coaching_level qualifications status visibility].freeze
 
       # Serializable output.
       PROFILE_ONLY = %i[id account_id display_name coaching_level qualifications status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
-      PERSON_ONLY = %i[id first_name last_name email phone date_of_birth creation_source].freeze
       PROFILE_METHODS = %i[full_name account_status coach_profile_id].freeze
 
       def index
@@ -85,7 +82,7 @@ module Api
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
         payload["account"] = nil unless payload.key?("account")
-        redact_person_contact!(payload, @coach)
+        redact_contact!(payload, @coach)
 
         # Attribution history (plan 4.2): the count and a recent slice of the
         # published rows attributed to this coach. Drafts and withdrawn rows
@@ -99,14 +96,9 @@ module Api
         render json: { error: "Coach not found" }, status: :not_found
       end
 
-      # A coach recorded through the API is a person a coach/admin entered (not a
-      # self-signup): PersonCreationService stamps the provenance and the author
-      # so identity resolution can tell the two apart. The response carries
-      # `possible_duplicates` — suggestions only, never an automatic merge.
-      #
-      # Two ways to name the coach: `person_id` links a CoachProfile to a person
-      # that already exists (found through /api/v1/people), while nested `person`
-      # attributes record a new one.
+      # A coach recorded through the API is a profile a coach/admin entered.
+      # The response carries `possible_duplicates` for API compatibility;
+      # profile consolidation happens explicitly through the merge endpoint.
       def create
         attributes = coach_params
         profile = CoachProfile.new(attributes)
@@ -125,10 +117,8 @@ module Api
         end
       end
 
-      # Editing a profile is a content change: a coach or admin may correct the
-      # coach's own attributes and the person's contact details. The profile
-      # cannot be re-pointed at another person (`person_id`) — that is a merge,
-      # not an edit — and the person's provenance is never rewritten.
+      # Editing a profile is a content change. Identity consolidation is explicit
+      # through the merge endpoint rather than hidden inside an update.
       def update
         policy = ProfilePolicy.new(actor: Current.user, profile: @coach)
         unless policy.view?
@@ -208,20 +198,6 @@ module Api
       end
 
       def serialize(profile)
-        can_view_contact = can_view_contact_details?(profile)
-        person_options = if can_view_contact
-          {
-            only: PERSON_ONLY,
-            include: {
-              organisation_memberships: {
-                only: [ :id, :organisation_id, :role, :status ],
-                include: { organisation: { only: [ :id, :name ] } }
-              }
-            }
-          }
-        else
-          { only: %i[id first_name last_name] }
-        end
         payload = profile.as_json(
           only: PROFILE_ONLY,
           include: {
@@ -244,7 +220,7 @@ module Api
         account && profile.account_id == account.id
       end
 
-      def redact_person_contact!(payload, profile)
+      def redact_contact!(payload, profile)
         return if can_view_contact_details?(profile)
 
         payload.delete("contact_detail")
@@ -257,9 +233,6 @@ module Api
         profile_attrs
       end
 
-      # On update the person already exists, so the nested attributes are
-      # assigned whenever the key is sent at all — a blank value is meaningful
-      # there (clearing a phone number or an email address).
       def coach_update_params
         attrs = params.require(:coach)
         profile_attrs = normalize_attrs(attrs[:coach_profile] || attrs[:coach_profile_attributes] || {}, PROFILE_ATTRS)
@@ -275,34 +248,6 @@ module Api
         end
       end
 
-      # A blank contact field means "no value", so it is stored as NULL rather
-      # than an empty string — and on update it is how a field gets cleared.
-      def normalize_person_attrs(source)
-        normalize_attrs(source, PERSON_ATTRS).transform_values do |value|
-          value.is_a?(String) && value.strip.empty? ? nil : value
-        end
-      end
-
-      # Permit nested organisation_memberships_attributes for a person hash.
-      # Rails strong-parameters unwrap nested hashes to the parent key, so the
-      # permitted result is a hash of the attribute name to the row array — the
-      # caller assigns that array, not the wrapper, or Rails sees a second hash
-      # where it expects one row per element ("no implicit conversion").
-      def permit_memberships(source)
-        return nil unless source.respond_to?(:permit)
-
-        permitted = source
-                    .permit(organisation_memberships_attributes: [ :id, :organisation_id, :role, :status, :_destroy ])
-                    .to_h["organisation_memberships_attributes"]
-
-        # A single row arrives as a hash, not as a one-element array (that is
-        # how a form posts it), so normalise it before it reaches Rails. An
-        # absent key stays nil, so the caller's `present?` check skips the
-        # assignment rather than sending Rails an empty "destroy all" array.
-        return nil if permitted.blank?
-
-        permitted.is_a?(Array) ? permitted : [ permitted ]
-      end
     end
   end
 end

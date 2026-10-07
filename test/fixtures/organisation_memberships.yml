@@ -5,14 +5,15 @@
 
 owner_of_sydney_club:
   organisation: sydney_club
-  person: two
+  account: two
+  memberable: two (Account)
   role: owner
   status: active
   joined_at: <%= 1.year.ago.to_fs(:db) %>
 
 club_administrator:
   organisation: sydney_club
-  person: club_officer
+  memberable: private_club_player (PlayerProfile)
   role: administrator
   status: active
   joined_at: <%= 6.months.ago.to_fs(:db) %>
@@ -21,14 +22,15 @@ club_administrator:
 # club's players in the ordinary case — no PlayerCoach row required.
 club_coach:
   organisation: sydney_club
-  person: club_coach
+  memberable: maria_coach (CoachProfile)
   role: coach
   status: active
   joined_at: <%= 3.months.ago.to_fs(:db) %>
 
 club_player:
   organisation: sydney_club
-  person: one
+  account: one
+  memberable: one (Account)
   role: member
   status: active
   joined_at: <%= 2.months.ago.to_fs(:db) %>
@@ -37,7 +39,7 @@ club_player:
 # record its committee without everyone needing a login.
 accountless_club_member:
   organisation: sydney_club
-  person: accountless_player
+  memberable: pedro_player (PlayerProfile)
   role: member
   status: active
   joined_at: <%= 1.month.ago.to_fs(:db) %>
@@ -46,13 +48,14 @@ accountless_club_member:
 # grants nothing until it is.
 pending_academy_member:
   organisation: sydney_academy
-  person: two
+  account: two
+  memberable: two (Account)
   role: member
   status: pending
 
 suspended_nsw_coach:
   organisation: volleyball_nsw
-  person: club_coach
+  memberable: maria_coach (CoachProfile)
   role: coach
   status: suspended
   joined_at: <%= 9.months.ago.to_fs(:db) %>
@@ -61,7 +64,8 @@ suspended_nsw_coach:
 # surviving rather than being deleted.
 former_northern_member:
   organisation: northern_club
-  person: one
+  account: one
+  memberable: one (Account)
   role: member
   status: ended
   joined_at: <%= 2.years.ago.to_fs(:db) %>
@@ -71,7 +75,7 @@ former_northern_member:
 # itself: being in the national body must not expose a club's private records.
 national_member:
   organisation: volleyball_australia
-  person: national_official
+  memberable: john_player (PlayerProfile)
   role: member
   status: active
   joined_at: <%= 18.months.ago.to_fs(:db) %>

@@ -32,8 +32,7 @@ class ClaimInvitationConcurrencyTest < ActiveSupport::TestCase
 
     assert_equal [ :redeemed, :rejected ], recipients.length.times.map { outcomes.pop }.sort
     assert_equal "used", invitation.reload.status
-    assert_equal 1, PlayerClaim.pending.where(claimable: profile).count
-    assert_equal 1, PlayerClaim.pending.where(claimable: profile).pluck(:claimant_account_id).uniq.count
+    assert_includes recipients.map { |recipient| recipient.account.id }, profile.reload.account_id
   ensure
     PlayerClaim.where(claimable: profile).delete_all if profile&.persisted?
     ClaimInvitation.where(claimable: profile).delete_all if profile&.persisted?

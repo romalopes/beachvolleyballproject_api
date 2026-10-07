@@ -128,14 +128,14 @@ class PlayerCoach < ApplicationRecord
     errors.add(:end_date, "cannot be cleared; a resumed relationship is a new period")
   end
 
-  # Mirrors Assessment's own rule: a person does not coach themselves. Stated here
-  # too because a relationship is keyed on two profiles and one Person may hold
-  # both, so the check has to look through to `person_id`.
+  # A linked account holder cannot coach themselves. Profile-only rows are allowed
+  # because there is no Account identity proving both profiles belong to one human.
   def player_and_coach_are_different_people
     return if player_profile.blank? || coach_profile.blank?
+    return if player_profile.account_id.blank? || coach_profile.account_id.blank?
     return unless player_profile.account_id == coach_profile.account_id
 
-    errors.add(:coach_profile, "cannot be the same person as the player")
+    errors.add(:coach_profile, "cannot be the same account as the player")
   end
 
   # Mirrors the partial unique index, so a duplicate produces a message rather

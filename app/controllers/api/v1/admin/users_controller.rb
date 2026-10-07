@@ -6,7 +6,7 @@ module Api
 
         # GET /api/v1/admin/users
         # Supports:
-        #   search   — case-insensitive substring match on name or email
+        #   search   — case-insensitive substring match on email
         #   page     — page number (default 1)
         #   per_page — page size (default 20, clamped 1..100)
         # Returns { data: [...], meta: { page, per_page, total, total_pages } }
@@ -16,10 +16,7 @@ module Api
 
           if params[:search].present?
             pattern = "%#{ActiveRecord::Base.sanitize_sql_like(params[:search].to_s.strip)}%"
-            users = users.where(
-              "users.name ILIKE ? OR users.email_address ILIKE ?",
-              pattern, pattern
-            )
+            users = users.where("users.email_address ILIKE ?", pattern)
           end
 
           page = (params[:page] || 1).to_i
@@ -29,7 +26,7 @@ module Api
           users = users.offset((page - 1) * per_page).limit(per_page)
 
           render json: {
-            data: users.as_json(include: { roles: { only: [:id, :name] } }),
+            data: users.as_json(include: { roles: { only: [ :id, :name ] } }),
             meta: {
               page: page,
               per_page: per_page,

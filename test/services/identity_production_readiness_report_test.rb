@@ -2,9 +2,9 @@ require "test_helper"
 
 class IdentityProductionReadinessReportTest < ActiveSupport::TestCase
   test "report emits aggregate readiness and preservation checks without changing row counts" do
-    before_counts = [ Person.count, Account.count, PlayerProfile.count, CoachProfile.count ]
+    before_counts = [ Account.count, PlayerProfile.count, CoachProfile.count ]
     report = IdentityProductionReadinessReport.new.call
-    after_counts = [ Person.count, Account.count, PlayerProfile.count, CoachProfile.count ]
+    after_counts = [ Account.count, PlayerProfile.count, CoachProfile.count ]
 
     assert_equal true, report[:read_only]
     assert_equal before_counts, after_counts

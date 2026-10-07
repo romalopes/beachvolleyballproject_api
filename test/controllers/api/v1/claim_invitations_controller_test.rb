@@ -43,7 +43,6 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
     assert_equal "linked", JSON.parse(response.body).fetch("outcome")
     assert_equal @claimer.account.id, coach_profile.reload.account_id
-    assert_equal @claimer.person.id, coach_profile.person_id
   end
 
   test "redeeming a hand-copied link with the verified recipient address links immediately" do
@@ -57,7 +56,7 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
     body = JSON.parse(response.body)
     assert_equal "linked", body["outcome"]
-    assert_equal @claimer.person.id, @profile.reload.person_id
+    assert_equal @claimer.account.id, @profile.reload.account_id
   end
 
   test "redeeming an emailed invitation links immediately" do
@@ -71,7 +70,7 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :created
     assert_equal "linked", JSON.parse(response.body)["outcome"]
-    assert_equal @claimer.person.id, @profile.reload.person_id
+    assert_equal @claimer.account.id, @profile.reload.account_id
   end
 
   test "issuing requires a content creator and is refused for another coach" do
@@ -149,14 +148,14 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
     post "/api/v1/claim_invitations/#{accepted.id}/accept"
     assert_response :created
     assert_equal "linked", JSON.parse(response.body).fetch("outcome")
-    assert_equal @claimer.person.id, accept_profile.reload.person_id
+    assert_equal @claimer.account.id, accept_profile.reload.account_id
     assert_equal "used", accepted.reload.status
 
     post "/api/v1/claim_invitations/#{declined.id}/decline"
     assert_response :success
     assert_equal "declined", declined.reload.status
     assert_not_nil declined.declined_at
-    assert_nil decline_profile.reload.person_id
+    assert_nil decline_profile.reload.account_id
   end
 
   test "another verified account cannot accept or decline a recipient invitation" do
@@ -170,7 +169,7 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
     post "/api/v1/claim_invitations/#{invitation.id}/decline"
     assert_response :unprocessable_entity
     assert_equal "active", invitation.reload.status
-    assert_nil @profile.reload.person_id
+    assert_nil @profile.reload.account_id
   end
 
   test "unverified recipients cannot view received invitations or accept them" do
@@ -186,7 +185,7 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "management invitation filters include names and remain within the coach's profile scope" do
-    own_invitation, = ClaimInvitationService.issue!(claimable: @profile, invited_by: @coach, invitee_email: "person@example.com")
+    own_invitation, = ClaimInvitationService.issue!(claimable: @profile, invited_by: @coach, invitee_email: "account@example.com")
     other_profile = PlayerProfile.create!(display_name: "Other coach profile", created_by: @other_coach)
     ClaimInvitationService.issue!(claimable: other_profile, invited_by: @other_coach, invitee_email: "other@example.com")
     sign_in_as(@coach)
@@ -202,9 +201,8 @@ class Api::V1::ClaimInvitationsControllerTest < ActionDispatch::IntegrationTest
 
   test "claimable profile directory applies type, status and link filters server side" do
     unlinked = PlayerProfile.create!(display_name: "Directory Unlinked", created_by: @coach)
-    linked_person = Person.create!(first_name: "Linked", last_name: "Directory", status: "active")
-    Account.create!(user: users(:one), person: linked_person)
-    linked = PlayerProfile.create!(person: linked_person, created_by: @coach)
+    linked_account = create_account!(first_name: "Linked", last_name: "Directory", email: "linked-directory@example.com")
+    linked = PlayerProfile.create!(account: linked_account, created_by: @coach)
     sign_in_as(@coach)
 
     get "/api/v1/claim_invitations/claimables", params: { claimable_type: "PlayerProfile", status: "active", link_state: "unlinked", q: "Directory" }

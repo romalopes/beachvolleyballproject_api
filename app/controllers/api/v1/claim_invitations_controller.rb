@@ -229,12 +229,11 @@ module Api
         value.to_s.strip.presence
       end
 
-      # Profile invitations remain creator-owned. A Person is a club record and
-      # may be invited by any authorized content creator, as in the legacy
-      # Person-account invitation workflow.
+      # Profile invitations remain creator-owned. Legacy Person-account
+      # invitations have been removed from the current Account-based schema, so
+      # every supported invitation subject is policy-checked as a profile.
       def subject_owner?(record = subject)
         return false if record.nil?
-        return Current.user.admin? || Current.user.coach? if record.is_a?(Person)
         return Current.user.admin? unless record.respond_to?(:created_by_id)
 
         ProfilePolicy.new(actor: Current.user, profile: record).invite?

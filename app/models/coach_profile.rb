@@ -25,9 +25,8 @@ class CoachProfile < ApplicationRecord
   belongs_to :merged_into_profile, class_name: "CoachProfile", optional: true
   belongs_to :merged_by_account, class_name: "Account", optional: true
   has_many :merged_profiles, class_name: "CoachProfile", foreign_key: :merged_into_profile_id, dependent: :restrict_with_error
-  # Phase 2 made `person_id` non-null because no unassigned-coach workflow
-  # existed. Phase 18 adds one: a coach recorded with only a display name can
-  # claim their profile later, exactly as a player can.
+  # A coach recorded with only a display name can claim their profile later,
+  # exactly as a player can.
   has_many :claim_invitations, as: :claimable, dependent: :restrict_with_error
   has_many :organisation_memberships, as: :memberable, dependent: :restrict_with_error
   has_many :player_claims, as: :claimable, dependent: :restrict_with_error
@@ -86,9 +85,6 @@ class CoachProfile < ApplicationRecord
     user.present? && (user.admin? || owner?(user))
   end
 
-  # Nil-safe now that `person` is optional: a placeholder coach is named by its
-  # display name and reports itself as having no account, exactly like a
-  # placeholder player profile.
   def full_name = display_name.presence || account&.full_name
 
   def merged?

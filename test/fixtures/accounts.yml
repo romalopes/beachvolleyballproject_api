@@ -9,3 +9,6 @@ two:
 # users(:three) owns the `private_squad` fixture through this account.
 three:
   user: three
+
+admin:
+  user: two

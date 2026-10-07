@@ -58,12 +58,12 @@ class Organisation < ApplicationRecord
   has_one_attached :logo
 
   # Membership is the only record of who belongs to an organisation, and it is also
-  # the single source of truth for *ownership*. `created_by_person_id` is audit
+  # the single source of truth for *ownership*. `created_by_account_id` is audit
   # only — who recorded the row — so there are never two competing answers to "who
   # owns this club", which is how a transferred club ends up unmanageable by anyone.
   has_many :organisation_memberships, dependent: :destroy
   # `members` means *current* members. Going through the raw association would
-  # include people who had left, so "is this person one of ours?" would keep
+  # include accounts who had left, so "is this account one of ours?" would keep
   # answering yes after they resigned — the ended rows stay for history, and this
   # is how callers read the present.
   has_many :active_memberships,
@@ -144,7 +144,7 @@ class Organisation < ApplicationRecord
   # --- membership ------------------------------------------------------------
 
   # The organisation's owner, read from the membership rather than from
-  # `created_by_person_id`. An organisation can be handed over, and only one of
+  # `created_by_account_id`. An organisation can be handed over, and only one of
   # these can change when that happens.
   def owner
     membership = active_memberships.find_by(role: "owner")
@@ -159,17 +159,14 @@ class Organisation < ApplicationRecord
     active_memberships.where(role: "owner", account_id: member.id).exists?
   end
 
-  # Whether a person may change this organisation's membership: its owner and its
+  # Whether an account may change this organisation's membership: its owner and its
   # administrators. An ordinary member — however senior — may not, so a club's
   # roster cannot be rewritten by the people it is a roster of.
   #
   # Site admins are *not* handled here; that is a wider authority than membership
   # and belongs to the authorization layer, which ORs the two.
   def manageable_by?(member)
-    return false if member.nil?
-
-    memberships = active_memberships.manageable.where(organisation_id: id)
-    member.is_a?(Account) && memberships.exists?(account_id: member.id)
+    OrganisationAccess.manages_membership?(self, member)
   end
 
   def active_organisation_memberships
@@ -180,7 +177,7 @@ class Organisation < ApplicationRecord
     active_organisation_memberships.count
   end
 
-  # Whether a person may edit the organisation's own record: its name, its
+  # Whether an account may edit the organisation's own record: its name, its
   # description, its logo.
   #
   # Three sources, and they are deliberately different kinds of claim:
@@ -195,11 +192,7 @@ class Organisation < ApplicationRecord
   # Site admins and curators are not handled here: those are wider authorities and
   # the authorization layer ORs them in.
   def editable_by?(member)
-    return false if member.nil?
-    return true if manageable_by?(member)
-    return false unless member.is_a?(Account) && created_by_account_id == member.id
-
-    member.organisation_memberships.active.exists?(organisation_id: id)
+    OrganisationAccess.edits_record_by_membership?(self, member)
   end
 
   # Whether this organisation may be hard-deleted at all.
@@ -234,7 +227,7 @@ class Organisation < ApplicationRecord
   # The per-record path, used when the caller supplied neither a precomputed set nor
   # the "oversight can edit everything" flag — a single `show`, for instance.
   def default_can_edit?
-    editable_by?(Current&.user&.account) || oversight?
+    OrganisationAccess.can_edit?(self, Current&.user)
   end
 
   # `editable_all` is a flag rather than a sentinel value inside `editable_ids`
@@ -252,7 +245,7 @@ class Organisation < ApplicationRecord
   # admits the creator and the curator — neither of whom runs anybody's roster.
   def manage_members_flag(manage_members_ids, manage_members_all)
     return true if manage_members_all
-    return manageable_by?(Current&.user&.account) if manage_members_ids.nil?
+    return OrganisationAccess.can_manage_members?(self, Current&.user) if manage_members_ids.nil?
 
     manage_members_ids.include?(id)
   end

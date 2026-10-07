@@ -87,7 +87,6 @@ class PlayerClaimServiceTest < ActiveSupport::TestCase
     end
 
     assert_nil profile.reload.account_id
-    assert_nil profile.person_id
     assert_equal "pending", claim.reload.status
   ensure
     PlayerClaim.where(claimable: profile).delete_all if profile&.persisted?

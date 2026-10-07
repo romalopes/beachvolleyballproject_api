@@ -24,7 +24,6 @@ class PlayerClaimTest < ActiveSupport::TestCase
 
     PlayerClaimService.approve!(claim: claim, reviewer_account: users(:three).account, verification_method: "staff_confirmed")
     assert_equal "approved", claim.reload.status
-    assert_nil profile.reload.person_id
     assert_equal users(:five).account.id, profile.account_id
     assert_equal users(:three).account.id, claim.reviewed_by_account_id
     assert_equal "staff_confirmed", claim.verification_method

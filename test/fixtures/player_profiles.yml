@@ -1,12 +1,12 @@
 john_player:
-  person: one
   account: one
+  display_name: John Smith
   preferred_position: blocker
   level: intermediate
   status: active
 
 pedro_player:
-  person: accountless_player
+  display_name: Pedro Santos
   preferred_position: setter
   level: beginner
   status: active
@@ -15,7 +15,7 @@ pedro_player:
 # shared profile is visible to everybody, so it cannot show that a club
 # membership granted anything.
 private_club_player:
-  person: club_officer
+  display_name: Club Officer
   preferred_position: outside
   level: advanced
   status: active

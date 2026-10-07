@@ -35,11 +35,11 @@ class PlayerCoachTest < ActiveSupport::TestCase
   end
 
   def new_player_profile(first_name)
-    Person.create!(first_name: first_name, creation_source: "system").create_player_profile!
+    PlayerProfile.create!(display_name: first_name)
   end
 
   def new_coach_profile(first_name)
-    Person.create!(first_name: first_name, creation_source: "system").create_coach_profile!
+    CoachProfile.create!(display_name: first_name)
   end
 
   # --- the period is the lifecycle ------------------------------------------
@@ -188,15 +188,14 @@ class PlayerCoachTest < ActiveSupport::TestCase
     end
   end
 
-  test "a person cannot coach themselves" do
-    # A Person may hold both profiles; the join still has to name two people.
-    person = Person.create!(first_name: "Dual", last_name: "Role", creation_source: "system")
-    self_coached = built(player_profile: person.create_player_profile!,
-                         coach_profile: person.create_coach_profile!)
+  test "an account cannot coach themselves" do
+    account = accounts(:one)
+    self_coached = built(player_profile: PlayerProfile.create!(display_name: "Dual Player", account: account),
+                         coach_profile: CoachProfile.create!(display_name: "Dual Coach", account: account))
 
     assert_not self_coached.valid?
     assert_includes self_coached.errors[:coach_profile],
-                    "cannot be the same person as the player"
+                    "cannot be the same account as the player"
   end
 
   # --- a relationship is not an assessment permission -----------------------

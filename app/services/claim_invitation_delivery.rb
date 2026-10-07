@@ -25,5 +25,3 @@ class ClaimInvitationDelivery
   end
 end
 
-# Superseded by ClaimInvitationDelivery (the unified workflow's only delivery
-# path). This controller and its endpoints are retained for one release.

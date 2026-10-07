@@ -35,9 +35,10 @@ class Api::V1::PlayerCoachesControllerTest < ActionDispatch::IntegrationTest
   end
 
   def private_player_owned_by(user)
-    person = Person.create!(first_name: "Private", last_name: "Owned#{SecureRandom.hex(3)}",
-                            creation_source: "coach_created", created_by: user)
-    person.create_player_profile!(visibility: "private", created_by: user)
+    profile = PlayerProfile.new(display_name: "Private Owned#{SecureRandom.hex(3)}", visibility: "private", created_by: user)
+    ProfileOwnership.stamp!(profile, user)
+    profile.save!
+    profile
   end
 
   # --- read ------------------------------------------------------------------
@@ -231,17 +232,17 @@ class Api::V1::PlayerCoachesControllerTest < ActionDispatch::IntegrationTest
     assert_equal true, json["current"]
   end
 
-  test "create refuses a person coaching themselves" do
-    person = Person.create!(first_name: "Dual", last_name: "Role", creation_source: "system")
-    player = person.create_player_profile!
-    coach = person.create_coach_profile!
+  test "create refuses an account coaching themselves" do
+    account = accounts(:one)
+    player = PlayerProfile.create!(display_name: "Dual Player", account: account)
+    coach = CoachProfile.create!(display_name: "Dual Coach", account: account)
 
     sign_in_as(@admin)
     post_json api_v1_player_coaches_path,
               { player_coach: { player_profile_id: player.id, coach_profile_id: coach.id } }
 
     assert_response :unprocessable_entity
-    assert_includes json["errors"], "Coach profile cannot be the same person as the player"
+    assert_includes json["errors"], "Coach profile cannot be the same account as the player"
   end
 
   # --- ending a relationship -------------------------------------------------

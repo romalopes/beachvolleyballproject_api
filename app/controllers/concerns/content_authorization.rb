@@ -130,8 +130,7 @@ module ContentAuthorization
   # The creator's grant is time-limited inside `Organisation#editable_by?` — it
   # lapses when they leave — so a resigned founder cannot keep renaming the club.
   def require_organisation_editor!
-    return true if Current.user&.admin? || Current.user&.curator?
-    return true if @organisation&.editable_by?(Current.user&.account)
+    return true if OrganisationAccess.can_edit?(@organisation, Current.user)
 
     render json: {
       error: "Only this organisation's officers, its creator, a curator or an admin can edit it"
@@ -157,8 +156,7 @@ module ContentAuthorization
   # An ordinary member is refused even though they can already see the roster: being
   # on it is not authority over it.
   def require_organisation_membership_manager!
-    return true if Current.user&.admin?
-    return true if @organisation&.manageable_by?(Current.user&.account)
+    return true if OrganisationAccess.can_manage_members?(@organisation, Current.user)
 
     render json: {
       error: "Only this organisation's owner or administrators can manage its members"

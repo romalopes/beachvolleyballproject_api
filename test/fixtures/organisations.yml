@@ -18,7 +18,7 @@ fivb:
   organisation_type: international_federation
   description: The world governing body for beach volleyball.
   status: active
-  created_by_person: two
+  created_by_account: two
 
 volleyball_australia:
   name: Volleyball Australia
@@ -26,7 +26,7 @@ volleyball_australia:
   organisation_type: national_federation
   parent_organisation: fivb
   status: active
-  created_by_person: two
+  created_by_account: two
 
 volleyball_nsw:
   name: Volleyball NSW
@@ -34,7 +34,7 @@ volleyball_nsw:
   organisation_type: state_federation
   parent_organisation: volleyball_australia
   status: active
-  created_by_person: two
+  created_by_account: two
 
 sydney_club:
   name: Sydney Beach Volleyball Club
@@ -42,7 +42,7 @@ sydney_club:
   organisation_type: club
   parent_organisation: volleyball_nsw
   status: active
-  created_by_person: two
+  created_by_account: two
 
 sydney_academy:
   name: Sydney Beach Academy
@@ -50,7 +50,7 @@ sydney_academy:
   organisation_type: academy
   parent_organisation: sydney_club
   status: active
-  created_by_person: two
+  created_by_account: two
 
 northern_club:
   name: Northern Beaches Volleyball Club
@@ -58,7 +58,7 @@ northern_club:
   organisation_type: club
   parent_organisation: volleyball_nsw
   status: active
-  created_by_person: two
+  created_by_account: two
 
 # An independent root: a club with no parent, and a different tree entirely.
 maroubra_club:
@@ -66,7 +66,7 @@ maroubra_club:
   slug: maroubra-beach-volleyball-club
   organisation_type: club
   status: active
-  created_by_person: two
+  created_by_account: two
 
 # Retired, but kept: it is history and must not be deleted out from under
 # whatever referenced it.
@@ -75,4 +75,4 @@ retired_association:
   slug: retired-surfing-association
   organisation_type: association
   status: archived
-  created_by_person: two
+  created_by_account: two

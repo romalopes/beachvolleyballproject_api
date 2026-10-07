@@ -1,10 +1,7 @@
 # Application identity and owner of private contact details and volleyball
 # profiles. Authentication credentials and role assignments remain on User.
 class Account < ApplicationRecord
-  # Staff may record an Account before its owner signs up. Claiming attaches
-  # the login User later; the Account and ContactDetail remain the durable
-  # volleyball identity throughout.
-  belongs_to :user, optional: true
+  belongs_to :user
   has_one :account_address, dependent: :destroy
   has_one :contact_detail, inverse_of: :account, dependent: :destroy, autosave: true
   has_many :player_profiles, dependent: :restrict_with_error

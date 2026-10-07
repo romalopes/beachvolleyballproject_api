@@ -12,14 +12,90 @@ class OrganisationTest < ActiveSupport::TestCase
     @academy = organisations(:sydney_academy)
     @northern = organisations(:northern_club)
     @maroubra = organisations(:maroubra_club)
-    @author = people(:two)
+    @author = accounts(:two)
+  end
+
+  # --- access adapter ---------------------------------------------------------
+
+  test "active owner and administrator manage members and edit the organisation" do
+    owner = accounts(:two)
+    officer = create_account!(first_name: "Club", last_name: "Officer")
+    @club.organisation_memberships.create!(account: officer, role: "administrator", status: "active")
+
+    assert OrganisationAccess.can_manage_members?(@club, owner.user)
+    assert OrganisationAccess.can_edit?(@club, owner.user)
+    assert @club.manageable_by?(owner)
+    assert @club.editable_by?(owner)
+
+    assert @club.manageable_by?(officer)
+    assert @club.editable_by?(officer)
+  end
+
+  test "coach member may read but cannot edit or manage roster" do
+    coach = create_account!(first_name: "Roster", last_name: "Coach")
+    @club.organisation_memberships.create!(account: coach, role: "coach", status: "active")
+
+    assert OrganisationAccess.active_member?(@club, coach)
+    assert_not @club.manageable_by?(coach)
+    assert_not @club.editable_by?(coach)
+  end
+
+  test "pending suspended and ended memberships do not grant authority" do
+    %w[pending suspended ended].each do |status|
+      account = create_account!(first_name: status, last_name: "Officer")
+      membership = @northern.organisation_memberships.build(account: account, role: "administrator", status: status)
+      membership.left_at = Time.current if status == "ended"
+      membership.save!
+
+      assert_not OrganisationAccess.active_member?(@northern, account), status
+      assert_not @northern.manageable_by?(account), status
+      assert_not @northern.editable_by?(account), status
+    end
+  end
+
+  test "creator grant requires active membership and expires when the creator leaves" do
+    creator = create_account!(first_name: "Founding", last_name: "Creator")
+    organisation = Organisation.create!(name: "Creator Access Club", created_by_account: creator)
+
+    assert_not organisation.editable_by?(creator)
+
+    membership = organisation.organisation_memberships.create!(account: creator, role: "member", status: "active")
+    assert organisation.editable_by?(creator)
+
+    membership.end!
+    assert_not organisation.reload.editable_by?(creator)
+  end
+
+  test "curator can edit but cannot manage organisation members" do
+    Current.session = Session.new(user: users(:four))
+
+    assert OrganisationAccess.can_edit?(@club, users(:four))
+    assert_not OrganisationAccess.can_manage_members?(@club, users(:four))
+    assert @club.default_can_edit?
+    assert_not @club.manage_members_flag(nil, false)
+  ensure
+    Current.reset
+  end
+
+  test "admin bypasses edit and member management checks" do
+    assert OrganisationAccess.can_edit?(@club, users(:two))
+    assert OrganisationAccess.can_manage_members?(@club, users(:two))
+  end
+
+  test "organisation hierarchy does not grant access to child organisations" do
+    national = create_account!(first_name: "National", last_name: "Officer")
+    @australia.organisation_memberships.create!(account: national, role: "administrator", status: "active")
+
+    assert @australia.manageable_by?(national)
+    assert_not @club.manageable_by?(national)
+    assert_not OrganisationAccess.active_member?(@club, national)
   end
 
   # --- creation --------------------------------------------------------------
 
   test "an organisation is created, slugs itself, and defaults sanely" do
     organisation = Organisation.create!(
-      name: "Maroochydore Beach Club", created_by_person: @author
+      name: "Maroochydore Beach Club", created_by_account: accounts(:two)
     )
 
     assert_equal "maroochydore-beach-club", organisation.slug

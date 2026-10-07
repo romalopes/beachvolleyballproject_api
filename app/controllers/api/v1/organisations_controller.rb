@@ -44,7 +44,7 @@ module Api
                         .ordered
                         .includes(:parent_organisation, :created_by_account, :logo_attachment)
         # `mine=1` narrows to the organisations the caller is an *active* member
-        # of. It exists because the group form needs the choices a person can
+        # of. It exists because the group form needs the choices an account can
         # actually make: offering every organisation would list ones the server
         # would refuse on submit. Active only — an ended membership does not let
         # you start a new group for a club you have left. A caller with no Person
@@ -148,7 +148,11 @@ module Api
 
         if Organisation.transaction do
              @organisation.save && @organisation.organisation_memberships.create!(
-               account: Current.user.account, role: "owner", status: "active", joined_at: Time.current
+               account: Current.user.account,
+               memberable: Current.user.account,
+               role: "owner",
+               status: "active",
+               joined_at: Time.current
              )
            end
           render json: serialize(@organisation), status: :created
@@ -303,7 +307,7 @@ module Api
         # Defaulting to `active`. This used to default to `pending` — "adding
         # somebody to a roster is an invitation" — but nothing could ever accept an
         # invitation: there is no acceptance endpoint, no inbox, and for an
-        # accountless person no channel to respond through at all. So `pending` was
+        # unclaimed account no channel to respond through at all. So `pending` was
         # an inert state an officer had to clear with a second call, and a pending
         # row could sit between a club and being deletable.
         #
@@ -373,7 +377,7 @@ module Api
       end
 
       def manageable_membership?
-        Current.user&.admin? || @organisation.manageable_by?(Current.user&.account)
+        OrganisationAccess.can_manage_members?(@organisation, Current.user)
       end
 
       def find_membership
@@ -513,14 +517,13 @@ module Api
       # A member may read the organisation they belong to from their Identity
       # dashboard. Catalogue and management access remain training-manager only.
       def require_organisation_reader!
-        return if Current.user&.content_manager?
-        return if @organisation&.organisation_memberships&.active&.exists?(account_id: Current.user&.account&.id)
+        return if OrganisationAccess.can_read?(@organisation, Current.user)
 
         render json: { error: "Forbidden" }, status: :forbidden
       end
 
       # `status` is writable so a client can archive or restore in one call, but
-      # `created_by_person` is deliberately not: attribution is set server-side
+      # `created_by_account` is deliberately not: attribution is set server-side
       # and is not the caller's to choose.
       def organisation_params
         params.require(:organisation).permit(

@@ -672,7 +672,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
                  "#{user.email_address} can edit but must not manage the roster"
 
       # And the flag must not disagree with what the endpoint actually allows.
-      post_json "/api/v1/organisations/#{@club.id}/members", membership: { person_id: people(:national_official).id }
+      post_json "/api/v1/organisations/#{@club.id}/members", membership: { account_id: accounts(:three).id }
       assert_equal 403, response.status, "flag and endpoint disagree for #{user.email_address}"
     end
   end
@@ -715,12 +715,12 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
   test "the creator may edit it while they are still a member" do
     # Maria Silva owns this club, so her officer role is downgraded to a plain member
     # first: otherwise the request would be authorised by the officer path and the
-    # test would prove nothing about `created_by_person`.
+    # test would prove nothing about `created_by_account`.
     officer = organisation_memberships(:owner_of_sydney_club)
     officer.update!(role: "member")
-    creator = officer.person
-    @club.update!(created_by_person: creator)
-    assert_equal creator.id, @club.reload.created_by_person_id
+    creator = officer.account
+    @club.update!(created_by_account: creator)
+    assert_equal creator.id, @club.reload.created_by_account_id
     assert_not @club.manageable_by?(creator), "only the creator grant remains"
 
     sign_in_as(users(:six))
@@ -732,14 +732,14 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "the creator may no longer edit it once their membership has ended" do
-    # The whole reason the creator grant is gated on membership: `created_by_person`
+    # The whole reason the creator grant is gated on membership: `created_by_account`
     # is never cleared, so keying on it alone would let a resigned founder keep
     # renaming the club forever while their roster rights had correctly lapsed.
     officer = organisation_memberships(:owner_of_sydney_club)
     officer.update!(role: "member")
-    creator = officer.person
-    @club.update!(created_by_person: creator)
-    assert_equal creator.id, @club.reload.created_by_person_id
+    creator = officer.account
+    @club.update!(created_by_account: creator)
+    assert_equal creator.id, @club.reload.created_by_account_id
     assert_not @club.manageable_by?(creator), "still only reachable via the creator grant"
 
     officer.end!
@@ -783,13 +783,13 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
   # on the roster is not authority over it.
   #
   # The identities matter here, so they are named rather than reused from the
-  # `@admin`/`@coach` above: `six` is Maria Silva, whose Person owns the Sydney club
+  # `@admin`/`@coach` above: `six` is Maria Silva, whose Account owns the Sydney club
   # and who is emphatically *not* a site admin, which is the only way to show the
   # delegated path works. `five` is John Smith, an ordinary member of that club.
 
-  def post_membership(organisation, person, **overrides)
+  def post_membership(organisation, account, **overrides)
     post_json "/api/v1/organisations/#{organisation.id}/members",
-              membership: { person_id: person.id, **overrides }
+              membership: { account_id: account.id, **overrides }
   end
 
   test "the club's owner can add a member without being a site admin" do
@@ -797,10 +797,10 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_not owner_user.admin?, "this test only means something for a non-admin"
     sign_in_as(owner_user)
 
-    post_membership(@club, people(:national_official), role: "member", status: "active")
+    post_membership(@club, accounts(:three), role: "member", status: "active")
 
     assert_response :created
-    assert_equal people(:national_official).id, json["person_id"]
+    assert_equal accounts(:three).id, json["account_id"]
     assert_equal "active", json["status"]
   end
 
@@ -808,7 +808,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     sign_in_as(users(:five)) # John Smith, a plain `member` of this very club
     before_count = OrganisationMembership.count
 
-    post_membership(@club, people(:national_official))
+    post_membership(@club, accounts(:three))
 
     assert_response :forbidden
     assert_equal before_count, OrganisationMembership.count
@@ -817,15 +817,15 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
   test "a training manager who is not an officer sees only ended memberships" do
     # The organisation itself is readable by any training manager, but the roster is
     # narrower. This curator is not on the club's membership at all and has no
-    # Person, so the only rows that are theirs to see are the historical ones —
+    # account, so the only rows that are theirs to see are the historical ones —
     # hiding those would erase the record this feature exists to keep.
     sign_in_as(users(:four))
 
     get "/api/v1/organisations/#{@club.id}/members"
 
     assert_response :success
-    ids = json["data"].map { |row| row["person_id"] }
-    assert_not_includes ids, people(:club_officer).id
+    ids = json["data"].map { |row| row["account_id"] }
+    assert_not_includes ids, accounts(:two).id
     assert_empty json["data"].reject { |row| row["status"] == "ended" }
   end
 
@@ -845,29 +845,29 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     get "/api/v1/organisations/#{@club.id}/members"
 
     assert_response :success
-    assert_includes json["data"].map { |row| row["person_id"] }, people(:club_officer).id
+    assert_includes json["data"].map { |row| row["account_id"] }, accounts(:two).id
   end
 
   test "a member added without a status is active immediately, not an invitation" do
     # Adding somebody to your own roster is a record-keeping act, not a request.
     # It used to default to `pending` on the principle that "an invitation is not a
     # grant" — but nothing could accept an invitation (no endpoint, no inbox, and no
-    # channel at all for an accountless person), so the officer had to make a second
+    # channel at all for an unclaimed account), so the officer had to make a second
     # call to clear a state only they could move.
     sign_in_as(users(:six))
 
-    post_membership(@club, people(:national_official))
+    post_membership(@club, accounts(:three))
 
     assert_response :created
     assert_equal "active", json["status"]
-    # Effective at once: no second call, and the person is a member now.
-    assert_includes @club.reload.members.map(&:id), people(:national_official).id
+    # Effective at once: no second call, and the account is a member now.
+    assert_includes @club.reload.members.map(&:id), accounts(:three).id
   end
 
   test "pending remains available as an explicit choice meaning not yet active" do
     sign_in_as(users(:six))
 
-    post_membership(@club, people(:national_official), status: "pending")
+    post_membership(@club, accounts(:three), status: "pending")
 
     assert_response :created
     assert_equal "pending", json["status"]
@@ -877,7 +877,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     sign_in_as(users(:six))
     membership = organisation_memberships(:club_player)
 
-    delete "/api/v1/organisations/#{@club.id}/members/#{membership.person_id}"
+    delete "/api/v1/organisations/#{@club.id}/members/#{membership.account_id}"
 
     assert_response :success
     assert_equal "ended", json.dig("membership", "status")
@@ -890,19 +890,19 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
 
   test "withdrawing an unaccepted invitation removes the row rather than faking one" do
     # A `pending` membership records no stint. Ending it would write a `left_at`
-    # saying the person left a club they never joined — the fabricated history the
+    # saying the account left a club they never joined — the fabricated history the
     # membership model exists to prevent.
     sign_in_as(@admin)
     invitation = organisation_memberships(:pending_academy_member)
     academy_id = invitation.organisation_id
-    person_id = invitation.person_id
+    account_id = invitation.account_id
     assert_predicate invitation, :pending?
 
-    delete "/api/v1/organisations/#{academy_id}/members/#{person_id}"
+    delete "/api/v1/organisations/#{academy_id}/members/#{account_id}"
 
     assert_response :success
     assert json["removed"]
-    assert_equal person_id, json["person_id"]
+    assert_equal account_id, json["account_id"]
     assert_not OrganisationMembership.exists?(invitation.id)
   end
 
@@ -916,7 +916,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_not academy.deletable?
 
     pending = academy.organisation_memberships.pending.first
-    delete "/api/v1/organisations/#{academy.id}/members/#{pending.person_id}"
+    delete "/api/v1/organisations/#{academy.id}/members/#{pending.account_id}"
     assert_response :success
 
     assert_predicate academy.reload, :deletable?
@@ -929,7 +929,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     sign_in_as(users(:six))
     membership = organisation_memberships(:club_player)
 
-    delete "/api/v1/organisations/#{@club.id}/members/#{membership.person_id}"
+    delete "/api/v1/organisations/#{@club.id}/members/#{membership.account_id}"
 
     assert_not json["removed"]
     assert OrganisationMembership.exists?(membership.id)
@@ -940,33 +940,33 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     membership = organisation_memberships(:club_player)
     membership.end!
     before_count = OrganisationMembership.where(organisation: @club,
-                                                person: membership.person).count
+                                                account: membership.account).count
 
-    post_membership(@club, membership.person, role: "member", status: "active")
+    post_membership(@club, membership.account, role: "member", status: "active")
 
     assert_response :created
     assert_equal "active", json["status"]
     assert_equal before_count,
-                 OrganisationMembership.where(organisation: @club, person: membership.person).count
+                 OrganisationMembership.where(organisation: @club, account: membership.account).count
   end
 
-  test "adding the same person twice is a conflict, not a second row" do
+  test "adding the same account twice is a conflict, not a second row" do
     sign_in_as(users(:six))
-    person = people(:national_official)
-    post_membership(@club, person)
+    account = accounts(:three)
+    post_membership(@club, account)
     assert_response :created
 
-    post_membership(@club, person)
+    post_membership(@club, account)
 
     # 201 here would be a lie: nothing was created.
     assert_response :conflict
-    assert_equal 1, OrganisationMembership.where(organisation: @club, person: person).count
+    assert_equal 1, OrganisationMembership.where(organisation: @club, account: account).count
   end
 
-  test "an unknown person is a 404" do
+  test "an unknown account is a 404" do
     sign_in_as(users(:six))
 
-    post_json "/api/v1/organisations/#{@club.id}/members", membership: { person_id: 0 }
+    post_json "/api/v1/organisations/#{@club.id}/members", membership: { account_id: 0 }
 
     assert_response :not_found
   end
@@ -976,7 +976,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     target = organisation_memberships(:club_player)
     assert_equal "member", target.role
 
-    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.person_id}",
+    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.account_id}",
                membership: { role: "coach" }
 
     assert_response :success
@@ -988,7 +988,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     sign_in_as(users(:six))
     target = organisation_memberships(:club_player)
 
-    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.person_id}",
+    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.account_id}",
                membership: { role: "supreme_leader" }
 
     assert_response :unprocessable_entity
@@ -997,21 +997,21 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
 
   test "promoting a second owner is refused, and the club keeps its one owner" do
     sign_in_as(users(:six))
-    target = organisation_memberships(:club_administrator)
+    target = organisation_memberships(:club_player)
 
-    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.person_id}",
+    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.account_id}",
                membership: { role: "owner" }
 
     assert_response :unprocessable_entity
     # The existing owner is untouched: a failed promotion must not demote anyone.
-    assert_equal people(:two), @club.reload.owner
+    assert_equal accounts(:two), @club.reload.owner
   end
 
   test "a member may not change their own role" do
     sign_in_as(users(:five))
     target = organisation_memberships(:club_player)
 
-    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.person_id}",
+    patch_json "/api/v1/organisations/#{@club.id}/members/#{target.account_id}",
                membership: { role: "administrator" }
 
     assert_response :forbidden
@@ -1021,7 +1021,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
   test "ending a membership that does not exist is a 404, not a silent success" do
     sign_in_as(users(:six))
 
-    delete "/api/v1/organisations/#{@club.id}/members/#{people(:merged).id}"
+    delete "/api/v1/organisations/#{@club.id}/members/0"
 
     assert_response :not_found
   end
@@ -1036,7 +1036,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
   test "a coach who is not an officer may not edit an organisation" do
     # `users(:six)` owns this very club, so the refusal needs somebody genuinely
     # outside it: `users(:four)` is a curator and `users(:three)` is a coach with no
-    # Person at all.
+    # account at all.
     outsider = users(:three)
     sign_in_as(outsider)
 
@@ -1086,7 +1086,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :created
     membership = OrganisationMembership.find_by(
-      organisation: @australia, person: @coach.person
+      organisation: @australia, account: @coach.account
     )
     assert_equal "member", membership.role
     assert_equal "active", membership.status
@@ -1102,7 +1102,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :created
     membership = OrganisationMembership.find_by(
-      organisation: @australia, person: @coach.person
+      organisation: @australia, account: @coach.account
     )
     assert_equal "member", membership.role
     assert_equal "active", membership.status
@@ -1125,7 +1125,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     # §2.5: the earlier stint stays on the record, so the row count must not move.
     sign_in_as(@coach)
     left = @australia.organisation_memberships.create!(
-      person: @coach.person, role: "member", status: "ended",
+      account: @coach.account, role: "member", status: "ended",
       joined_at: 1.year.ago, left_at: 1.month.ago
     )
 
@@ -1140,17 +1140,17 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_not_nil reloaded.joined_at
   end
 
-  test "an account with no person cannot join, because there is nothing to join as" do
+  test "a user with no account cannot join, because there is nothing to join as" do
     # users(:four) is a curator — a training manager, so it passes the read gate —
-    # but has no account, and therefore no Person.
+    # but has no account.
     curator = users(:four)
-    assert_nil curator.person
+    assert_nil curator.account
 
     sign_in_as(curator)
     post join_api_v1_organisation_path(@australia)
 
     assert_response :unprocessable_entity
-    assert_match(/no person record/, json["errors"].first)
+    assert_match(/account is not ready/, json["errors"].first)
   end
 
   test "an archived organisation does not accept new members" do

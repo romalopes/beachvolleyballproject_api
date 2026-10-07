@@ -20,7 +20,7 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "show returns the existing account with its address" do
-    account = @user.create_account!(first_name: "Bea", last_name: "Volley")
+    account = @user.create_account!(first_name: "Bea", last_name: "Volley", email: @user.email_address)
     account.create_account_address!(city: "Copacabana", country: "BR")
     sign_in_as(@user)
     get "/api/v1/account"

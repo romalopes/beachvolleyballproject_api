@@ -27,7 +27,7 @@ module NestedOrganisationMembershipAuthorization
       organisation_ids = [membership&.organisation_id, row[:organisation_id]].compact_blank.uniq
       organisation_ids.present? &&
         organisation_ids.all? do |organisation_id|
-          Organisation.find_by(id: organisation_id)&.manageable_by?(actor)
+          OrganisationAccess.manages_membership?(Organisation.find_by(id: organisation_id), actor)
         end
     end
     return true if allowed

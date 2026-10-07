@@ -5,23 +5,23 @@ class PlayerProfileTest < ActiveSupport::TestCase
     assert player_profiles(:john_player).valid?
   end
 
-  test "may exist before a person is assigned" do
+  test "may exist before an account is assigned" do
     profile = PlayerProfile.new(display_name: "Unaffiliated")
     assert profile.valid?
   end
 
-  test "a person may have multiple player profiles" do
-    person = people(:one)
-    assert PlayerProfile.new(person: person).valid?
-    assert PlayerProfile.new(person: person).valid?
+  test "an account may have multiple player profiles" do
+    account = accounts(:one)
+    assert PlayerProfile.new(account: account).valid?
+    assert PlayerProfile.new(account: account).valid?
   end
 
-  test "different people can each have a player profile" do
-    assert PlayerProfile.new(person: people(:two)).valid?
+  test "different accounts can each have a player profile" do
+    assert PlayerProfile.new(account: accounts(:two)).valid?
   end
 
   test "validates status" do
-    profile = PlayerProfile.new(person: people(:two), status: "bogus")
+    profile = PlayerProfile.new(display_name: "Invalid", status: "bogus")
     assert_not profile.valid?
   end
 
@@ -41,7 +41,7 @@ class PlayerProfileTest < ActiveSupport::TestCase
     assert other_coach.coach?
 
     private_profile = PlayerProfile.create!(
-      person: Person.create!(first_name: "Solo", last_name: "Hidden", creation_source: "coach_created"),
+      display_name: "Solo Hidden",
       visibility: "private", created_by: owner
     )
 
@@ -58,7 +58,7 @@ class PlayerProfileTest < ActiveSupport::TestCase
   test "visibility switch is only for the owner or an admin" do
     owner = users(:three)
     profile = PlayerProfile.create!(
-      person: Person.create!(first_name: "Mine", last_name: "Only", creation_source: "coach_created"),
+      display_name: "Mine Only",
       visibility: "private", created_by: owner
     )
 
@@ -68,7 +68,7 @@ class PlayerProfileTest < ActiveSupport::TestCase
     assert_not profile.visibility_change_permitted?(users(:four)) # curator
   end
 
-  test "full_name delegates to person" do
+  test "full_name uses display name or account contact" do
     assert_equal "John Smith", player_profiles(:john_player).full_name
   end
 end

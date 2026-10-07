@@ -188,15 +188,15 @@ Rails.application.routes.draw do
           # `update` keeps a single content-type contract.
           post :logo
           # Membership as a sub-resource of the organisation it belongs to: the
-          # person id is in the URL because one person may belong to many
-          # organisations, so a person's memberships are never a single record.
+          # account id is in the URL because one account may belong to many
+          # organisations, so an account's memberships are never a single record.
           get :members
           # `action:` is required, not decorative: `post :members` would otherwise
           # route to the same `members` action as the GET above and silently
           # answer every write with a 200 and a roster.
           post :members, action: :create_member
           # Distinct `as:` names: two routes cannot share one helper name, and both
-          # verbs address the same person.
+          # verbs address the same account.
           patch "members/:account_id", action: :update_member, as: :update_member
           delete "members/:account_id", action: :end_member, as: :end_member
           # Self-service, so it is a separate route rather than another verb on
@@ -249,9 +249,8 @@ Rails.application.routes.draw do
       resources :groups, except: %i[new edit] do
         member do
           post :members, to: "groups#add_members"
-          # `:person_id`, not `:player_profile_id`: the roster is keyed on Person
-          # (§2.2), so the path segment names what is being removed from it.
-          delete "members/:person_id", to: "groups#remove_member"
+          # The roster is keyed on Account membership.
+          delete "members/:account_id", to: "groups#remove_member"
         end
       end
 

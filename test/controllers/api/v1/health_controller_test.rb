@@ -206,8 +206,9 @@ class Api::V1::HealthControllerTest < ActionDispatch::IntegrationTest
     message = ActionMailer::Base.deliveries.last
     assert_equal [ "ops@example.com" ], message.to
     assert_includes message.subject.to_s, "test"
-    assert_includes message.decoded.to_s, "test"
-    assert_includes message.decoded.to_s, "Can you read this?"
+    delivered_body = message.text_part&.decoded || message.body.decoded
+    assert_includes delivered_body.to_s, "test"
+    assert_includes delivered_body.to_s, "Can you read this?"
   end
 
   test "send_test_email keeps the caller recipient when app test mode is on" do
