@@ -284,6 +284,28 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
                  json["group"]["organisation"]["name"]
   end
 
+  test "a coach creates a group when organisation membership is on their coach profile" do
+    # @owner belongs to Sydney Beach Volleyball Club through coach_profiles(:maria_coach),
+    # not through organisation_memberships.account_id. The organisation picker and
+    # submit authorization must agree that this still means the signed-in person is
+    # active in the club.
+    OrganisationMembership.where(organisation: organisations(:sydney_club), account: @owner.account).destroy_all
+
+    sign_in_as(@owner)
+
+    assert_difference "Group.count", 1 do
+      post_json api_v1_groups_path, {
+        group: {
+          name: "Profile Membership Squad",
+          organisation_id: organisations(:sydney_club).id
+        }
+      }
+    end
+
+    assert_response :created
+    assert_equal organisations(:sydney_club).id, json["group"]["organisation"]["id"]
+  end
+
   test "a non-member cannot create a group for an organisation they do not belong to" do
     # Naming an organisation is not membership of it. users(:three) belongs to none.
     sign_in_as(@other_coach)

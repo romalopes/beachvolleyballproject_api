@@ -32,6 +32,43 @@ class Api::V1::AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Copacabana", body["address"]["city"]
   end
 
+  test "show includes linked user roles for admins viewing another account" do
+    admin = users(:two)
+    account = accounts(:one)
+    account.user.add_role(:player)
+
+    sign_in_as(admin)
+    get "/api/v1/accounts/#{account.id}"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal account.user.id, body["user"]["id"]
+    assert_equal account.user.email_address, body["user"]["email_address"]
+    assert_includes body["user"]["roles"].map { |role| role["name"] }, "player"
+  end
+
+  test "show includes organisation and group memberships" do
+    sign_in_as(users(:two))
+    get "/api/v1/accounts/#{accounts(:one).id}"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_includes body["organisation_memberships"].map { |membership| membership["organisation"]["name"] }, "Sydney Beach Volleyball Club"
+    assert_includes body["group_memberships"].map { |membership| membership["group"]["name"] }, "U19 squad"
+  end
+
+  test "show hides linked user roles for coaches viewing another account" do
+    coach = users(:three)
+    account = accounts(:one)
+
+    sign_in_as(coach)
+    get "/api/v1/accounts/#{account.id}"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_nil body["user"]
+  end
+
   test "show requires authentication" do
     get "/api/v1/account"
     assert_response :unauthorized

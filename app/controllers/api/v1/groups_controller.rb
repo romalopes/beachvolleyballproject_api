@@ -241,16 +241,13 @@ module Api
                                       :organisation_id)
       end
 
-      # Is this caller's Account an active member of that organisation?
+      # Is this caller active in that organisation, either directly as the Account
+      # or through one of their linked Player/Coach profiles?
       def active_member_of?(organisation_id)
-        account_id = Current.user&.account&.id
-        return false if account_id.nil?
-
         OrganisationMembership.where(
           organisation_id: organisation_id.to_i,
-          account_id: account_id,
           status: "active"
-        ).exists?
+        ).for_user_subjects(Current.user).exists?
       end
 
       # Adds accounts, re-activating an ended membership rather than adding a second

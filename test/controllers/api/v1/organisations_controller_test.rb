@@ -66,6 +66,21 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ "Retired Surfing Association" ], json["data"].map { |row| row["name"] }
   end
 
+  test "mine includes active memberships recorded on the caller's linked coach profile" do
+    # users(:six)'s Account is not on this row directly; the membership subject is
+    # the linked CoachProfile. The group form depends on this endpoint for its
+    # organisation picker, so profile memberships must count as "mine" too.
+    OrganisationMembership.where(organisation: @club, account: @coach.account).destroy_all
+
+    sign_in_as(@coach)
+    get "/api/v1/organisations", params: { status: "active", mine: "1" }
+
+    assert_response :success
+    names = json["data"].map { |row| row["name"] }
+    assert_includes names, "Sydney Beach Volleyball Club"
+    assert_not_includes names, "Volleyball NSW"
+  end
+
   test "index returns the whole hierarchy when asked for the tree" do
     # A page boundary is meaningless for a tree: a child whose parent landed on
     # another page has nothing to be drawn under, and a client walking from the
@@ -312,6 +327,87 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     delete "/api/v1/organisations/#{@club.id}"
 
     assert_response :forbidden
+  end
+
+  # --- membership subjects ----------------------------------------------------
+
+  test "an officer can add an unclaimed player profile as an organisation member" do
+    sign_in_as(users(:six))
+    profile = PlayerProfile.create!(display_name: "Unclaimed Member")
+
+    post_json "/api/v1/organisations/#{@club.id}/members", membership: {
+      memberable_type: "PlayerProfile",
+      memberable_id: profile.id,
+      role: "member"
+    }
+
+    assert_response :created
+    assert_equal "PlayerProfile", json["memberable_type"]
+    assert_equal profile.id, json["memberable_id"]
+    assert_nil json["account_id"]
+    assert_equal "Unclaimed Member", json["display_name"]
+  end
+
+  test "an officer can add an unclaimed coach profile as an organisation member" do
+    sign_in_as(users(:six))
+    profile = CoachProfile.create!(display_name: "Unclaimed Coach")
+
+    post_json "/api/v1/organisations/#{@club.id}/members", membership: {
+      coach_profile_id: profile.id,
+      role: "coach"
+    }
+
+    assert_response :created
+    assert_equal "CoachProfile", json["memberable_type"]
+    assert_equal profile.id, json["memberable_id"]
+    assert_nil json["account_id"]
+    assert_equal "coach", json["role"]
+  end
+
+  test "adding an already linked profile creates an Account membership" do
+    sign_in_as(@admin)
+    profile = player_profiles(:john_player)
+
+    post_json "/api/v1/organisations/#{organisations(:volleyball_nsw).id}/members", membership: {
+      player_profile_id: profile.id,
+      role: "member"
+    }
+
+    assert_response :created
+    assert_equal "Account", json["memberable_type"]
+    assert_equal profile.account_id, json["memberable_id"]
+    assert_equal profile.account_id, json["account_id"]
+  end
+
+  test "an invalid memberable type is refused" do
+    sign_in_as(users(:six))
+
+    post_json "/api/v1/organisations/#{@club.id}/members", membership: {
+      memberable_type: "Person",
+      memberable_id: 1,
+      role: "member"
+    }
+
+    assert_response :unprocessable_entity
+    assert_match(/Account, PlayerProfile, or CoachProfile/, json["errors"].join(" "))
+  end
+
+  test "an officer can update and end a profile membership by membership id" do
+    sign_in_as(users(:six))
+    membership = organisation_memberships(:accountless_club_member)
+
+    patch_json "/api/v1/organisations/#{@club.id}/memberships/#{membership.id}", membership: {
+      role: "coach"
+    }
+
+    assert_response :success
+    assert_equal "coach", json["role"]
+
+    delete "/api/v1/organisations/#{@club.id}/memberships/#{membership.id}"
+
+    assert_response :success
+    assert_equal false, json["removed"]
+    assert_equal "ended", membership.reload.status
   end
 
   # --- logo ------------------------------------------------------------------
@@ -802,6 +898,35 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
     assert_equal accounts(:three).id, json["account_id"]
     assert_equal "active", json["status"]
+  end
+
+  test "member candidates include accounts and unclaimed player and coach profiles" do
+    sign_in_as(users(:six))
+    player = PlayerProfile.create!(display_name: "A1 Player", status: "active", visibility: "shared")
+    coach = CoachProfile.create!(display_name: "A1 Coach", status: "active", visibility: "shared")
+    account = accounts(:three)
+    account.contact_detail.update!(first_name: "A1", last_name: "Account")
+
+    get "/api/v1/organisations/#{@club.id}/member_candidates", params: { q: "A1" }
+
+    assert_response :success
+    rows = json["data"]
+    assert rows.any? { |row| row["memberable_type"] == "Account" && row["account_id"] == account.id && row["display_name"] == "A1 Account" }
+    assert rows.any? { |row| row["memberable_type"] == "PlayerProfile" && row["player_profile_id"] == player.id && row["display_name"] == "A1 Player" }
+    assert rows.any? { |row| row["memberable_type"] == "CoachProfile" && row["coach_profile_id"] == coach.id && row["display_name"] == "A1 Coach" }
+  end
+
+  test "member candidates canonicalise linked profiles to their accounts" do
+    sign_in_as(users(:six))
+    profile = PlayerProfile.create!(display_name: "A1 Linked", status: "active", visibility: "shared", account: accounts(:three))
+    accounts(:three).contact_detail.update!(first_name: "A1", last_name: "Linked")
+
+    get "/api/v1/organisations/#{@club.id}/member_candidates", params: { q: "A1 Linked" }
+
+    assert_response :success
+    rows = json["data"]
+    assert rows.any? { |row| row["memberable_type"] == "Account" && row["account_id"] == accounts(:three).id }
+    assert_not rows.any? { |row| row["memberable_type"] == "PlayerProfile" && row["player_profile_id"] == profile.id }
   end
 
   test "an ordinary member may not change the roster" do

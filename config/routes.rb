@@ -195,8 +195,11 @@ Rails.application.routes.draw do
           # route to the same `members` action as the GET above and silently
           # answer every write with a 200 and a roster.
           post :members, action: :create_member
+          get :member_candidates
           # Distinct `as:` names: two routes cannot share one helper name, and both
           # verbs address the same account.
+          patch "memberships/:membership_id", action: :update_member, as: :update_membership
+          delete "memberships/:membership_id", action: :end_member, as: :end_membership
           patch "members/:account_id", action: :update_member, as: :update_member
           delete "members/:account_id", action: :end_member, as: :end_member
           # Self-service, so it is a separate route rather than another verb on

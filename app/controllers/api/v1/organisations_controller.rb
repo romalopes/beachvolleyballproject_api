@@ -22,7 +22,7 @@ module Api
       # record was nil would be the worst kind of bug here.
       before_action :set_organisation,
                     only: %i[show update archive restore logo destroy
-                             members create_member update_member end_member join]
+                             members member_candidates create_member update_member end_member join]
       before_action :require_organisation_reader!, only: :show
       # Creating a node and moving one are claims made *to other clubs* about the
       # tree, so they stay admin-only.
@@ -35,7 +35,7 @@ module Api
       # `@organisation` is available; no `with:` lambda, which would pass the
       # organisation in as an argument the method does not take.
       before_action :require_organisation_membership_manager!,
-                    only: %i[create_member update_member end_member]
+                    only: %i[member_candidates create_member update_member end_member]
 
       def index
         organisations = Organisation
@@ -51,7 +51,8 @@ module Api
         # is a non-member rather than an error, so they simply get none.
         if params[:mine].present?
           mine_ids = OrganisationMembership
-                     .where(account_id: Current.user&.account&.id, status: "active")
+                     .active
+                     .for_user_subjects(Current.user)
                      .select(:organisation_id)
           organisations = organisations.where(id: mine_ids)
         end
@@ -283,26 +284,44 @@ module Api
         }
       end
 
-      def create_member
-        account = Account.find_by(id: member_params[:account_id]) if member_params[:account_id].present?
-        member = account
-        return render json: { errors: [ "Account not found" ] }, status: :not_found if member.nil?
+      # Search subjects that can be added to this organisation's roster. The
+      # roster is polymorphic, so the typeahead must be as well: claimed or linked
+      # profiles are returned as their canonical Account, while unclaimed player and
+      # coach profiles remain selectable as profile memberships.
+      def member_candidates
+        term = params[:q].to_s.strip
+        return render json: { data: [] } if term.length < 2
 
-        existing = @organisation.organisation_memberships.find_by(account: account) if account
+        candidates = account_member_candidates(term) + profile_member_candidates(PlayerProfile, term) + profile_member_candidates(CoachProfile, term)
+        candidates = candidates.uniq { |candidate| [ candidate[:memberable_type], candidate[:memberable_id] ] }
+                               .sort_by { |candidate| [ candidate[:display_name].to_s.downcase, candidate[:memberable_type], candidate[:memberable_id] ] }
+                               .first(25)
+
+        render json: { data: candidates }
+      end
+
+      def create_member
+        member = resolve_memberable
+        return if performed?
+
+        account = member.is_a?(Account) ? member : nil
+
+        existing = @organisation.organisation_memberships.find_by(memberable: member)
+        existing ||= @organisation.organisation_memberships.find_by(account: account) if account
 
         # Already on the roster: nothing was created, so a 201 here would be a lie.
         # 409 rather than 422, because the request was well-formed — the state is
         # what conflicts.
         if existing && !existing.ended?
           return render json: {
-            error: "#{member.try(:full_name) || member.name} is already a member of this organisation",
+            error: "#{member.try(:full_name).presence || member.try(:email).presence || member.try(:user)&.email_address || member.class.name} is already a member of this organisation",
             membership: existing.metadata
           }, status: :conflict
         end
 
         # Defaulting to `pending`, not `active`: adding someone to a roster is an
         # invitation, and an invitation is not a grant.
-        membership = existing || @organisation.organisation_memberships.build(account: account)
+        membership = existing || @organisation.organisation_memberships.build(memberable: member, account: account)
         membership.role = member_params[:role].presence || (existing ? membership.role : "member")
         # Defaulting to `active`. This used to default to `pending` — "adding
         # somebody to a roster is an invitation" — but nothing could ever accept an
@@ -369,7 +388,7 @@ module Api
       # ended membership is visible to anyone who can see the organisation, because
       # hiding it would erase the very history this feature exists to keep.
       def visible_memberships
-        scope = @organisation.organisation_memberships.includes(:account).ordered
+        scope = @organisation.organisation_memberships.includes(:account, :memberable).ordered
         return scope if manageable_membership?
         return scope.ended if Current.user&.account.nil?
 
@@ -380,15 +399,115 @@ module Api
         OrganisationAccess.can_manage_members?(@organisation, Current.user)
       end
 
+      def account_member_candidates(term)
+        pattern = "%#{ActiveRecord::Base.sanitize_sql_like(term)}%"
+        Account.joins(:contact_detail)
+               .where("contact_details.first_name ILIKE :q OR contact_details.last_name ILIKE :q OR CONCAT_WS(' ', contact_details.first_name, contact_details.last_name) ILIKE :q", q: pattern)
+               .order("contact_details.last_name", "contact_details.first_name", :id)
+               .limit(25)
+               .map { |account| member_candidate_payload(account, "Account") }
+      end
+
+      def profile_member_candidates(klass, term)
+        pattern = "%#{ActiveRecord::Base.sanitize_sql_like(term)}%"
+        klass.visible_to(Current.user)
+             .active
+             .where(account_id: nil)
+             .where("display_name ILIKE ?", pattern)
+             .order(Arel.sql("LOWER(display_name)"), :id)
+             .limit(25)
+             .map { |profile| member_candidate_payload(profile, klass.name) }
+      end
+
+      def member_candidate_payload(member, type)
+        {
+          id: "#{type}:#{member.id}",
+          memberable_type: type,
+          memberable_id: member.id,
+          account_id: member.is_a?(Account) ? member.id : nil,
+          player_profile_id: member.is_a?(PlayerProfile) ? member.id : nil,
+          coach_profile_id: member.is_a?(CoachProfile) ? member.id : nil,
+          display_name: member.full_name,
+          member_type_label: type.underscore.humanize,
+          account_status: member.respond_to?(:account_status) ? member.account_status : (member.claimed? ? "connected" : "unclaimed")
+        }
+      end
+
       def find_membership
         membership = @organisation.organisation_memberships
-                                         .includes(:account)
-                                         .find_by(account_id: params[:account_id]) if params[:account_id].present?
+                                          .includes(:account, :memberable)
+                                          .find_by(id: params[:membership_id]) if params[:membership_id].present?
         return membership if membership
 
-        render json: { errors: [ "That account is not a member of this organisation" ] },
+        member = resolve_memberable_from_params(params)
+        return if performed?
+
+        membership = @organisation.organisation_memberships
+                                  .includes(:account, :memberable)
+                                  .find_by(memberable: member)
+        membership ||= @organisation.organisation_memberships
+                                      .includes(:account, :memberable)
+                                      .find_by(account: member) if member.is_a?(Account)
+        return membership if membership
+
+        render json: { errors: [ "That member is not a member of this organisation" ] },
                status: :not_found
         nil
+      end
+
+      ALLOWED_MEMBERABLE_TYPES = {
+        "Account" => Account,
+        "PlayerProfile" => PlayerProfile,
+        "CoachProfile" => CoachProfile
+      }.freeze
+
+      def resolve_memberable
+        member = resolve_memberable_from_params(member_params)
+        return member if performed? || member.nil?
+
+        canonical_memberable(member)
+      end
+
+      def resolve_memberable_from_params(source)
+        if source[:account_id].present?
+          account = Account.find_by(id: source[:account_id])
+          return account if account
+
+          render json: { errors: [ "Account not found" ] }, status: :not_found
+          return nil
+        end
+
+        if source[:player_profile_id].present?
+          return find_memberable(PlayerProfile, source[:player_profile_id], "Player profile")
+        end
+
+        if source[:coach_profile_id].present?
+          return find_memberable(CoachProfile, source[:coach_profile_id], "Coach profile")
+        end
+
+        member_type = source[:memberable_type].to_s
+        member_id = source[:memberable_id]
+        unless ALLOWED_MEMBERABLE_TYPES.key?(member_type) && member_id.present?
+          render json: { errors: [ "Choose an Account, PlayerProfile, or CoachProfile member" ] },
+                 status: :unprocessable_entity
+          return nil
+        end
+
+        find_memberable(ALLOWED_MEMBERABLE_TYPES.fetch(member_type), member_id, member_type.underscore.humanize)
+      end
+
+      def find_memberable(klass, id, label)
+        member = klass.find_by(id: id)
+        return member if member
+
+        render json: { errors: [ "#{label} not found" ] }, status: :not_found
+        nil
+      end
+
+      def canonical_memberable(member)
+        return member unless member.respond_to?(:account) && member.account.present?
+
+        member.account
       end
 
       # The failures a storage *service* raises when it will not accept the bytes:
@@ -546,7 +665,9 @@ module Api
       end
 
       def member_params
-        params.require(:membership).permit(:account_id, :role, :status)
+        params.require(:membership).permit(:account_id, :memberable_type, :memberable_id,
+                                           :player_profile_id, :coach_profile_id,
+                                           :role, :status)
       end
     end
   end

@@ -7,7 +7,7 @@ module Api
         target = requested_account_id ? viewable_account! : current_account
         return if performed?
 
-        render json: account_payload(target, include_contact: can_manage_account?(target))
+        render json: account_payload(target, include_contact: can_manage_account?(target), include_user: Current.user.admin?)
       end
 
       # Roster management searches recorded Accounts, including Accounts that
@@ -100,9 +100,9 @@ module Api
         params[:account_id].presence || params[:id].presence
       end
 
-      def account_payload(account, include_contact:)
+      def account_payload(account, include_contact:, include_user: false)
         address = account.account_address
-        {
+        payload = {
           id: account.id,
           first_name: include_contact ? account.first_name : nil,
           last_name: include_contact ? account.last_name : nil,
@@ -123,8 +123,67 @@ module Api
           },
           coach_profiles: account.coach_profiles.active.order(:id).map { |profile|
             { id: profile.id, name: profile.full_name.presence || profile.display_name || "Coach profile ##{profile.id}" }
-          }
+          },
+          organisation_memberships: organisation_membership_payloads(account),
+          group_memberships: group_membership_payloads(account)
         }
+        payload[:user] = account_user_payload(account.user) if include_user && account.persisted?
+        payload
+      end
+
+      def account_user_payload(user)
+        return nil unless user
+
+        account = user.account
+        {
+          id: user.id,
+          name: user.name,
+          email_address: user.email_address,
+          first_name: account&.first_name,
+          last_name: account&.last_name,
+          account_id: account&.id,
+          roles: user.roles.map { |role| { id: role.id, name: role.name } }
+        }
+      end
+
+      def organisation_membership_payloads(account)
+        account.organisation_memberships.includes(:organisation).order(:id).map do |membership|
+          {
+            id: membership.id,
+            account_id: membership.account_id,
+            organisation_id: membership.organisation_id,
+            role: membership.role,
+            status: membership.status,
+            joined_at: membership.joined_at,
+            left_at: membership.left_at,
+            organisation: {
+              id: membership.organisation.id,
+              name: membership.organisation.name,
+              status: membership.organisation.status
+            }
+          }
+        end
+      end
+
+      def group_membership_payloads(account)
+        account.group_memberships.includes(group: :organisation).order(:id).map do |membership|
+          group = membership.group
+          {
+            id: membership.id,
+            account_id: membership.account_id,
+            group_id: membership.group_id,
+            role: membership.role,
+            status: membership.status,
+            joined_at: membership.joined_at,
+            left_at: membership.left_at,
+            group: {
+              id: group.id,
+              name: group.name,
+              status: group.status,
+              organisation: group.organisation && { id: group.organisation.id, name: group.organisation.name }
+            }
+          }
+        end
       end
 
       def account_params

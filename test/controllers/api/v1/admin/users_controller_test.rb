@@ -47,6 +47,18 @@ class Api::V1::Admin::UsersControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, body["meta"]["total"]
   end
 
+  test "show includes account organisation and group memberships" do
+    account_user = accounts(:one).user
+
+    sign_in_as(@admin)
+    get "/api/v1/admin/users/#{account_user.id}"
+
+    assert_response :success
+    account = JSON.parse(response.body)["account"]
+    assert_includes account["organisation_memberships"].map { |membership| membership["organisation"]["name"] }, "Sydney Beach Volleyball Club"
+    assert_includes account["group_memberships"].map { |membership| membership["group"]["name"] }, "U19 squad"
+  end
+
   test "admin can remove a role from another user" do
     sign_in_as(@admin)
     delete "/api/v1/admin/users/#{@coach.id}/roles/coach"

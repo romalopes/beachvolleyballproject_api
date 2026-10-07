@@ -13,6 +13,8 @@
 class OrganisationMembership < ApplicationRecord
   ROLES = %w[owner administrator coach member].freeze
   STATUSES = %w[pending active suspended ended].freeze
+  ROLE_PRIORITY = { "member" => 0, "coach" => 1, "administrator" => 2, "owner" => 3 }.freeze
+  STATUS_PRIORITY = { "ended" => 0, "suspended" => 1, "pending" => 2, "active" => 3 }.freeze
 
   # Roles that may change who belongs to an organisation, as opposed to those that
   # only describe what a member does here. Deliberately does *not* include `coach`:
@@ -41,6 +43,23 @@ class OrganisationMembership < ApplicationRecord
   scope :with_role, ->(role) { role.present? ? where(role: role) : all }
   scope :manageable, -> { where(role: MANAGEMENT_ROLES) }
   scope :ordered, -> { order(:role, :id) }
+
+  # A signed-in account can appear on a membership directly (`account_id` or an
+  # Account memberable) or through one of its linked volleyball profiles. Group
+  # creation asks "which organisations am I in?", so it must treat those as the
+  # same person; otherwise a coach whose club membership is recorded on their
+  # CoachProfile sees an empty organisation picker even though they are active in
+  # the club.
+  scope :for_user_subjects, ->(user) {
+    account = user&.account
+    if account.nil?
+      none
+    else
+      relation = where(account_id: account.id).or(where(memberable: account))
+      relation = relation.or(where(memberable_type: "PlayerProfile", memberable_id: account.player_profiles.select(:id)))
+      relation.or(where(memberable_type: "CoachProfile", memberable_id: account.coach_profiles.select(:id)))
+    end
+  }
 
   def active?
     status == "active"
@@ -83,7 +102,42 @@ class OrganisationMembership < ApplicationRecord
   end
 
   def display_name
-    memberable.full_name
+    memberable.full_name.presence || memberable.try(:email).presence || memberable.try(:user)&.email_address
+  end
+
+  def self.transfer_profile_memberships_to_account!(profile, account)
+    transaction do
+      profile.organisation_memberships.lock.find_each do |membership|
+        membership.transfer_to_account!(account)
+      end
+    end
+  end
+
+  def transfer_to_account!(target_account)
+    raise ArgumentError, "An Account is required" unless target_account.is_a?(Account)
+
+    existing = organisation.organisation_memberships
+                           .where(account_id: target_account.id)
+                           .or(organisation.organisation_memberships.where(memberable: target_account))
+                           .where.not(id: id)
+                           .first
+
+    if existing
+      destroy!
+      existing.merge_from_membership!(self)
+      existing
+    else
+      update!(memberable: target_account, account: target_account)
+      self
+    end
+  end
+
+  def merge_from_membership!(other)
+    self.role = stronger_value(role, other.role, ROLE_PRIORITY)
+    self.status = stronger_value(status, other.status, STATUS_PRIORITY)
+    self.joined_at = [ joined_at, other.joined_at ].compact.min
+    self.left_at = status == "ended" ? (left_at || other.left_at) : nil
+    save!
   end
 
   # The move a membership makes in ordinary use. Kept here rather than in a service
@@ -104,6 +158,9 @@ class OrganisationMembership < ApplicationRecord
       account_id: account_id,
       memberable_type: memberable_type,
       memberable_id: memberable_id,
+      member_type: memberable_type,
+      member_id: memberable_id,
+      display_name: display_name,
       person_name: display_name,
       role: role,
       role_label: role_label,
@@ -118,6 +175,10 @@ class OrganisationMembership < ApplicationRecord
   end
 
   private
+
+  def stronger_value(current, candidate, priorities)
+    priorities.fetch(candidate, -1) > priorities.fetch(current, -1) ? candidate : current
+  end
 
   # Existing Account memberships predate the polymorphic subject columns. Keep
   # Account writes compatible and repair an old row when it is next saved.
