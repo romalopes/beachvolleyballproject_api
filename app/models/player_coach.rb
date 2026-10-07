@@ -80,11 +80,11 @@ class PlayerCoach < ApplicationRecord
   end
 
   def player_name
-    player_profile&.person&.full_name
+    player_profile&.full_name
   end
 
   def coach_name
-    coach_profile&.person&.full_name
+    coach_profile&.full_name
   end
 
   # Serializable shape shared by the API and the SPA. `current` is derived, not
@@ -133,7 +133,7 @@ class PlayerCoach < ApplicationRecord
   # both, so the check has to look through to `person_id`.
   def player_and_coach_are_different_people
     return if player_profile.blank? || coach_profile.blank?
-    return unless player_profile.person_id == coach_profile.person_id
+    return unless player_profile.account_id == coach_profile.account_id
 
     errors.add(:coach_profile, "cannot be the same person as the player")
   end

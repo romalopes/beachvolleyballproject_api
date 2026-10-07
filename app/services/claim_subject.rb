@@ -1,5 +1,4 @@
-# Eligibility and Account-linking behavior for a profile or a legacy Person
-# invitation that predates the profile-only claim workflow.
+# Eligibility and Account-linking behavior for a recorded profile.
 class ClaimSubject
   class Ineligible < StandardError; end
 
@@ -10,17 +9,15 @@ class ClaimSubject
   end
 
   def self.for(record)
-    return new(record) if record.is_a?(PlayerProfile) || record.is_a?(CoachProfile) || record.is_a?(Person)
+    return new(record) if record.is_a?(PlayerProfile) || record.is_a?(CoachProfile)
 
-    raise Ineligible, "Only recorded profiles or legacy Person invitations can be claimed."
+    raise Ineligible, "Only recorded player and coach profiles can be claimed."
   end
 
   def kind = record.class.name
-  def label = record.is_a?(PlayerProfile) ? "player profile" : (record.is_a?(CoachProfile) ? "coach profile" : "recorded identity")
+  def label = record.is_a?(PlayerProfile) ? "player profile" : "coach profile"
 
   def eligible?
-    return eligible_person? if record.is_a?(Person)
-
     record.status == "active" && record.account_id.nil? && record.full_name.present?
   end
 
@@ -29,42 +26,15 @@ class ClaimSubject
   end
 
   def default_email
-    record.is_a?(Person) ? record.email : nil
+    nil
   end
 
   def still_unclaimed?
-    return eligible_person? if record.is_a?(Person)
-
     record.account_id.nil?
   end
 
   def effect!(claimant_account:, **_unused)
-    return link_person_records!(claimant_account) if record.is_a?(Person)
-
     record.update!(account: claimant_account)
-    record
-  end
-
-  private
-
-  def eligible_person?
-    record.status == "active" && record.email.present? &&
-      (record.player_profiles.exists? || record.coach_profiles.exists?) &&
-      linked_accounts.empty?
-  end
-
-  def linked_accounts
-    ids = record.player_profiles.where.not(account_id: nil).pluck(:account_id) +
-      record.coach_profiles.where.not(account_id: nil).pluck(:account_id)
-    Account.where(id: ids.uniq)
-  end
-
-  def link_person_records!(account)
-    now = Time.current
-    record.player_profiles.where(account_id: nil).update_all(account_id: account.id, updated_at: now)
-    record.coach_profiles.where(account_id: nil).update_all(account_id: account.id, updated_at: now)
-    record.organisation_memberships.where(account_id: nil).update_all(account_id: account.id, updated_at: now)
-    record.group_memberships.where(account_id: nil).update_all(account_id: account.id, updated_at: now)
     record
   end
 end

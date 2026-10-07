@@ -92,17 +92,11 @@ class ProfilePolicy
   def player_peer_access?
     return false unless @profile.is_a?(PlayerProfile) && training_manager? && @account
 
-    roster_ids = @account.player_profiles.where.not(person_id: nil).pluck(:person_id) +
-      @account.coach_profiles.where.not(person_id: nil).pluck(:person_id)
     organisation_ids = OrganisationMembership.active.where(account_id: @account.id).pluck(:organisation_id)
-    if roster_ids.any?
-      organisation_ids += OrganisationMembership.active.where(person_id: roster_ids).pluck(:organisation_id)
-    end
     return false if organisation_ids.empty?
 
     peer_account_ids = OrganisationMembership.active.where(organisation_id: organisation_ids).where.not(account_id: nil).pluck(:account_id)
-    peer_roster_ids = OrganisationMembership.active.where(organisation_id: organisation_ids).where.not(person_id: nil).pluck(:person_id)
-    peer_account_ids.include?(@profile.account_id) || peer_roster_ids.include?(@profile.person_id)
+    peer_account_ids.include?(@profile.account_id)
   end
 
   def admin? = @account&.admin? || @user&.admin? || false

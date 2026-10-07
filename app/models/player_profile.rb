@@ -1,7 +1,7 @@
-# Player-specific characteristics of a Person.
+# Player-specific characteristics of an Account.
 #
 # This is a domain descriptor, not an authorization role and not an
-# authentication record: contact and credential data live on Person/Account.
+# authentication record: contact and credential data live on Account.
 class PlayerProfile < ApplicationRecord
   include ProfileArchiveLifecycle
 
@@ -24,36 +24,19 @@ class PlayerProfile < ApplicationRecord
   # include it, so neither create nor update can set it from the payload.
   belongs_to :created_by, class_name: "User", optional: true
   belongs_to :created_by_account, class_name: "Account", optional: true
+  # A staff-recorded player can exist before an Account is linked or claimed.
   belongs_to :account, optional: true
   belongs_to :merged_into_profile, class_name: "PlayerProfile", optional: true
   belongs_to :merged_by_account, class_name: "Account", optional: true
   has_many :merged_profiles, class_name: "PlayerProfile", foreign_key: :merged_into_profile_id, dependent: :restrict_with_error
-  belongs_to :person, optional: true
-  has_many :player_claim_invitations, dependent: :restrict_with_error
-  # Unified claim workflow (Phase 18). The legacy association above is retained
-  # for one release so existing callers keep working.
   has_many :claim_invitations, as: :claimable, dependent: :restrict_with_error
-
-  # `update_only: true` is essential: for a has_one, Rails otherwise *replaces*
-  # the person instead of updating it whenever the nested hash carries no id,
-  # which would silently create a second identity on every contact-detail edit.
-  # With update_only the existing person is updated in place, and a profile
-  # created without one still builds a new person.
-  accepts_nested_attributes_for :person, allow_destroy: false, update_only: true
-
 
   has_many :training_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile
   has_many :assessment_session_participants, dependent: :restrict_with_error, inverse_of: :player_profile
   has_many :ranking_consolidation_rows, dependent: :restrict_with_error
   has_many :player_claims, dependent: :restrict_with_error
 
-  # Group membership is a roster entry, not evidence, and it is keyed on Person
-  # (plan §2.2) rather than on this profile — so a squad can hold somebody who
-  # never registered as a player. The profile reaches its groups through the
-  # Person it belongs to; there is no longer a join row owned by the profile, and
-  # so nothing here to cascade. `GroupMembership` belongs to the Person, which is
-  # what gets destroyed with it.
-  has_many :groups, through: :person
+  has_many :groups, through: :account
 
   # Assessments are the player's coaching history, so a profile may never be
   # destroyed while they exist: the row is the evidence a coach recorded, and
@@ -72,7 +55,7 @@ class PlayerProfile < ApplicationRecord
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
   before_validation :ensure_display_name
-  validates :display_name, presence: true, if: -> { person.nil? }
+  validates :display_name, presence: true
   validate :merge_state_is_consistent
 
   scope :active, -> { where(status: "active") }
@@ -94,15 +77,11 @@ class PlayerProfile < ApplicationRecord
     account = user.account
     return base unless account
 
-    roster_ids = account.player_profiles.where.not(person_id: nil).pluck(:person_id) +
-      account.coach_profiles.where.not(person_id: nil).pluck(:person_id)
     organisation_ids = OrganisationMembership.active.where(account_id: account.id).pluck(:organisation_id)
-    organisation_ids += OrganisationMembership.active.where(person_id: roster_ids).pluck(:organisation_id) if roster_ids.any?
     return base if organisation_ids.empty?
 
     peer_account_ids = OrganisationMembership.active.where(organisation_id: organisation_ids).where.not(account_id: nil).select(:account_id)
-    peer_roster_ids = OrganisationMembership.active.where(organisation_id: organisation_ids).where.not(person_id: nil).select(:person_id)
-    base.or(where(account_id: peer_account_ids)).or(where(person_id: peer_roster_ids))
+    base.or(where(account_id: peer_account_ids))
   }
   scope :owned_by, ->(user) { ProfileOwnership.account_scope(all, user) }
 
@@ -130,7 +109,7 @@ class PlayerProfile < ApplicationRecord
     user.present? && (user.admin? || owner?(user))
   end
 
-  def full_name = display_name.presence || account&.full_name || person&.full_name
+  def full_name = display_name.presence || account&.full_name
 
   def merged?
     merged_into_profile_id.present?
@@ -183,7 +162,7 @@ class PlayerProfile < ApplicationRecord
   def ensure_display_name
     return if display_name.present?
 
-    self.display_name = account&.full_name.presence || person&.full_name
+    self.display_name = account&.full_name.presence
   end
 
   def merge_state_is_consistent
@@ -197,7 +176,6 @@ class PlayerProfile < ApplicationRecord
     {
       id: id,
       player_profile_id: player_profile_id,
-      person_id: person_id,
       preferred_position: preferred_position,
       level: level,
       status: status,

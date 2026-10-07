@@ -1,10 +1,7 @@
-# One Person's membership of a Group.
+# One Account's membership of a Group.
 #
-# Keyed on Person rather than PlayerProfile (plan §2.2), for the same reason
-# OrganisationMembership is: a squad has to be able to contain a coach, a parent
-# or a volunteer who never registered as a player at all. That is not hypothetical
-# — the rehearsal data's one group had a creator with no player profile, who could
-# not be given an ownership row at all under the old key.
+# Keyed on Account rather than PlayerProfile. An account may be staff-recorded
+# and unclaimed, so a squad can contain somebody without a login or profile.
 #
 # `status` is only `active` / `ended`. It deliberately does *not* carry the
 # invited / confirmed / attended vocabulary the previous version of this model
@@ -17,12 +14,9 @@ class GroupMembership < ApplicationRecord
   STATUSES = %w[active ended].freeze
 
   belongs_to :group, inverse_of: :group_memberships
-  belongs_to :person, optional: true
-  belongs_to :account, optional: true
+  belongs_to :account
 
-  validates :person_id, uniqueness: { scope: :group_id }, allow_nil: true
-  validates :account_id, uniqueness: { scope: :group_id }, allow_nil: true
-  validate :member_identity_present
+  validates :account_id, uniqueness: { scope: :group_id }
   validates :role, presence: true, inclusion: { in: ROLES }
   validates :status, presence: true, inclusion: { in: STATUSES }
   validate :left_at_belongs_to_an_ended_membership
@@ -43,7 +37,7 @@ class GroupMembership < ApplicationRecord
   end
 
   def player_name
-    account&.full_name || person&.full_name
+    account.full_name
   end
 
   # Ends the membership rather than destroying it (§2.5). Called from the model so
@@ -53,10 +47,6 @@ class GroupMembership < ApplicationRecord
   end
 
   private
-
-  def member_identity_present
-    errors.add(:base, "A roster member is required") if person_id.nil? && account_id.nil?
-  end
 
   # `left_at` belongs to `ended` and to nothing else, so the two can never
   # disagree about whether somebody actually left. Mirrors

@@ -1,9 +1,7 @@
 # One person's membership of one organisation.
 #
-# Keyed on `Person`, never on `User` or on a profile. That is a deliberate design
-# rule: a Person is the domain identity whether or not they have an account, and a
-# club needs to record the people who are genuinely part of it — a parent, a
-# committee member, a volunteer coach — not only the ones who signed up.
+# Keyed on Account. An Account may exist before it has a login User, allowing a
+# club to record a parent, committee member or volunteer before they sign up.
 #
 # `role` and the Person's own volleyball roles are different facts and are never
 # derived from one another. A national coach can be an ordinary `member` of one club
@@ -22,18 +20,12 @@ class OrganisationMembership < ApplicationRecord
   MANAGEMENT_ROLES = %w[owner administrator].freeze
 
   belongs_to :organisation
-  belongs_to :person, optional: true
-  belongs_to :account, optional: true
+  belongs_to :account
 
   validates :role, presence: true, inclusion: { in: ROLES }
   validates :status, presence: true, inclusion: { in: STATUSES }
-  validates :person_id, uniqueness: { scope: :organisation_id,
-                                      message: "is already a member of this organisation" },
-            allow_nil: true
   validates :account_id, uniqueness: { scope: :organisation_id,
-                                       message: "is already a member of this organisation" },
-            allow_nil: true
-  validate :member_identity_present
+                                       message: "is already a member of this organisation" }
   validate :ended_membership_has_left_at
   validate :one_active_owner_per_organisation
 
@@ -88,7 +80,7 @@ class OrganisationMembership < ApplicationRecord
   end
 
   def display_name
-    account&.full_name || person&.full_name
+    account.full_name
   end
 
   # The move a membership makes in ordinary use. Kept here rather than in a service
@@ -106,7 +98,6 @@ class OrganisationMembership < ApplicationRecord
     {
       id: id,
       organisation_id: organisation_id,
-      person_id: person_id,
       account_id: account_id,
       person_name: display_name,
       role: role,
@@ -122,10 +113,6 @@ class OrganisationMembership < ApplicationRecord
   end
 
   private
-
-  def member_identity_present
-    errors.add(:base, "A roster member is required") if person_id.nil? && account_id.nil?
-  end
 
   # Joined/left timestamps follow the status rather than being set independently, so
   # the two can never contradict each other. Mirrored by a database check on

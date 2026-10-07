@@ -21,7 +21,7 @@ module Api
       PROFILE_ATTRS = %i[display_name preferred_position level status visibility].freeze
 
       # Serializable output.
-      PROFILE_ONLY = %i[id person_id display_name preferred_position level status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
+      PROFILE_ONLY = %i[id account_id display_name preferred_position level status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
       PERSON_ONLY = %i[id first_name last_name email phone date_of_birth creation_source].freeze
       PROFILE_METHODS = %i[full_name account_status player_profile_id].freeze
       DETAIL_METHODS = PROFILE_METHODS + %i[training_session_count]
@@ -40,18 +40,18 @@ module Api
         # see everyone (`?include_private=1`) because visibility never blocks
         # scheduling. `?mine=1` narrows to the players this user recorded.
         players = ProfilePolicy.scope(profile_scope, actor: Current.user)
-                  .includes(:person, :created_by)
-                  .left_joins(:person)
-                  .order(people: { last_name: :asc, first_name: :asc }, player_profiles: { id: :asc })
+                  .includes(account: :contact_detail)
+                  .left_joins(account: :contact_detail)
+                  .order(contact_details: { last_name: :asc, first_name: :asc }, player_profiles: { id: :asc })
 
         if params[:q].present?
           term = "%#{params[:q]}%"
-          email_clause = Current.user.admin? ? " OR people.email ILIKE :t" : ""
-          players = players.where("people.last_name ILIKE :t OR people.first_name ILIKE :t#{email_clause} OR player_profiles.display_name ILIKE :t",
+          email_clause = Current.user.admin? ? " OR contact_details.email ILIKE :t" : ""
+          players = players.where("contact_details.last_name ILIKE :t OR contact_details.first_name ILIKE :t#{email_clause} OR player_profiles.display_name ILIKE :t",
                                   t: term)
         end
         if params[:email].present? && Current.user.admin?
-          players = players.where(people: { email: params[:email] })
+          players = players.where(contact_details: { email: params[:email] })
         end
         unless params[:include_private].present?
           players = players.visible_to(Current.user)
@@ -79,15 +79,6 @@ module Api
         payload = @player.as_json(
           only: PROFILE_ONLY,
           include: {
-            person: {
-              only: PERSON_ONLY,
-              include: {
-                organisation_memberships: {
-                  only: [ :id, :organisation_id, :role, :status ],
-                  include: { organisation: { only: [ :id, :name ] } }
-                }
-              }
-            },
             created_by: { only: %i[id name] },
             account: { only: :id, methods: :full_name },
             training_session_participants: {
@@ -102,7 +93,6 @@ module Api
         # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
-        payload["person"] = nil unless payload.key?("person")
         payload["account"] = nil unless payload.key?("account")
         redact_person_contact!(payload, @player)
 
@@ -132,21 +122,16 @@ module Api
       # `person` attributes record a new one.
       def create
         attributes = player_params
-        return unless authorize_nested_organisation_memberships!(
-          person: nil, attributes: attributes[:person_attributes] || attributes["person_attributes"] || {}
-        )
-
         profile = PlayerProfile.new(attributes)
         saved = PlayerProfile.transaction do
           ProfileOwnership.stamp!(profile, Current.user)
-          PersonCreationService.new(created_by: Current.user).apply(profile.person) if profile.person&.new_record?
           next true if profile.save
 
           raise ActiveRecord::Rollback
         end
 
         if saved
-          render json: serialize(profile).merge("possible_duplicates" => possible_duplicates_for(profile.person)),
+          render json: serialize(profile).merge("possible_duplicates" => []),
                  status: :created
         else
           render json: { errors: profile.errors.full_messages }, status: :unprocessable_entity
@@ -177,16 +162,7 @@ module Api
           return render json: { error: "Forbidden" }, status: :forbidden
         end
 
-        if params.require(:player)[:person_id].present? &&
-           params.require(:player)[:person_id].to_i != @player.person_id
-          return render json: { errors: [ "This profile already belongs to a person; changing it is a merge, not an edit." ] },
-                        status: :unprocessable_entity
-        end
-
         update_params = player_update_params
-        return unless authorize_nested_organisation_memberships!(
-          person: @player.person, attributes: update_params[:person_attributes] || update_params["person_attributes"] || {}
-        )
         requested_visibility = update_params[:visibility] || update_params["visibility"]
         if requested_visibility.present? && requested_visibility.to_s != @player.visibility.to_s &&
            !@player.visibility_change_permitted?(Current.user)
@@ -204,7 +180,7 @@ module Api
         end
 
         if @player.update(update_params)
-          render json: serialize(@player).merge("possible_duplicates" => possible_duplicates_for(@player.person))
+          render json: serialize(@player).merge("possible_duplicates" => [])
         else
           render json: { errors: @player.errors.full_messages }, status: :unprocessable_entity
         end
@@ -254,29 +230,15 @@ module Api
 
       def set_player
         @player = PlayerProfile
-                    .includes(:person, :created_by, training_session_participants: :training_session)
+                    .includes(:account, :created_by, training_session_participants: :training_session)
                     .find(params[:id])
       end
 
       def serialize(profile)
         can_view_contact = can_view_contact_details?(profile)
-        person_options = if can_view_contact
-          {
-            only: PERSON_ONLY,
-            include: {
-              organisation_memberships: {
-                only: [ :id, :organisation_id, :role, :status ],
-                include: { organisation: { only: [ :id, :name ] } }
-              }
-            }
-          }
-        else
-          { only: %i[id first_name last_name] }
-        end
         payload = profile.as_json(
           only: PROFILE_ONLY,
           include: {
-            person: person_options,
             created_by: { only: %i[id name] },
             account: { only: :id, methods: :full_name }
           },
@@ -285,21 +247,8 @@ module Api
         # `as_json(include:)` drops a nil `belongs_to`, but the SPA relies on
         # the key always being present (nil = recorded before Phase C).
         payload["created_by"] = nil unless payload.key?("created_by")
-        payload["person"] = nil unless payload.key?("person")
         payload["account"] = nil unless payload.key?("account")
         payload
-      end
-
-      # People who may already describe this human, matched by email then name.
-      # The person just created is excluded so it never suggests itself.
-      def possible_duplicates_for(person)
-        return [] unless person
-
-        PersonDuplicateFinder.new(
-          first_name: person.first_name,
-          last_name: person.last_name,
-          email: person.email
-        ).matches.reject { |match| match.id == person.id }.map(&:identity_summary)
       end
 
       def can_view_contact_details?(profile)
@@ -314,30 +263,12 @@ module Api
       def redact_person_contact!(payload, profile)
         return if can_view_contact_details?(profile)
 
-        person = payload["person"]
-        return unless person.is_a?(Hash)
-
-        person.slice!("id", "first_name", "last_name")
+        payload.delete("contact_detail")
       end
 
       def player_params
         attrs = params.require(:player)
         profile_attrs = normalize_attrs(attrs[:player_profile] || attrs[:player_profile_attributes] || {}, PROFILE_ATTRS)
-
-        if attrs[:person_id].present?
-          # Link the profile to an existing identity (chosen from the people
-          # search); never rewrite that person's provenance.
-          person = Person.find_by(id: attrs[:person_id])
-          raise ActiveRecord::RecordNotFound, "Person not found" unless person
-          profile_attrs[:person_id] = person.id
-        else
-          person_source = attrs[:person] || attrs[:person_attributes] || {}
-          person_attrs = normalize_person_attrs(person_source)
-          # Allow nested organisation_memberships_attributes
-          memberships = permit_memberships(person_source)
-          person_attrs[:organisation_memberships_attributes] = memberships if memberships.present?
-          profile_attrs[:person_attributes] = person_attrs if attrs.key?(:person) || attrs.key?(:person_attributes)
-        end
 
         profile_attrs
       end
@@ -348,15 +279,6 @@ module Api
       def player_update_params
         attrs = params.require(:player)
         profile_attrs = normalize_attrs(attrs[:player_profile] || attrs[:player_profile_attributes] || {}, PROFILE_ATTRS)
-
-        person_source = attrs[:person] || attrs[:person_attributes]
-        if person_source.present?
-          person_attrs = normalize_person_attrs(person_source)
-          # Allow nested organisation_memberships_attributes
-          memberships = permit_memberships(person_source)
-          person_attrs[:organisation_memberships_attributes] = memberships if memberships.present?
-          profile_attrs[:person_attributes] = person_attrs
-        end
 
         profile_attrs
       end

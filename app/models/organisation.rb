@@ -50,8 +50,6 @@ class Organisation < ApplicationRecord
   ].freeze
 
   belongs_to :parent_organisation, class_name: "Organisation", optional: true
-  belongs_to :created_by_person, class_name: "Person", optional: true
-  belongs_to :created_by_account, class_name: "Account", optional: true
   belongs_to :created_by_account, class_name: "Account", optional: true
 
   # The first attachment in this application. The storage service was already
@@ -72,8 +70,7 @@ class Organisation < ApplicationRecord
            -> { active },
            class_name: "OrganisationMembership",
            inverse_of: :organisation
-  has_many :members, through: :active_memberships, source: :person
-  has_many :account_members, through: :active_memberships, source: :account
+  has_many :members, through: :active_memberships, source: :account
 
   has_many :child_organisations,
            class_name: "Organisation",
@@ -151,14 +148,15 @@ class Organisation < ApplicationRecord
   # these can change when that happens.
   def owner
     membership = active_memberships.find_by(role: "owner")
-    membership&.account || membership&.person
+    membership&.account
   end
 
   def owner?(member)
     return false if member.nil?
 
-    key = member.is_a?(Account) ? { account_id: member.id } : { person_id: member.id }
-    active_memberships.where(role: "owner", **key).exists?
+    return false unless member.is_a?(Account)
+
+    active_memberships.where(role: "owner", account_id: member.id).exists?
   end
 
   # Whether a person may change this organisation's membership: its owner and its
@@ -171,7 +169,7 @@ class Organisation < ApplicationRecord
     return false if member.nil?
 
     memberships = active_memberships.manageable.where(organisation_id: id)
-    member.is_a?(Account) ? memberships.exists?(account_id: member.id) : memberships.exists?(person_id: member.id)
+    member.is_a?(Account) && memberships.exists?(account_id: member.id)
   end
 
   def active_organisation_memberships
@@ -199,7 +197,7 @@ class Organisation < ApplicationRecord
   def editable_by?(member)
     return false if member.nil?
     return true if manageable_by?(member)
-    return false unless member.is_a?(Person) && created_by_person_id == member.id
+    return false unless member.is_a?(Account) && created_by_account_id == member.id
 
     member.organisation_memberships.active.exists?(organisation_id: id)
   end
@@ -387,9 +385,9 @@ class Organisation < ApplicationRecord
       # creator may edit their club while running nobody's roster. Reusing
       # `can_edit` for this rendered controls the server would refuse.
       can_manage_members: manage_members_flag(manage_members_ids, manage_members_all),
-      created_by_person: created_by_person && {
-        id: created_by_person.id,
-        name: created_by_person.full_name
+      created_by_account: created_by_account && {
+        id: created_by_account.id,
+        name: created_by_account.full_name
       },
       created_at: created_at,
       updated_at: updated_at

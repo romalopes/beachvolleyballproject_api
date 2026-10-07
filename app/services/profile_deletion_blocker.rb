@@ -12,22 +12,8 @@ class ProfileDeletionBlocker
 
   def self.blockers(profile)
     blockers = []
-    person = profile.person
-    # A profile is only disposable while its linked identity is still an
-    # unclaimed, unused record. History can be attached to a sibling profile,
-    # so check every profile for the Person as well as the target profile.
-    if person
-      blockers << "person_group_memberships" if person.group_memberships.exists?
-      person.player_profiles.each do |player|
-        blockers << "person_training_session_participants" if player.training_session_participants.exists?
-        blockers << "person_assessment_session_participants" if player.assessment_session_participants.exists?
-        blockers << "person_assessments" if player.assessments.exists?
-      end
-      person.coach_profiles.each do |coach|
-        blockers << "person_assessments" if coach.assessments.exists?
-        blockers << "person_assessment_sessions" if coach.assessment_sessions.exists?
-      end
-    end
+    # Profiles are independent records. Their own protected history is checked
+    # below; an optional Account does not make a sibling profile a dependency.
     if profile.is_a?(PlayerProfile)
       blockers << "assessments" if profile.assessments.exists?
       blockers << "training_session_participants" if profile.training_session_participants.exists?
@@ -37,7 +23,6 @@ class ProfileDeletionBlocker
       blockers << "ranking_snapshots" if RankingConsolidationSession.where("ranking_snapshot @> ?::jsonb", [ { player_profile_id: profile.id } ].to_json).exists?
       blockers << "player_claims" if PlayerClaim.where(claimable: profile).or(PlayerClaim.where(player_profile_id: profile.id)).exists?
       blockers << "claim_invitations" if ClaimInvitation.where(claimable: profile).exists?
-      blockers << "legacy_invitations" if PlayerClaimInvitation.exists?(player_profile_id: profile.id)
     else
       blockers << "assessments" if profile.assessments.exists?
       blockers << "assessment_sessions" if profile.assessment_sessions.exists?

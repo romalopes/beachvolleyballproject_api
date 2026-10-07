@@ -110,12 +110,6 @@ class ProfileMergeService
       invitation.update!(status: invitation.expires_at <= Time.current ? "expired" : "revoked",
                          revoked_at: invitation.expires_at <= Time.current ? nil : Time.current)
     end
-    if @source.is_a?(PlayerProfile)
-      PlayerClaimInvitation.where(player_profile_id: @source.id, status: "active").find_each do |invitation|
-        invitation.update!(status: invitation.expires_at <= Time.current ? "expired" : "revoked",
-                           revoked_at: invitation.expires_at <= Time.current ? nil : Time.current)
-      end
-    end
   end
 
   def move_references!

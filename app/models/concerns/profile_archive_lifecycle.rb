@@ -27,10 +27,5 @@ module ProfileArchiveLifecycle
     invitations.where("expires_at <= ?", now).update_all(status: "expired", updated_at: now)
     invitations.where("expires_at > ?", now).update_all(status: "revoked", revoked_at: now, updated_at: now)
 
-    return unless is_a?(PlayerProfile)
-
-    legacy = PlayerClaimInvitation.where(player_profile_id: id, status: "active")
-    legacy.where("expires_at <= ?", now).update_all(status: "expired", updated_at: now)
-    legacy.where("expires_at > ?", now).update_all(status: "revoked", revoked_at: now, updated_at: now)
   end
 end

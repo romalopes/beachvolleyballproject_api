@@ -117,7 +117,7 @@ class PlayerClaim < ApplicationRecord
 
   def reviewer_present_for_decision
     return unless %w[approved rejected].include?(status)
-    return if reviewed_by_account_id.present? || reviewed_by_person_id.present?
+    return if reviewed_by_account_id.present?
 
     errors.add(:reviewed_by_account, "must be recorded for a reviewed claim")
   end

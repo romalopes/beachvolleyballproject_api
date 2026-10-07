@@ -1,6 +1,6 @@
-# Coach-specific characteristics of a Person.
+# Coach-specific characteristics of an Account.
 #
-# A CoachProfile describes what the person is in the volleyball domain.
+# A CoachProfile describes an Account's volleyball role.
 # Application permissions remain role-based on the User (see Role/UserRole):
 # being a coach in the domain does not by itself grant administrative access.
 class CoachProfile < ApplicationRecord
@@ -20,13 +20,11 @@ class CoachProfile < ApplicationRecord
   # at creation, never accepted from client params).
   belongs_to :created_by, class_name: "User", optional: true
   belongs_to :created_by_account, class_name: "Account", optional: true
-  # Account is the sole profile owner. `person_id` remains a legacy history
-  # reference until the roster-identity migration retires it.
+  # Coaches can also be recorded before they have an Account.
   belongs_to :account, optional: true
   belongs_to :merged_into_profile, class_name: "CoachProfile", optional: true
   belongs_to :merged_by_account, class_name: "Account", optional: true
   has_many :merged_profiles, class_name: "CoachProfile", foreign_key: :merged_into_profile_id, dependent: :restrict_with_error
-  belongs_to :person, optional: true
   # Phase 2 made `person_id` non-null because no unassigned-coach workflow
   # existed. Phase 18 adds one: a coach recorded with only a display name can
   # claim their profile later, exactly as a player can.
@@ -34,17 +32,10 @@ class CoachProfile < ApplicationRecord
   has_many :player_claims, as: :claimable, dependent: :restrict_with_error
   has_many :assessment_sessions, dependent: :restrict_with_error
 
-  # See PlayerProfile: update_only keeps a has_one update from replacing the
-  # person (and creating a second identity) when no id is sent.
-  accepts_nested_attributes_for :person, allow_destroy: false, update_only: true
-
-
   validates :status, presence: true, inclusion: { in: STATUSES }
   validates :visibility, presence: true, inclusion: { in: VISIBILITIES }
   before_validation :ensure_display_name
-  # A profile with no Person has no name of its own, so it requires a display
-  # name — the same rule PlayerProfile uses.
-  validates :display_name, presence: true, if: -> { person.nil? }
+  validates :display_name, presence: true
   validate :merge_state_is_consistent
 
   # The assessments this coach recorded. See PlayerProfile#assessments: the rows
@@ -97,7 +88,7 @@ class CoachProfile < ApplicationRecord
   # Nil-safe now that `person` is optional: a placeholder coach is named by its
   # display name and reports itself as having no account, exactly like a
   # placeholder player profile.
-  def full_name = display_name.presence || account&.full_name || person&.full_name
+  def full_name = display_name.presence || account&.full_name
 
   def merged?
     merged_into_profile_id.present?
@@ -129,7 +120,7 @@ class CoachProfile < ApplicationRecord
   # the same shape the assessments endpoints serialize.
   def recent_assessments
     assessments.active.ordered
-               .includes(:category, :created_by, :coach_profile, player_profile: :person)
+               .includes(:category, :created_by, :coach_profile, player_profile: :account)
                .limit(5)
   end
 
@@ -137,7 +128,6 @@ class CoachProfile < ApplicationRecord
     {
       id: id,
       coach_profile_id: coach_profile_id,
-      person_id: person_id,
       display_name: display_name,
       coaching_level: coaching_level,
       qualifications: qualifications,
@@ -156,7 +146,7 @@ class CoachProfile < ApplicationRecord
   def ensure_display_name
     return if display_name.present?
 
-    self.display_name = account&.full_name.presence || person&.full_name
+    self.display_name = account&.full_name.presence
   end
 
   def merge_state_is_consistent

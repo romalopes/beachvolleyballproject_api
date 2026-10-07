@@ -41,11 +41,11 @@ class AssessmentSessionRanking
   attr_reader :session
 
   def included_participants
-    session.participants.includes(player_profile: :person).included.to_a
+    session.participants.includes(player_profile: :account).included.to_a
   end
 
   def excluded_participants
-    session.participants.includes(player_profile: :person).excluded.map do |participant|
+    session.participants.includes(player_profile: :account).excluded.map do |participant|
       {
         player_profile_id: participant.player_profile_id,
         player_name: player_name(participant),

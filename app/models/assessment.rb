@@ -449,8 +449,7 @@ class Assessment < ApplicationRecord
   def coach_must_not_assess_their_own_player_profile
     return if coach_profile.blank? || player_profile.blank?
     same_account = coach_profile.account_id.present? && coach_profile.account_id == player_profile.account_id
-    same_legacy_identity = coach_profile.person_id.present? && coach_profile.person_id == player_profile.person_id
-    return unless same_account || same_legacy_identity
+    return unless same_account
 
     errors.add(:coach_profile, "cannot be the same person as the player being assessed")
   end

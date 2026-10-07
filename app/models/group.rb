@@ -127,7 +127,7 @@ class Group < ApplicationRecord
   # The active owner membership, or nil. Callers that render who owns a group
   # should use this rather than re-deriving it.
   def owner_membership
-    group_memberships.owners.includes(:person, :account).first
+    group_memberships.owners.includes(:account).first
   end
 
   def archived?
@@ -165,8 +165,8 @@ class Group < ApplicationRecord
       # Who runs it, from the membership rather than from `created_by`, so this
       # cannot drift from what `owner?` decides.
       owner: owner_membership&.then do |membership|
-        { id: membership.account_id || membership.person_id, account_id: membership.account_id,
-          person_id: membership.person_id, name: membership.player_name }
+        { id: membership.account_id, account_id: membership.account_id,
+          name: membership.player_name }
       end,
       # Present but null for a group placed before this column existed.
       organisation: organisation && { id: organisation.id, name: organisation.name },

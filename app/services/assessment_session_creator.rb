@@ -48,8 +48,8 @@ class AssessmentSessionCreator
     return if session_record.group.nil?
 
     existing = session_record.participants.map(&:player_profile_id).to_set
-    session_record.group.group_memberships.active.includes(person: :player_profile).each do |membership|
-      profile = membership.person&.player_profile
+    session_record.group.group_memberships.active.includes(account: :player_profiles).each do |membership|
+      profile = membership.account.player_profiles.first
       next if profile.nil?
       next if existing.include?(profile.id)
 

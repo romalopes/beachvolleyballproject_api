@@ -42,7 +42,7 @@ module Api
                         .with_status(params[:status])
                         .of_type(params[:organisation_type])
                         .ordered
-                        .includes(:parent_organisation, :created_by_person, :created_by_account, :logo_attachment)
+                        .includes(:parent_organisation, :created_by_account, :logo_attachment)
         # `mine=1` narrows to the organisations the caller is an *active* member
         # of. It exists because the group form needs the choices a person can
         # actually make: offering every organisation would list ones the server
@@ -281,12 +281,10 @@ module Api
 
       def create_member
         account = Account.find_by(id: member_params[:account_id]) if member_params[:account_id].present?
-        person = Person.canonical.find_by(id: member_params[:person_id]) if member_params[:person_id].present?
-        member = account || person
-        return render json: { errors: [ "Account or roster member not found" ] }, status: :not_found if member.nil?
+        member = account
+        return render json: { errors: [ "Account not found" ] }, status: :not_found if member.nil?
 
         existing = @organisation.organisation_memberships.find_by(account: account) if account
-        existing ||= @organisation.organisation_memberships.find_by(person: person) if person
 
         # Already on the roster: nothing was created, so a 201 here would be a lie.
         # 409 rather than 422, because the request was well-formed — the state is
@@ -300,7 +298,7 @@ module Api
 
         # Defaulting to `pending`, not `active`: adding someone to a roster is an
         # invitation, and an invitation is not a grant.
-        membership = existing || @organisation.organisation_memberships.build(account: account, person: person)
+        membership = existing || @organisation.organisation_memberships.build(account: account)
         membership.role = member_params[:role].presence || (existing ? membership.role : "member")
         # Defaulting to `active`. This used to default to `pending` — "adding
         # somebody to a roster is an invitation" — but nothing could ever accept an
@@ -348,10 +346,10 @@ module Api
         return if membership.nil?
 
         if membership.withdrawable?
-          person_id = membership.person_id
+          account_id = membership.account_id
           name = membership.display_name
           membership.destroy!
-          render json: { removed: true, person_id: person_id, message: "Invitation to #{name} withdrawn." }
+          render json: { removed: true, account_id: account_id, message: "Invitation to #{name} withdrawn." }
         else
           membership.end!
           render json: { removed: false, membership: membership.metadata }
@@ -367,7 +365,7 @@ module Api
       # ended membership is visible to anyone who can see the organisation, because
       # hiding it would erase the very history this feature exists to keep.
       def visible_memberships
-        scope = @organisation.organisation_memberships.includes(:person, :account).ordered
+        scope = @organisation.organisation_memberships.includes(:account).ordered
         return scope if manageable_membership?
         return scope.ended if Current.user&.account.nil?
 
@@ -380,13 +378,11 @@ module Api
 
       def find_membership
         membership = @organisation.organisation_memberships
-                                         .includes(:person, :account)
+                                         .includes(:account)
                                          .find_by(account_id: params[:account_id]) if params[:account_id].present?
-        membership ||= @organisation.organisation_memberships.includes(:person, :account)
-          .find_by(person_id: params[:person_id]) if params[:person_id].present?
         return membership if membership
 
-        render json: { errors: [ "That person is not a member of this organisation" ] },
+        render json: { errors: [ "That account is not a member of this organisation" ] },
                status: :not_found
         nil
       end
@@ -508,7 +504,7 @@ module Api
 
       def set_organisation
         @organisation = Organisation
-                        .includes(:parent_organisation, :created_by_person, :created_by_account)
+                        .includes(:parent_organisation, :created_by_account)
                         .find(params[:id])
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Organisation not found" }, status: :not_found
@@ -547,7 +543,7 @@ module Api
       end
 
       def member_params
-        params.require(:membership).permit(:person_id, :account_id, :role, :status)
+        params.require(:membership).permit(:account_id, :role, :status)
       end
     end
   end

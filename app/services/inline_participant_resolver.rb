@@ -1,5 +1,4 @@
-# Turns a nested `person:` row into a linked PlayerProfile, for the "add a
-# player who does not have an account yet" workflow.
+# Turns a nested `profile:` row into a linked PlayerProfile.
 #
 # Both the training-session form and the assessment-session form let a coach
 # enter someone new instead of searching for an existing player. The sequence is
@@ -20,7 +19,10 @@
 class InlineParticipantResolver
   # The attributes a coach may supply for a person they are recording — the same
   # set the standalone player/coach forms accept.
-  PERSON_ATTRIBUTES = %i[first_name last_name email phone date_of_birth].freeze
+  PROFILE_ATTRIBUTES = %i[display_name preferred_position level visibility].freeze
+  # Controllers use this name while their nested request key is migrated from
+  # `person` to `profile`.
+  PERSON_ATTRIBUTES = PROFILE_ATTRIBUTES
 
   def initialize(created_by:)
     @created_by = created_by
@@ -34,14 +36,14 @@ class InlineParticipantResolver
     Array(rows).each do |row|
       next unless row.respond_to?(:delete)
 
-      person_attrs = row.delete("person") || row.delete(:person)
-      next if person_attrs.blank?
+      profile_attrs = row.delete("profile") || row.delete(:profile)
+      next if profile_attrs.blank?
       next if row[:player_profile_id].present? || row["player_profile_id"].present?
 
-      person = PersonCreationService.new(created_by: @created_by).build(person_attrs)
-      person.build_player_profile
-      person.save!
-      row[:player_profile_id] = person.player_profile.id
+      profile = PlayerProfile.create!(profile_attrs.slice(*PROFILE_ATTRIBUTES).merge(display_name: profile_attrs[:display_name] || profile_attrs["display_name"]))
+      ProfileOwnership.stamp!(profile, @created_by)
+      profile.save!
+      row[:player_profile_id] = profile.id
     end
 
     rows
