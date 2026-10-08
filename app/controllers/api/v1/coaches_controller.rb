@@ -17,10 +17,10 @@ module Api
       before_action :set_coach, only: %i[show update merge destroy]
       before_action :validate_status_filter!, only: :index
 
-      PROFILE_ATTRS = %i[display_name coaching_level qualifications status visibility].freeze
+      PROFILE_ATTRS = %i[display_name email coaching_level qualifications status visibility].freeze
 
       # Serializable output.
-      PROFILE_ONLY = %i[id account_id display_name coaching_level qualifications status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
+      PROFILE_ONLY = %i[id account_id display_name email coaching_level qualifications status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
       PROFILE_METHODS = %i[full_name account_status coach_profile_id].freeze
 
       def index

@@ -17,7 +17,7 @@
 class InlineParticipantResolver
   # The legacy nested `profile:` payload is still accepted while callers migrate
   # to the public `person:` contract.
-  PROFILE_ATTRIBUTES = %i[display_name preferred_position level visibility].freeze
+  PROFILE_ATTRIBUTES = %i[display_name email preferred_position level visibility].freeze
   # Contact fields are accepted because the inline roster form uses the same
   # person shape as other identity forms. Profiles are intentionally accountless,
   # however, so only the supplied name is persisted here; creating an Account or

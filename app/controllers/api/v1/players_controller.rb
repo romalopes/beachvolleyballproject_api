@@ -17,10 +17,10 @@ module Api
       before_action :validate_status_filter!, only: :index
 
       # Permitted input.
-      PROFILE_ATTRS = %i[display_name preferred_position level status visibility].freeze
+      PROFILE_ATTRS = %i[display_name email preferred_position level status visibility].freeze
 
       # Serializable output.
-      PROFILE_ONLY = %i[id account_id display_name preferred_position level status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
+      PROFILE_ONLY = %i[id account_id display_name email preferred_position level status visibility archived_at merged_into_profile_id merged_at created_at updated_at].freeze
       PROFILE_METHODS = %i[full_name account_status player_profile_id].freeze
       DETAIL_METHODS = PROFILE_METHODS + %i[training_session_count]
 

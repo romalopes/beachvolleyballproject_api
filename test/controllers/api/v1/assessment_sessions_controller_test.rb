@@ -34,7 +34,8 @@ class Api::V1::AssessmentSessionsControllerTest < ActionDispatch::IntegrationTes
     assert_difference([ "PlayerProfile.count", "AssessmentSessionParticipant.count" ], 1) do
       post_json "/api/v1/assessment_sessions/#{session_id}/add_players", players: [ {
         profile: {
-          display_name: "Test TESt"
+          display_name: "Test TESt",
+          email: "inline.player@example.com"
         },
         inclusion: "included"
       } ]
@@ -45,6 +46,7 @@ class Api::V1::AssessmentSessionsControllerTest < ActionDispatch::IntegrationTes
     profile = PlayerProfile.find(participant.fetch("player_profile_id"))
 
     assert_equal "Test TESt", profile.display_name
+    assert_equal "inline.player@example.com", profile.email
     assert_nil profile.account_id
     assert_equal "Test TESt", participant.fetch("player_name")
     assert_equal "included", participant.fetch("inclusion")

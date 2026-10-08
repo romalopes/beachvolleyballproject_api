@@ -44,6 +44,7 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
     profile = CoachProfile.find(JSON.parse(response.body).fetch("id"))
     assert_equal "New Coach", profile.display_name
+    assert_equal "new.coach@example.com", profile.email
     assert_nil profile.account_id
     assert_equal accounts(:three).id, profile.created_by_account_id
   end
@@ -75,10 +76,12 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal coach.id, JSON.parse(response.body).fetch("id")
 
-    patch api_v1_coach_path(coach), params: { coach: { coach_profile: { coaching_level: "national", qualifications: "Level 3" } } }
+    patch api_v1_coach_path(coach), params: { coach: { coach_profile: { coaching_level: "national", qualifications: "Level 3", email: "coach@example.com" } } }
     assert_response :success
     assert_equal "national", JSON.parse(response.body).fetch("coaching_level")
+    assert_equal "coach@example.com", JSON.parse(response.body).fetch("email")
     assert_equal "Level 3", coach.reload.qualifications
+    assert_equal "coach@example.com", coach.email
   end
 
   test "private coaches are hidden from unrelated coaches but visible to owner and curator" do
@@ -160,6 +163,6 @@ class Api::V1::CoachesControllerTest < ActionDispatch::IntegrationTest
   end
 
   def coach_create_params
-    { coach: { coach_profile: { display_name: "New Coach", coaching_level: "state", qualifications: "Level 1" } } }
+    { coach: { coach_profile: { display_name: "New Coach", email: "new.coach@example.com", coaching_level: "state", qualifications: "Level 1" } } }
   end
 end

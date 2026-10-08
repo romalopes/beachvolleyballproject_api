@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_08_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_08_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -254,6 +254,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_000001) do
     t.bigint "created_by_account_id"
     t.bigint "created_by_id"
     t.string "display_name"
+    t.string "email"
     t.datetime "merged_at"
     t.bigint "merged_by_account_id"
     t.bigint "merged_into_profile_id"
@@ -488,6 +489,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_000001) do
     t.bigint "created_by_account_id"
     t.bigint "created_by_id"
     t.string "display_name"
+    t.string "email"
     t.string "level"
     t.datetime "merged_at"
     t.bigint "merged_by_account_id"

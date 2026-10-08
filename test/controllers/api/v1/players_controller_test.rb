@@ -40,6 +40,7 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
     profile = PlayerProfile.find(JSON.parse(response.body).fetch("id"))
     assert_equal "Test User", profile.display_name
+    assert_equal "test.user@example.com", profile.email
     assert_nil profile.account_id
     assert_equal accounts(:three).id, profile.created_by_account_id
   end
@@ -82,9 +83,11 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
     get api_v1_player_path(player)
     assert_response :success
     assert_equal player.id, JSON.parse(response.body).fetch("id")
-    patch api_v1_player_path(player), params: { player: { player_profile: { level: "advanced" } } }
+    patch api_v1_player_path(player), params: { player: { player_profile: { level: "advanced", email: "player@example.com" } } }
     assert_response :success
     assert_equal "advanced", player.reload.level
+    assert_equal "player@example.com", player.email
+    assert_equal "player@example.com", JSON.parse(response.body).fetch("email")
   end
 
   test "private players are hidden from unrelated coaches but visible to owner and curator" do
@@ -156,6 +159,6 @@ class Api::V1::PlayersControllerTest < ActionDispatch::IntegrationTest
   end
 
   def player_create_params
-    { player: { player_profile: { display_name: "Test User", preferred_position: "setter" } } }
+    { player: { player_profile: { display_name: "Test User", email: "test.user@example.com", preferred_position: "setter" } } }
   end
 end
