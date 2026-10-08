@@ -18,9 +18,10 @@ module Api
       before_action :require_authentication
       before_action :require_training_manager!, except: :show
       before_action :require_content_creator!, only: %i[create update destroy add_members remove_member]
-      before_action :set_group, only: %i[show update destroy add_members remove_member]
+      before_action :set_group, only: %i[show update destroy add_members remove_member
+                                         join approve_member reject_member]
       before_action :require_group_reader!, only: :show
-      before_action :check_visibility!, only: %i[show update destroy add_members remove_member]
+      before_action :check_visibility!, only: %i[show update destroy add_members remove_member join]
       before_action :authorize_owner!, only: %i[update destroy add_members remove_member]
 
       def index
@@ -193,7 +194,147 @@ module Api
         }
       end
 
+      # You add yourself. Distinct from `add_members`, which the group's owner does
+      # to *somebody else* and which is owner-gated — joining writes your own row,
+      # so it deliberately sits outside `authorize_owner!` rather than widening it.
+      #
+      # Role is fixed at `member`: self-granting `owner` or `coach` is precisely
+      # the escalation this must not allow. The owner still assigns roles after.
+      def join
+        account = Current.user&.account
+        if account.nil?
+          return render json: {
+            errors: [ "Your account is not ready to join a group." ]
+          }, status: :unprocessable_entity
+        end
+
+        if @group.archived?
+          return render json: {
+            errors: [ "This group is archived and is not accepting members." ]
+          }, status: :unprocessable_entity
+        end
+
+        # The §10 rule — a roster is members who share the group's organisation —
+        # binds a self-service join exactly as it binds `add_members`. 422 rather
+        # than 403: the request was well formed, the account simply is not in the club.
+        if @group.organisation_id.present? &&
+           !@group.shares_organisation?([], @group.organisation_id, account_ids: [ account.id ])
+          return render json: {
+            errors: [ "You must be an active member of this group's organisation to join it." ]
+          }, status: :unprocessable_entity
+        end
+
+        existing = @group.group_memberships.find_by(account: account)
+
+        # Already on the roster: 409 — well-formed request, conflicting state. A
+        # `pending` row is recorded but not yet active, so it counts as already
+        # having asked rather than as a reason to ask again.
+        if existing && !existing.ended?
+          return render json: {
+            error: "You are already a member of this group.",
+            membership: membership_payload(existing)
+          }, status: :conflict
+        end
+
+        # Re-joining after leaving reactivates the same row rather than adding a
+        # second one, so the earlier stint's history stays on the record — the same
+        # rule `assign_account_ids` already follows (unique index across statuses).
+        membership = existing || @group.group_memberships.build(account: account)
+        membership.role = "member"
+        membership.status = @group.approval_required? ? "pending" : "active"
+        # A request that awaits approval has not joined yet: `joined_at` belongs to
+        # the stint that is actually underway, and `activate!` stamps it on approval.
+        membership.joined_at ||= Time.current if membership.status == "active"
+        membership.left_at = nil
+
+        if membership.save
+          render json: { membership: membership_payload(membership) }, status: :created
+        else
+          render json: { errors: membership.errors.full_messages },
+                 status: :unprocessable_entity
+        end
+      end
+
+      # Approve a pending self-service join request. The group's owner plus
+      # curator/admin oversight may approve — `Group#approvable_by?` is the single
+      # source of that rule.
+      def approve_member
+        membership = find_membership
+        return if performed?
+
+        unless @group.approvable_by?(Current.user)
+          return render json: {
+            errors: [ "Only this group's owner, a curator or an admin can approve requests." ]
+          }, status: :forbidden
+        end
+
+        unless membership.pending?
+          return render json: { errors: [ "Only pending requests can be approved." ] }, status: :unprocessable_entity
+        end
+
+        # Re-checked at approval, not only at join: the club may have moved the
+        # group or the requester's membership may have ended since the ask.
+        if @group.organisation_id.present? &&
+           !@group.shares_organisation?([], @group.organisation_id, account_ids: [ membership.account_id ])
+          return render json: {
+            errors: [ "That account is no longer an active member of this group's organisation." ]
+          }, status: :unprocessable_entity
+        end
+
+        membership.activate!
+        render json: { membership: membership_payload(membership) }
+      end
+
+      # Reject (withdraw) a pending self-service join request. The requester may
+      # cancel their own request; approvers may reject it. A `pending` row records
+      # no stint, so it is removed like any other unanswered request.
+      def reject_member
+        membership = find_membership
+        return if performed?
+
+        approver = @group.approvable_by?(Current.user)
+        requester = membership.account_id == Current.user&.account&.id
+        unless approver || requester
+          return render json: { errors: [ "Only the requester or an approver can reject this request." ] }, status: :forbidden
+        end
+
+        unless membership.pending?
+          return render json: { errors: [ "Only pending requests can be rejected." ] }, status: :unprocessable_entity
+        end
+
+        membership_id = membership.id
+        membership.destroy!
+        render json: { removed: true, membership_id: membership_id }
+      end
+
       private
+
+      # The pending/reviewable row addressed by `membership_id` in the URL. Scoped
+      # to this group, so an id from another roster is a 404 rather than a way to
+      # act on somebody else's membership.
+      def find_membership
+        membership = @group.group_memberships.find_by(id: params[:membership_id])
+        return membership if membership
+
+        render json: { errors: [ "That member is not on this group's roster" ] },
+               status: :not_found
+        nil
+      end
+
+      # One response shape for join/approve: the fields a client needs to render
+      # the roster row it just created or changed, without the whole detail payload.
+      def membership_payload(membership)
+        {
+          id: membership.id,
+          group_id: membership.group_id,
+          account_id: membership.account_id,
+          name: membership.player_name,
+          role: membership.role,
+          status: membership.status,
+          joined_at: membership.joined_at,
+          left_at: membership.left_at
+        }
+      end
 
       def group_scope
         status = params[:status].presence
@@ -238,7 +379,11 @@ module Api
 
       def group_params
         params.require(:group).permit(:name, :description, :visibility, :status,
-                                      :organisation_id)
+                                      :organisation_id,
+                                      # Join policy, same split as organisations: open
+                                      # joins are immediate, approval-required ones
+                                      # become a `pending` row the owner reviews.
+                                      :requires_approval)
       end
 
       # Is this caller active in that organisation, either directly as the Account

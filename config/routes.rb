@@ -207,6 +207,11 @@ Rails.application.routes.draw do
           # gated on `can_manage_members`, while `join` writes your own and must
           # not be.
           post :join
+          # Reviewing a self-service request: the id is the pending membership
+          # itself, because that row is what is being decided — approver and
+          # requester act on the same record from opposite sides.
+          post "memberships/:membership_id/approve", action: :approve_member, as: :approve_membership
+          post "memberships/:membership_id/reject", action: :reject_member, as: :reject_membership
         end
       end
 
@@ -254,6 +259,13 @@ Rails.application.routes.draw do
           post :members, to: "groups#add_members"
           # The roster is keyed on Account membership.
           delete "members/:account_id", to: "groups#remove_member"
+          # Self-service join, mirroring organisations: `add_members` writes
+          # somebody *else's* row and is owner-gated, while `join` writes your own.
+          post :join
+          # Reviewing a pending join request — the same split as organisations:
+          # an approver decides, the requester may withdraw.
+          post "memberships/:membership_id/approve", action: :approve_member, as: :approve_membership
+          post "memberships/:membership_id/reject", action: :reject_member, as: :reject_membership
         end
       end
 

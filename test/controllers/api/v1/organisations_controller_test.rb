@@ -1294,6 +1294,143 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  # --- joining with approval required ----------------------------------------
+
+  test "joining an approval-required organisation records a request, not a seat" do
+    @australia.update!(requires_approval: true)
+    sign_in_as(@coach)
+
+    assert_difference "OrganisationMembership.count", 1 do
+      post join_api_v1_organisation_path(@australia)
+    end
+
+    assert_response :created
+    membership = OrganisationMembership.find_by(organisation: @australia, account: @coach.account)
+    assert_equal "member", membership.role
+    assert_equal "pending", membership.status
+    # A request has not joined yet: no stint begins until an officer approves.
+    assert_nil membership.joined_at
+    assert_nil membership.left_at
+  end
+
+  test "an officer approves a pending join request" do
+    @club.update!(requires_approval: true)
+    # users(:three) is a coach with no membership of the club — a genuine applicant.
+    applicant = users(:three)
+    sign_in_as(applicant)
+    post join_api_v1_organisation_path(@club)
+    assert_response :created
+    membership = OrganisationMembership.find_by(organisation: @club, account: applicant.account)
+    assert_equal "pending", membership.status
+
+    # @coach (users(:six)) owns the club through accounts(:two).
+    sign_out
+    sign_in_as(@coach)
+    post approve_membership_api_v1_organisation_path(@club, membership.id)
+
+    assert_response :success
+    membership.reload
+    assert_equal "active", membership.status
+    assert_not_nil membership.joined_at
+    assert_nil membership.left_at
+  end
+
+  test "curator oversight may approve a pending join request" do
+    @australia.update!(requires_approval: true)
+    sign_in_as(@coach)
+    post join_api_v1_organisation_path(@australia)
+    membership = OrganisationMembership.find_by(organisation: @australia, account: @coach.account)
+
+    sign_out
+    sign_in_as(@curator)
+    post approve_membership_api_v1_organisation_path(@australia, membership.id)
+
+    assert_response :success
+    assert_equal "active", membership.reload.status
+  end
+
+  test "an ordinary member may not approve a join request" do
+    @club.update!(requires_approval: true)
+    applicant = users(:three)
+    sign_in_as(applicant)
+    post join_api_v1_organisation_path(@club)
+    membership = OrganisationMembership.find_by(organisation: @club, account: applicant.account)
+
+    # The requester themselves cannot wave their own request through: being the
+    # asker is not authority over the roster.
+    post approve_membership_api_v1_organisation_path(@club, membership.id)
+
+    assert_response :forbidden
+    assert_equal "pending", membership.reload.status
+  end
+
+  test "a requester may withdraw their own pending join request" do
+    @australia.update!(requires_approval: true)
+    sign_in_as(@coach)
+    post join_api_v1_organisation_path(@australia)
+    membership = OrganisationMembership.find_by(organisation: @australia, account: @coach.account)
+
+    # A pending request records no stint, so it is removed outright — the one
+    # exception to end-don't-delete.
+    assert_difference "OrganisationMembership.count", -1 do
+      post reject_membership_api_v1_organisation_path(@australia, membership.id)
+    end
+
+    assert_response :success
+    assert json["removed"]
+    assert_not OrganisationMembership.exists?(membership.id)
+  end
+
+  test "an officer rejects a pending join request" do
+    @club.update!(requires_approval: true)
+    applicant = users(:three)
+    sign_in_as(applicant)
+    post join_api_v1_organisation_path(@club)
+    membership = OrganisationMembership.find_by(organisation: @club, account: applicant.account)
+
+    sign_out
+    sign_in_as(@coach)
+    post reject_membership_api_v1_organisation_path(@club, membership.id)
+
+    assert_response :success
+    assert_not OrganisationMembership.exists?(membership.id)
+  end
+
+  test "only pending requests can be approved" do
+    sign_in_as(@coach)
+    post join_api_v1_organisation_path(@australia)
+    assert_response :created
+    membership = OrganisationMembership.find_by(organisation: @australia, account: @coach.account)
+    assert_equal "active", membership.status
+
+    sign_out
+    sign_in_as(@admin)
+    post approve_membership_api_v1_organisation_path(@australia, membership.id)
+
+    assert_response :unprocessable_entity
+    assert_match(/pending/, json["errors"].first)
+  end
+
+  test "approving a membership from another organisation is a 404" do
+    sign_in_as(@admin)
+    outsider = OrganisationMembership.find_by(organisation: @club, account: accounts(:two))
+
+    post approve_membership_api_v1_organisation_path(@australia, outsider.id)
+
+    assert_response :not_found
+  end
+
+  test "the join policy is settable by the club's officers" do
+    sign_in_as(@coach)
+
+    patch_json "/api/v1/organisations/#{@club.id}", organisation: { requires_approval: true }
+
+    assert_response :success
+    assert_predicate @club.reload, :requires_approval?
+    assert json["requires_approval"]
+    assert json["approval_required"]
+  end
+
   test "a guest may not create one" do
     post_json "/api/v1/organisations", organisation: { name: "Guest Club" }
     assert_response :unauthorized

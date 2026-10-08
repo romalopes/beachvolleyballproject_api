@@ -444,4 +444,208 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
     delete "#{api_v1_groups_path}/#{@u19.id}/members/#{@john_account.id}"
     assert_response :not_found
   end
+
+  # --- self-service join ------------------------------------------------------
+
+  test "a coach can join an open group as an ordinary member" do
+    # @other_coach owns private_squad but has no row on u19 — a genuine first join.
+    sign_in_as(@other_coach)
+
+    assert_difference "GroupMembership.count", 1 do
+      post "#{api_v1_groups_path}/#{@u19.id}/join"
+    end
+
+    assert_response :created
+    membership = @u19.group_memberships.find_by(account: @other_coach.account)
+    assert_equal "member", membership.role
+    assert_equal "active", membership.status
+    assert_not_nil membership.joined_at
+  end
+
+  test "joining twice conflicts rather than duplicating" do
+    sign_in_as(@other_coach)
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+    assert_response :created
+
+    assert_no_difference "GroupMembership.count" do
+      post "#{api_v1_groups_path}/#{@u19.id}/join"
+    end
+
+    assert_response :conflict
+    assert_match(/already a member/, json["error"])
+  end
+
+  test "rejoining after leaving reactivates the same row rather than adding one" do
+    membership = @u19.group_memberships.create!(
+      account: @other_coach.account, role: "member", status: "ended",
+      joined_at: 1.year.ago, left_at: 1.month.ago
+    )
+
+    sign_in_as(@other_coach)
+    assert_no_difference "GroupMembership.count" do
+      post "#{api_v1_groups_path}/#{@u19.id}/join"
+    end
+
+    assert_response :created
+    reloaded = GroupMembership.find(membership.id)
+    assert_equal "active", reloaded.status
+    assert_nil reloaded.left_at
+    assert_not_nil reloaded.joined_at
+  end
+
+  test "an approval-required group records a join as pending, not active" do
+    @u19.update!(requires_approval: true)
+    sign_in_as(@other_coach)
+
+    assert_difference "GroupMembership.count", 1 do
+      post "#{api_v1_groups_path}/#{@u19.id}/join"
+    end
+
+    assert_response :created
+    membership = @u19.group_memberships.find_by(account: @other_coach.account)
+    assert_equal "member", membership.role
+    assert_equal "pending", membership.status
+    # A request has not joined yet: no stint begins until the owner approves.
+    assert_nil membership.joined_at
+    # Pending rows are not counted as squad members.
+    assert_equal 2, @u19.reload.player_count
+  end
+
+  test "the group's owner approves a pending join request" do
+    @u19.update!(requires_approval: true)
+    sign_in_as(@other_coach)
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+    membership = @u19.group_memberships.find_by(account: @other_coach.account)
+    assert_equal "pending", membership.status
+
+    sign_out
+    sign_in_as(@owner)
+    post "#{api_v1_groups_path}/#{@u19.id}/memberships/#{membership.id}/approve"
+
+    assert_response :success
+    membership.reload
+    assert_equal "active", membership.status
+    assert_not_nil membership.joined_at
+  end
+
+  test "a non-owner coach may not approve a group join request" do
+    @u19.update!(requires_approval: true)
+    sign_in_as(@other_coach)
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+    membership = @u19.group_memberships.find_by(account: @other_coach.account)
+
+    # The requester themselves: being the asker is not authority over the roster.
+    post "#{api_v1_groups_path}/#{@u19.id}/memberships/#{membership.id}/approve"
+
+    assert_response :forbidden
+    assert_equal "pending", membership.reload.status
+  end
+
+  test "curator oversight may approve a group join request" do
+    @u19.update!(requires_approval: true)
+    sign_in_as(@other_coach)
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+    membership = @u19.group_memberships.find_by(account: @other_coach.account)
+
+    sign_out
+    sign_in_as(@curator)
+    post "#{api_v1_groups_path}/#{@u19.id}/memberships/#{membership.id}/approve"
+
+    assert_response :success
+    assert_equal "active", membership.reload.status
+  end
+
+  test "a requester may withdraw their own pending join request" do
+    @u19.update!(requires_approval: true)
+    sign_in_as(@other_coach)
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+    membership = @u19.group_memberships.find_by(account: @other_coach.account)
+
+    # A pending request records no stint, so it is removed outright (§: the one
+    # exception to end-don't-delete).
+    assert_difference "GroupMembership.count", -1 do
+      post "#{api_v1_groups_path}/#{@u19.id}/memberships/#{membership.id}/reject"
+    end
+
+    assert_response :success
+    assert json["removed"]
+    assert_not GroupMembership.exists?(membership.id)
+  end
+
+  test "the owner rejects a pending join request" do
+    @u19.update!(requires_approval: true)
+    sign_in_as(@other_coach)
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+    membership = @u19.group_memberships.find_by(account: @other_coach.account)
+
+    sign_out
+    sign_in_as(@owner)
+    post "#{api_v1_groups_path}/#{@u19.id}/memberships/#{membership.id}/reject"
+
+    assert_response :success
+    assert_not GroupMembership.exists?(membership.id)
+  end
+
+  test "only pending group requests can be approved" do
+    sign_in_as(@other_coach)
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+    assert_response :created
+    membership = @u19.group_memberships.find_by(account: @other_coach.account)
+    assert_equal "active", membership.status
+
+    sign_out
+    sign_in_as(@owner)
+    post "#{api_v1_groups_path}/#{@u19.id}/memberships/#{membership.id}/approve"
+
+    assert_response :unprocessable_entity
+    assert_match(/pending/, json["errors"].first)
+  end
+
+  test "approving a membership from another group is a 404" do
+    sign_in_as(@admin)
+    other_row = @private_group.group_memberships.owners.first
+
+    post "#{api_v1_groups_path}/#{@u19.id}/memberships/#{other_row.id}/approve"
+
+    assert_response :not_found
+  end
+
+  test "an archived group does not accept joins" do
+    @u19.update!(status: "archived")
+    sign_in_as(@other_coach)
+
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+
+    assert_response :unprocessable_entity
+    assert_match(/archived/, json["errors"].first)
+  end
+
+  test "a join to a group bound to an organisation requires active membership there" do
+    @u19.update!(organisation: organisations(:sydney_club))
+    # accounts(:three) is not in Sydney Beach Volleyball Club.
+    sign_in_as(@other_coach)
+
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+
+    assert_response :unprocessable_entity
+    assert_match(/organisation/, json["errors"].first)
+  end
+
+  test "the join policy is settable by the group's owner" do
+    sign_in_as(@owner)
+
+    patch_json "#{api_v1_groups_path}/#{@u19.id}", group: { requires_approval: true }
+
+    assert_response :success
+    assert_predicate @u19.reload, :requires_approval?
+    assert json["group"]["requires_approval"]
+    assert json["group"]["approval_required"]
+    assert json["group"]["can_approve_members"]
+  end
+
+  test "a guest may not join a group" do
+    post "#{api_v1_groups_path}/#{@u19.id}/join"
+
+    assert_response :unauthorized
+  end
 end

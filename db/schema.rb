@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_100003) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_08_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -341,7 +341,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_100003) do
     t.index ["group_id"], name: "index_group_memberships_single_active_owner", unique: true, where: "(((role)::text = 'owner'::text) AND ((status)::text = 'active'::text))"
     t.check_constraint "left_at IS NULL OR status::text = 'ended'::text AND left_at IS NOT NULL", name: "group_memberships_left_at_when_ended"
     t.check_constraint "role::text = ANY (ARRAY['owner'::text, 'coach'::text, 'member'::text])", name: "group_memberships_role"
-    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'ended'::text])", name: "group_memberships_status"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'active'::text, 'ended'::text])", name: "group_memberships_status"
   end
 
   create_table "groups", force: :cascade do |t|
@@ -350,6 +350,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_100003) do
     t.text "description"
     t.string "name", null: false
     t.bigint "organisation_id"
+    t.boolean "requires_approval", default: false, null: false
     t.string "slug", null: false
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
@@ -426,6 +427,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_100003) do
     t.string "name", null: false
     t.string "organisation_type", default: "other", null: false
     t.bigint "parent_organisation_id"
+    t.boolean "requires_approval", default: false, null: false
     t.string "slug", null: false
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false

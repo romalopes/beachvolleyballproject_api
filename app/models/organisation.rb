@@ -104,6 +104,26 @@ class Organisation < ApplicationRecord
             },
             allow_blank: true
   validates :status, presence: true, inclusion: { in: STATUSES }
+
+  # Join policy selected from /identity self-service: when true, a join request
+  # creates a `pending` membership for review instead of an active row. Open
+  # (false) preserves the current direct-join behaviour. Archived records never
+  # accept joins either way.
+  def approval_required?
+    requires_approval?
+  end
+
+  # Who may approve a pending join request: the org's active owner/administrators,
+  # plus site oversight (curator/admin). Accepts either a User or an Account —
+  # the roster check below is Account-keyed, so a User is resolved first rather
+  # than silently failing the membership test.
+  def approvable_by?(member)
+    account = member.is_a?(Account) ? member : member&.account
+
+    manageable_by?(account) ||
+      (member.respond_to?(:curator?) && member.curator?) ||
+      (member.respond_to?(:admin?) && member.admin?)
+  end
   validates :organisation_type, presence: true, inclusion: { in: ORGANISATION_TYPES }
   validate :parent_must_not_be_self
   validate :parent_must_not_create_a_cycle
@@ -378,6 +398,15 @@ class Organisation < ApplicationRecord
       # creator may edit their club while running nobody's roster. Reusing
       # `can_edit` for this rendered controls the server would refuse.
       can_manage_members: manage_members_flag(manage_members_ids, manage_members_all),
+      # Approval authority is roster authority plus oversight, so it is computed
+      # from the *same* hoisted flags as `can_manage_members` rather than calling
+      # `approvable_by?` per row — which ran a membership query for every
+      # organisation on the page. A curator approves everywhere and holds no
+      # officer membership anywhere, so oversight is OR-ed in explicitly.
+      can_approve_members: manage_members_flag(manage_members_ids, manage_members_all) ||
+                           Current&.user&.curator? || Current&.user&.admin?,
+      requires_approval: requires_approval,
+      approval_required: approval_required?,
       created_by_account: created_by_account && {
         id: created_by_account.id,
         name: created_by_account.full_name

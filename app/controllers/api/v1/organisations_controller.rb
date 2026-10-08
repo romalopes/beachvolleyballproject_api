@@ -22,7 +22,8 @@ module Api
       # record was nil would be the worst kind of bug here.
       before_action :set_organisation,
                     only: %i[show update archive restore logo destroy
-                             members member_candidates create_member update_member end_member join]
+                             members member_candidates create_member update_member end_member join
+                             approve_member reject_member]
       before_action :require_organisation_reader!, only: :show
       # Creating a node and moving one are claims made *to other clubs* about the
       # tree, so they stay admin-only.
@@ -131,8 +132,10 @@ module Api
         # rule organisation memberships already follow.
         membership = existing || @organisation.organisation_memberships.build(account: account, memberable: account)
         membership.role = "member"
-        membership.status = "active"
-        membership.joined_at ||= Time.current
+        membership.status = @organisation.approval_required? ? "pending" : "active"
+        # A request that awaits approval has not joined yet: `joined_at` belongs to
+        # the stint that is actually underway, and `activate!` stamps it on approval.
+        membership.joined_at ||= Time.current if membership.status == "active"
         membership.left_at = nil
 
         if membership.save
@@ -141,6 +144,48 @@ module Api
           render json: { errors: membership.errors.full_messages },
                  status: :unprocessable_entity
         end
+      end
+
+      # Approve a pending self-service join request. The organisation's active
+      # owner/administrators plus curator/admin oversight may approve.
+      def approve_member
+        membership = find_membership
+        return if performed?
+
+        unless @organisation.approvable_by?(Current.user)
+          return render json: {
+            errors: [ "Only this organisation's owner or administrators, a curator or an admin can approve requests." ]
+          }, status: :forbidden
+        end
+
+        unless membership.pending?
+          return render json: { errors: [ "Only pending requests can be approved." ] }, status: :unprocessable_entity
+        end
+
+        membership.activate!
+        render json: { membership: membership.metadata }
+      end
+
+      # Reject (withdraw) a pending self-service join request. The requester may
+      # cancel their own request; approvers may reject it. `pending` rows carry
+      # no history, so they are removed like any other unaccepted invitation.
+      def reject_member
+        membership = find_membership
+        return if performed?
+
+        approver = @organisation.approvable_by?(Current.user)
+        requester = membership.account_id == Current.user&.account&.id
+        unless approver || requester
+          return render json: { errors: [ "Only the requester or an approver can reject this request." ] }, status: :forbidden
+        end
+
+        unless membership.pending?
+          return render json: { errors: [ "Only pending requests can be rejected." ] }, status: :unprocessable_entity
+        end
+
+        membership_id = membership.id
+        membership.destroy!
+        render json: { removed: true, membership_id: membership_id }
       end
 
       def create
@@ -434,10 +479,19 @@ module Api
       end
 
       def find_membership
-        membership = @organisation.organisation_memberships
-                                          .includes(:account, :memberable)
-                                          .find_by(id: params[:membership_id]) if params[:membership_id].present?
-        return membership if membership
+        if params[:membership_id].present?
+          # Addressed by id, so an id that is not on this roster is a 404 — falling
+          # through to memberable resolution here would answer a mistyped or
+          # foreign membership id with a confusing "choose a member" instead.
+          membership = @organisation.organisation_memberships
+                                    .includes(:account, :memberable)
+                                    .find_by(id: params[:membership_id])
+          return membership if membership
+
+          render json: { errors: [ "That member is not a member of this organisation" ] },
+                 status: :not_found
+          return nil
+        end
 
         member = resolve_memberable_from_params(params)
         return if performed?
@@ -646,7 +700,11 @@ module Api
       # and is not the caller's to choose.
       def organisation_params
         params.require(:organisation).permit(
-          :name, :description, :acronym, :organisation_type, :status, :parent_organisation_id
+          :name, :description, :acronym, :organisation_type, :status, :parent_organisation_id,
+          # The join policy: who a self-service `join` writes for this club. Editing
+          # it rides the same gate as editing the record — the club's own officers —
+          # rather than admin-only, because "how people join us" is the club's business.
+          :requires_approval
         )
       end
 

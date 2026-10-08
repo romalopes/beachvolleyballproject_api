@@ -1,8 +1,10 @@
 class Api::V1::AssessmentSessionsController < ApplicationController
   include ContentAuthorization
 
-  # The inline-person allow-list is owned by the resolver, exactly as it is in
-  # TrainingSessionsController, so the permit list and the consumer cannot drift.
+  # The roster's new-player control creates a profile-only record, so it only
+  # exposes PlayerProfile attributes. `person` remains permitted in add_players
+  # as a backwards-compatible shape for older clients.
+  INLINE_PROFILE_ATTRIBUTES = InlineParticipantResolver::PROFILE_ATTRIBUTES
   INLINE_PERSON_ATTRIBUTES = InlineParticipantResolver::PERSON_ATTRIBUTES
 
   # A session is a shared coaching artefact, not a private note, so reads use
@@ -133,6 +135,7 @@ class Api::V1::AssessmentSessionsController < ApplicationController
     rows = Array(
       params.permit(players: [
         :player_profile_id, :inclusion, :missing_reason,
+        { profile: INLINE_PROFILE_ATTRIBUTES },
         { person: INLINE_PERSON_ATTRIBUTES }
       ])[:players]
     )

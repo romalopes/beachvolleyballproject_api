@@ -101,6 +101,25 @@ module Api
       # profile consolidation happens explicitly through the merge endpoint.
       def create
         attributes = coach_params
+        # Self-service from /identity: any authenticated user with an account
+        # may create their own linked profile if they don't already have one.
+        # Pass `link_to_account: true` in coach_profile from the frontend to opt into self-service.
+        # Staff creation of additional unlinked profiles stays coach/admin-only.
+        link_to_account = ActiveModel::Type::Boolean.new.cast(params.dig(:coach, :coach_profile, :link_to_account))
+        account = Current.user&.account
+        if link_to_account
+          if account.nil?
+            return render json: { errors: [ "Your account is not ready to create a coach profile." ] }, status: :unprocessable_entity
+          end
+          if account.coach_profiles.exists?
+            return render json: { errors: [ "Your account already has a coach profile." ] }, status: :conflict
+          end
+          attributes = attributes.merge(account_id: account.id)
+        elsif Current.user&.coach? || Current.user&.admin?
+          # Staff flow: unlinked profile (coach/admin creating additional profiles)
+        else
+          return render json: { errors: [ "Your account is not ready to create a coach profile." ] }, status: :unprocessable_entity
+        end
         profile = CoachProfile.new(attributes)
         saved = CoachProfile.transaction do
           ProfileOwnership.stamp!(profile, Current.user)

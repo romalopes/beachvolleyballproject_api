@@ -3,15 +3,17 @@
 # Keyed on Account rather than PlayerProfile. An account may be staff-recorded
 # and unclaimed, so a squad can contain somebody without a login or profile.
 #
-# `status` is only `active` / `ended`. It deliberately does *not* carry the
-# invited / confirmed / attended vocabulary the previous version of this model
-# rejected, and that reasoning still holds: attendance is evidence about one
+# `status` is `pending` / `active` / `ended`. `pending` is a self-service join
+# request awaiting the group's review (see `Group#approval_required?`) — it
+# grants nothing until an approver activates it. It deliberately does *not*
+# carry the invited / confirmed / attended vocabulary the previous version of
+# this model rejected, and that reasoning still holds: attendance is evidence about one
 # session, so it belongs on the session that observed it, not on the roster where
 # it would be a stale opinion. Leaving a squad, though, is a fact about the roster
 # itself, and §2.5 requires it to be recorded rather than deleted.
 class GroupMembership < ApplicationRecord
   ROLES = %w[owner coach member].freeze
-  STATUSES = %w[active ended].freeze
+  STATUSES = %w[pending active ended].freeze
 
   belongs_to :group, inverse_of: :group_memberships
   belongs_to :account
@@ -22,6 +24,7 @@ class GroupMembership < ApplicationRecord
   validate :left_at_belongs_to_an_ended_membership
 
   scope :active, -> { where(status: "active") }
+  scope :pending, -> { where(status: "pending") }
   scope :ended, -> { where(status: "ended") }
   # The one active owner, if there is one. The database guarantees at most one
   # (a partial unique index); this is how that fact is read back.
@@ -34,6 +37,14 @@ class GroupMembership < ApplicationRecord
 
   def ended?
     status == "ended"
+  end
+
+  def pending?
+    status == "pending"
+  end
+
+  def activate!
+    update!(status: "active", joined_at: Time.current, left_at: nil)
   end
 
   def player_name

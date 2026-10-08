@@ -143,6 +143,25 @@ class Group < ApplicationRecord
     status.to_s.capitalize
   end
 
+  # Join policy selected from /identity self-service: when true, a join request
+  # creates a `pending` membership for review instead of an active row. Open
+  # (false) preserves the current direct-join behaviour. Archived groups never
+  # accept joins either way.
+  def approval_required?
+    requires_approval?
+  end
+
+  # Who may approve a pending join request: the group's active owner, plus site
+  # oversight (curator/admin).
+  def approvable_by?(member)
+    account_id = member.is_a?(Account) ? member.id : member&.account&.id
+    return true if member.respond_to?(:admin?) && member.admin?
+    return true if member.respond_to?(:curator?) && member.curator?
+    return false if account_id.nil?
+
+    group_memberships.owners.exists?(account_id: account_id)
+  end
+
   # Active members, not rows. An ended membership is history about the squad and
   # must not be counted as somebody currently in it.
   def player_count
@@ -158,6 +177,9 @@ class Group < ApplicationRecord
       visibility: visibility,
       status: status,
       status_label: status_label,
+      requires_approval: requires_approval,
+      approval_required: approval_required?,
+      can_approve_members: approvable_by?(Current&.user),
       player_count: player_count,
       # Who runs it, from the membership rather than from `created_by`, so this
       # cannot drift from what `owner?` decides.
