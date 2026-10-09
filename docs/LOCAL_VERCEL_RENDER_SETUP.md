@@ -1,5 +1,7 @@
 # Local development, Vercel and Render configuration
 
+For system architecture, models and lifecycles, see [System architecture, models and lifecycles](architecture/architecture.md).
+
 Checked against the workspace source on 8 October 2026. This documents configuration; it does not confirm the settings of any deployed service. Values in angle brackets are placeholders. Never put backend secrets in `VITE_*` variables: those become public browser JavaScript.
 
 ## Is this already documented?

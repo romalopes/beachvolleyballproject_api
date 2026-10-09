@@ -1,30 +1,37 @@
-# README
+# Beach Volleyball API
 
-For local setup and the complete Vercel/Render environment-variable reference, see [Local, Vercel and Render setup](docs/LOCAL_VERCEL_RENDER_SETUP.md).
+For architecture overview and documentation index, see [Architecture overview and documentation index](docs/architecture/architecture.md).
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+Rails backend for the Beach Volleyball Project’s React frontend.
 
-Things you may want to cover:
+## Setup and operations
 
-* Ruby version
+| Guide | Use it for |
+|---|---|
+| [Local, Vercel and Render setup](docs/LOCAL_VERCEL_RENDER_SETUP.md) | Prerequisites, startup commands, environment variables, storage, email and deployment configuration. |
+| [Database backup and restore](docs/DATABASE_BACKUP_AND_RESTORE.md) | Initial backup setup, GitHub Actions, R2 downloads, decryption, restore validation and production recovery. |
+| [Domains, DNS and email setup](docs/beachvolleyballproject_domain_setup.md) | Custom-domain rollout and provider DNS settings; illustrative variables must be checked against the setup guide. |
+| [Email transport overview](docs/IDENTITY_226_mail_transport/README.md) | Brevo, Resend, SMTP and local file delivery. |
+| [Email environment and sender configuration](docs/IDENTITY_226_mail_transport/03_ENVIRONMENT_SENDER_AND_ROLLOUT.md) | Provider credentials, sender identity and rollout. |
+| [Email operations and verification](docs/IDENTITY_226_mail_transport/04_OPERATIONS_AND_VERIFICATION.md) | Transport checks and delivery troubleshooting. |
+| [Send a test email](docs/IDENTITY_226_mail_transport/05_SEND_TEST_EMAIL.md) | Exercise outbound delivery. |
 
-* System dependencies
+## Architecture and implementation references
 
-* Configuration
+These documents include design plans, audits and phase reports; consult their status
+and the current code before treating planned behavior as implemented.
 
-* Database creation
-
-* Database initialization
-
-* How to run the test suite
-
-* Services (job queues, cache servers, search engines, etc.)
-
-* Deployment instructions
-
-* ...
-# beachvolleyballproject_api
+| Reference | Topic |
+|---|---|
+| [Person identity model](docs/IDENTITY_228_ACCOUNT_CENTRIC/PERSON_IDENTITY_MODEL.md) | Accounts, people and profiles. |
+| [Account identity phase status](docs/IDENTITY_228_ACCOUNT_CENTRIC/IDENTITY_228_PHASE_STATUS.md) | Account-centric implementation and links to its phases. |
+| [Profile phase status](docs/IDENTITY_255_PROFILES/IDENTITY_225_PHASE_STATUS.md) | Profile ownership, claims, lifecycle and rollout work. |
+| [Organisation tree and membership plan](docs/IDENTITY_231_REFACTOR_ORGANISATIONS/beachvolleyballproject-organisation-tree-membership-plan.md) | Organisation hierarchy and memberships. |
+| [Assessment definitions](docs/IDENTITY_28_ASSESSMENT/ASSESSMENT_DEFINITIONS_PLAN.md) | Assessment structure. |
+| [Assessment sessions](docs/IDENTITY_28_ASSESSMENT/ASSESSMENT_SESSIONS_PLAN.md) | Assessment session design. |
+| [Assessment integration](docs/IDENTITY_28_ASSESSMENT/ASSESSMENT_INTEGRATION_PLAN.md) | Integration work across assessment features. |
+| [Tournament calendar plan](docs/IDENTITY_76_TOURNAMENT/bvb-tournament-calendar-issue-76-plan.md) | Tournament and calendar design. |
+| [README documentation plan](<docs/Beach Volleyball Project — README.md Documentation Plan.md>) | Broader documentation roadmap. |
 
 ## Private test-access gate
 
@@ -45,10 +52,9 @@ that token on every API request (header `X-Test-Access-Token`).
   * `GET /api/v1/test_access` — verifies the header token.
   * `GET /api/v1/health` — stays public for uptime probes.
 * **Rotating the password**: change `TEST_ACCESS_PASSWORD` on Render and
-  restart. Old tokens keep working until they expire; run
-  `TestAccessToken.generate` in a console to mint new ones if you need to
-  invalidate everything sooner (or change the `PURPOSE` constant once, which
-  invalidates all issued tokens at once).
+  restart. Old tokens keep working until they expire. Generating a new token does not
+  revoke existing tokens. Changing the `PURPOSE` constant invalidates all
+  test-access tokens and requires a deployment.
 * **Removing the feature later**: delete `app/services/test_access_token.rb`,
   `app/controllers/concerns/test_access.rb`,
   `app/controllers/api/v1/test_access_controller.rb`, the two `test_access`
