@@ -1,5 +1,7 @@
 # README
 
+For local setup and the complete Vercel/Render environment-variable reference, see [Local, Vercel and Render setup](docs/LOCAL_VERCEL_RENDER_SETUP.md).
+
 This README would normally document whatever steps are necessary to get the
 application up and running.
 
