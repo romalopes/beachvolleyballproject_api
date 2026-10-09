@@ -1,6 +1,6 @@
 # Architecture guide
 
-This is the entry point for the implemented Beach Volleyball Project architecture,
+This is the entry point for the implemented Beach Volleyball Hub architecture,
 reviewed against the API and sibling React repository on 9 October 2026. It describes
 source configuration, not verified production infrastructure. Earlier issue plans
 remain useful history but may describe models that have since been replaced.

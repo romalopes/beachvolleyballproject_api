@@ -1,12 +1,12 @@
-# Beach Volleyball Project — README.md Documentation Plan
+# Beach Volleyball Hub — README.md Documentation Plan
 
 ## Objective
 
-Create a professional, accurate, maintainable `README.md` for the Beach Volleyball Project.
+Create a professional, accurate, maintainable `README.md` for the Beach Volleyball Hub.
 
 The README should allow a new developer, maintainer, contributor, coach, or technical collaborator to understand:
 
-- What the Beach Volleyball Project is.
+- What the Beach Volleyball Hub is.
 - What functionality currently exists.
 - The overall application architecture.
 - The relationship between the frontend and backend.
@@ -27,7 +27,7 @@ Do not convert previous product discussions, future plans, or design ideas into 
 
 # 1. Project repositories
 
-The Beach Volleyball Project consists of two repositories:
+The Beach Volleyball Hub consists of two repositories:
 
 - Frontend: `https://github.com/romalopes/beachvolleyballproject`
 - Backend API: `https://github.com/romalopes/beachvolleyballproject_api`
@@ -250,7 +250,7 @@ Do not document planned functionality as implemented.
 
 Start the README with:
 
-# Beach Volleyball Project
+# Beach Volleyball Hub
 
 Provide a concise description of the application.
 
@@ -489,7 +489,7 @@ Never include real secrets.
 
 # 12. Domain model
 
-This section is particularly important for Beach Volleyball Project.
+This section is particularly important for Beach Volleyball Hub.
 
 Explain the major domain concepts and their relationships.
 

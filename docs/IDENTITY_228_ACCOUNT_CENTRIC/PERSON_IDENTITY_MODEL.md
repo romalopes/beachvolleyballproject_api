@@ -18,7 +18,7 @@ current cardinality and should stay aligned as later phases land.
 
 ## Core principle
 
-> A real-world person can exist in the Beach Volleyball Project independently
+> A real-world person can exist in the Beach Volleyball Hub independently
 > of whether they have an account. An Account is attached to that Person when
 > authentication becomes available.
 

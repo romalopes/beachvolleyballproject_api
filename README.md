@@ -2,7 +2,7 @@
 
 For architecture overview and documentation index, see [Architecture overview and documentation index](docs/architecture/architecture.md).
 
-Rails backend for the Beach Volleyball Project’s React frontend.
+Rails backend for the Beach Volleyball Hub’s React frontend.
 
 ## Setup and operations
 
@@ -31,7 +31,7 @@ and the current code before treating planned behavior as implemented.
 | [Assessment sessions](docs/IDENTITY_28_ASSESSMENT/ASSESSMENT_SESSIONS_PLAN.md) | Assessment session design. |
 | [Assessment integration](docs/IDENTITY_28_ASSESSMENT/ASSESSMENT_INTEGRATION_PLAN.md) | Integration work across assessment features. |
 | [Tournament calendar plan](docs/IDENTITY_76_TOURNAMENT/bvb-tournament-calendar-issue-76-plan.md) | Tournament and calendar design. |
-| [README documentation plan](<docs/Beach Volleyball Project — README.md Documentation Plan.md>) | Broader documentation roadmap. |
+| [README documentation plan](<docs/Beach Volleyball Hub — README.md Documentation Plan.md>) | Broader documentation roadmap. |
 
 ## Private test-access gate
 

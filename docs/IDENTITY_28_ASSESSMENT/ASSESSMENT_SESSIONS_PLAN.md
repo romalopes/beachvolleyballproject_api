@@ -1,4 +1,4 @@
-# Beach Volleyball Project — Assessment System Refactor
+# Beach Volleyball Hub — Assessment System Refactor
 
 **Status:** Implemented. Definitions, sessions, scoring, ranking, consolidation and
 groups (Phase A) all ship. Criterion aggregation (Phase B, D16) is in; criterion
