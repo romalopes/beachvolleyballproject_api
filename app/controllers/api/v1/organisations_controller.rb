@@ -16,7 +16,7 @@ module Api
       include Pagination
 
       before_action :require_authentication
-      before_action :require_training_manager!, except: :show
+      before_action :require_training_manager!, except: %i[show index join]
       # Loaded before the authority checks, not after: every organisation rule below
       # needs the record it is judging, and a rule that silently passed because the
       # record was nil would be the worst kind of bug here.
@@ -25,6 +25,7 @@ module Api
                              members member_candidates create_member update_member end_member join
                              approve_member reject_member]
       before_action :require_organisation_reader!, only: :show
+      before_action :require_organisation_reader!, only: :members
       # Creating a node and moving one are claims made *to other clubs* about the
       # tree, so they stay admin-only.
       before_action :require_organisation_admin!, only: %i[create]
@@ -435,9 +436,15 @@ module Api
       def visible_memberships
         scope = @organisation.organisation_memberships.includes(:account, :memberable).ordered
         return scope if manageable_membership?
-        return scope.ended if Current.user&.account.nil?
 
-        scope.where(account_id: Current.user.account.id)
+        account = Current.user&.account
+        # If the current user has an active membership in this organisation, show the active roster
+        if account&.organisation_memberships&.active&.where(organisation_id: @organisation.id)&.exists?
+          return scope.active
+        end
+
+        # Not a member (or not signed in) → only historical (ended) rows
+        scope.ended
       end
 
       def manageable_membership?

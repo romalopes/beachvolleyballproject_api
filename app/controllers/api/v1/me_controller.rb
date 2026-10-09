@@ -40,6 +40,7 @@ module Api
           coach_profiles: coach_profiles.map do |profile|
             {
               id: profile.id,
+              display_name: profile.display_name,
               coaching_level: profile.coaching_level,
               qualifications: profile.qualifications,
               status: profile.status

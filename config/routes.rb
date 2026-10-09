@@ -273,7 +273,7 @@ Rails.application.routes.draw do
 
       # Admin role management
       namespace :admin do
-        resources :users, only: [ :index, :show ] do
+        resources :users, only: [ :index, :show, :destroy ] do
           post "roles", to: "users#add_role", as: :add_role
           delete "roles/:role", to: "users#remove_role", as: :remove_role
         end

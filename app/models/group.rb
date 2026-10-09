@@ -168,6 +168,12 @@ class Group < ApplicationRecord
     group_memberships.active.size
   end
 
+  def manageable_by?(user)
+    user.present? && (user.admin? || user.curator? || owner?(user))
+  end
+
+  alias_method :deletable_by?, :manageable_by?
+
   def metadata
     {
       id: id,
@@ -179,6 +185,9 @@ class Group < ApplicationRecord
       status_label: status_label,
       requires_approval: requires_approval,
       approval_required: approval_required?,
+      can_edit: manageable_by?(Current&.user),
+      can_archive: manageable_by?(Current&.user),
+      can_delete: deletable_by?(Current&.user),
       can_approve_members: approvable_by?(Current&.user),
       player_count: player_count,
       # Who runs it, from the membership rather than from `created_by`, so this

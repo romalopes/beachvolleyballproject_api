@@ -648,4 +648,42 @@ class Api::V1::GroupsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :unauthorized
   end
+  test "curator can delete an unused group" do
+    sign_in_as(@curator)
+    assert_difference("Group.count", -1) { delete api_v1_group_path(@u19) }
+    assert_response :success
+  end
+
+  test "another coach cannot delete a group" do
+    sign_in_as(@other_coach)
+    assert_no_difference("Group.count") { delete api_v1_group_path(@u19) }
+    assert_response :forbidden
+  end
+
+  test "owner membership cannot be ended directly" do
+    membership = @u19.group_memberships.owners.first!
+    assert_raises(ActiveRecord::RecordInvalid) { membership.end_membership! }
+    assert_equal "active", membership.reload.status
+  end
+
+  test "curator can edit archive and restore a group" do
+    sign_in_as(@curator)
+    patch_json api_v1_group_path(@u19), { group: { name: "Curator updated squad", status: "archived" } }
+    assert_response :success
+    assert_equal "archived", @u19.reload.status
+    assert_equal "Curator updated squad", @u19.name
+    patch_json api_v1_group_path(@u19), { group: { status: "active" } }
+    assert_response :success
+    assert_equal "active", @u19.reload.status
+  end
+
+  test "another coach cannot edit or archive a group" do
+    sign_in_as(@other_coach)
+    original_name = @u19.name
+    patch_json api_v1_group_path(@u19), { group: { name: "Unauthorized", status: "archived" } }
+    assert_response :forbidden
+    assert_equal original_name, @u19.reload.name
+    assert_equal "active", @u19.status
+  end
+
 end

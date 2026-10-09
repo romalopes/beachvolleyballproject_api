@@ -1193,7 +1193,7 @@ class Api::V1::OrganisationsControllerTest < ActionDispatch::IntegrationTest
     sign_in_as(@player_user)
     get "/api/v1/organisations"
 
-    assert_response :forbidden
+    assert_response :success
   end
 
   # --- joining (self-service) ------------------------------------------------

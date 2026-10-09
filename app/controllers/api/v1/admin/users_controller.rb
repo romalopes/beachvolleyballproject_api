@@ -77,6 +77,24 @@ module Api
           end
         end
 
+        # DELETE /api/v1/admin/users/:id
+        def destroy
+          @user = User.find(params[:id])
+
+          if @user == Current.real_user
+            render json: { error: "You cannot delete your own account" }, status: :unprocessable_entity
+            return
+          end
+
+          if @user.admin? && User.joins(:roles).where(roles: { name: "admin" }).count <= 1
+            render json: { error: "Cannot delete the last admin" }, status: :unprocessable_entity
+            return
+          end
+
+          @user.destroy
+          head :no_content
+        end
+
         private
 
         def user_payload(user, include_account: false)

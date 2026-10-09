@@ -16,13 +16,15 @@ module Api
       include Pagination
 
       before_action :require_authentication
-      before_action :require_training_manager!, except: :show
-      before_action :require_content_creator!, only: %i[create update destroy add_members remove_member]
+      before_action :require_training_manager!, except: %i[show update destroy]
+      before_action :require_content_creator!, only: %i[create add_members remove_member]
       before_action :set_group, only: %i[show update destroy add_members remove_member
                                          join approve_member reject_member]
       before_action :require_group_reader!, only: :show
       before_action :check_visibility!, only: %i[show update destroy add_members remove_member join]
-      before_action :authorize_owner!, only: %i[update destroy add_members remove_member]
+      before_action :authorize_owner!, only: %i[add_members remove_member]
+
+      before_action :authorize_management!, only: %i[update destroy]
 
       def index
         groups = group_scope
@@ -70,25 +72,17 @@ module Api
           }, status: :forbidden
         end
 
-        if @group.save
-          # The creator owns it, and ownership is a membership now (§2.6). Creating
-          # the group without this row would produce a group nobody can manage —
-          # exactly the state the old `created_by_id` check was papering over.
-          if Current.user&.account
-            @group.group_memberships.create!(
-              account: Current.user.account,
-              role: "owner",
-              status: "active",
-              joined_at: Time.current
-            )
-          end
-
+        Group.transaction do
+          account = ProfileOwnership.account_for(Current.user)
+          @group.save!
+          @group.group_memberships.create!(
+            account: account, role: "owner", status: "active", joined_at: Time.current
+          )
           assign_account_ids(Array(params[:account_ids])) if params[:account_ids].present?
-
-          render json: { group: serialize_detail(@group.reload) }, status: :created
-        else
-          render json: { errors: @group.errors.full_messages }, status: :unprocessable_entity
         end
+        render json: { group: serialize_detail(@group.reload) }, status: :created
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
       end
 
       def update
@@ -368,6 +362,12 @@ module Api
         return if @group&.group_memberships&.active&.exists?(account_id: Current.user&.account&.id)
 
         render json: { error: "Forbidden" }, status: :forbidden
+      end
+
+      def authorize_management!
+        return if @group.manageable_by?(Current.user)
+
+        render json: { error: "Only the group owner, an admin or a curator can edit, archive or delete this group." }, status: :forbidden
       end
 
       def authorize_owner!

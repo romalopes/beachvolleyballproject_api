@@ -22,6 +22,7 @@ class GroupMembership < ApplicationRecord
   validates :role, presence: true, inclusion: { in: ROLES }
   validates :status, presence: true, inclusion: { in: STATUSES }
   validate :left_at_belongs_to_an_ended_membership
+  validate :owner_cannot_leave
 
   scope :active, -> { where(status: "active") }
   scope :pending, -> { where(status: "pending") }
@@ -58,6 +59,12 @@ class GroupMembership < ApplicationRecord
   end
 
   private
+
+  def owner_cannot_leave
+    if persisted? && role_in_database == "owner" && status_in_database == "active" && status != "active"
+      errors.add(:status, "cannot end the group owner's membership")
+    end
+  end
 
   # `left_at` belongs to `ended` and to nothing else, so the two can never
   # disagree about whether somebody actually left. Mirrors
