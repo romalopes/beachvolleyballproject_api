@@ -6,7 +6,7 @@
 
 ```mermaid
 flowchart LR
-  Browser[Browser] --> SPA[React and Vite frontend / Vercel]
+  Browser[Browser] --> SPA[React and Vite frontend / Vercel and Cloudflare Workers]
   SPA --> API[Rails JSON API / Render]
   Browser --> Views[Rails server-rendered routes]
   Views --> Rails[Rails application]
@@ -23,8 +23,9 @@ flowchart LR
 The frontend is a separate repository (`beachvolleyballproject`) using React,
 TypeScript, Vite and React Router. Its `src/api.ts` owns the API base URL and common
 request handling. The API repository runs Rails 8.1 with Puma and PostgreSQL.
-The deployment diagram reflects the documented Vercel/Render arrangement; inspect
-provider settings to verify an actual deployment.
+The deployment diagram reflects the documented Vercel and Cloudflare frontend / Render API arrangement; inspect
+provider settings to verify deployment configuration. The Cloudflare frontend is available at
+[Cloudflare frontend](https://beachvolleyballhub.romalopes.workers.dev/).
 
 Rails is not JSON-only: [routes](../../config/routes.rb) also expose server-rendered
 skills, drills, training, account, login and admin pages. Both surfaces use the same
@@ -65,7 +66,7 @@ must check actual delivery as well as boot success.
 and file bytes separately. Current development selects R2, production selects
 Supabase, and tests select disk. Organisation logos are returned as relative
 `/rails/active_storage/...` proxy paths. The Vite dev server forwards those routes;
-Vercel also needs the routing documented in the setup guide.
+Vercel and Cloudflare also need forwarding for these routes; see the setup guide.
 
 External videos usually remain at their providers. `Video` normalizes media metadata;
 provider adapters determine safe embed and external URLs. A `VideoReference` records
@@ -74,7 +75,7 @@ where the video is used, rather than copying the video for each drill or skill.
 ## Local versus hosted execution
 
 Locally, Vite listens on HTTP 5174 and proxies `/api` and `/rails` to Puma's HTTPS
-127.0.0.1:3001 listener. On Vercel, `VITE_API_BASE_URL` is embedded during the build;
+127.0.0.1:3001 listener. On Vercel and Cloudflare, `VITE_API_BASE_URL` is embedded during the build;
 there is no Vite development proxy. Render must expose an HTTP listener on its supplied
 port behind platform TLS. The current Puma file binds local SSL unconditionally;
 use the documented deployment start command rather than assuming a plain server

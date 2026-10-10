@@ -35,7 +35,7 @@ Use the catalogue and source links here when implementing a feature.
 
 ## Operational and design references
 
-- [Local development and Vercel/Render configuration](../LOCAL_VERCEL_RENDER_SETUP.md).
+- [Local development and Vercel/Cloudflare/Render configuration](../LOCAL_VERCEL_RENDER_SETUP.md).
 - [Database backup, restore and recovery](../DATABASE_BACKUP_AND_RESTORE.md).
 - [Domain and DNS setup](../beachvolleyballproject_domain_setup.md).
 - [Email transport documentation](../IDENTITY_226_mail_transport/README.md).

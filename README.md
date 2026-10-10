@@ -2,13 +2,15 @@
 
 For architecture overview and documentation index, see [Architecture overview and documentation index](docs/architecture/architecture.md).
 
-Rails backend for the Beach Volleyball Hub’s React frontend.
+Rails backend for the Beach Volleyball Hub’s React frontend, hosted on Vercel and Cloudflare Workers.
+
+Cloudflare frontend: [Cloudflare frontend](https://beachvolleyballhub.romalopes.workers.dev/).
 
 ## Setup and operations
 
 | Guide | Use it for |
 |---|---|
-| [Local, Vercel and Render setup](docs/LOCAL_VERCEL_RENDER_SETUP.md) | Prerequisites, startup commands, environment variables, storage, email and deployment configuration. |
+| [Local, Vercel, Cloudflare and Render setup](docs/LOCAL_VERCEL_RENDER_SETUP.md) | Prerequisites, startup commands, environment variables, storage, email and deployment configuration. |
 | [Database backup and restore](docs/DATABASE_BACKUP_AND_RESTORE.md) | Initial backup setup, GitHub Actions, R2 downloads, decryption, restore validation and production recovery. |
 | [Domains, DNS and email setup](docs/beachvolleyballproject_domain_setup.md) | Custom-domain rollout and provider DNS settings; illustrative variables must be checked against the setup guide. |
 | [Email transport overview](docs/IDENTITY_226_mail_transport/README.md) | Brevo, Resend, SMTP and local file delivery. |

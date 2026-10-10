@@ -1,14 +1,17 @@
 # BeachVolleyballProject / BeachVolleyballHub — Domain, DNS and Email Setup
 
-**Scope:** Cloudflare domain registration and DNS, Vercel React frontend, Render Rails API, Cloudflare R2 object storage, and transactional email via **Resend or Brevo**.
+**Scope:** Cloudflare domain registration and DNS, Vercel and Cloudflare Workers React frontends, Render Rails API, Cloudflare R2 object storage, and transactional email via **Resend or Brevo**.
 
 > **Domain placeholder:** This guide uses `beachvolleyballhub.com` as an **example**, not a confirmed purchased or available domain. Replace it everywhere with the domain you actually register. The repository/application may still use the BeachVolleyballProject name internally.
+
+The frontend also runs on Cloudflare Workers alongside Vercel: [Cloudflare frontend](https://beachvolleyballhub.romalopes.workers.dev/). The custom-domain plan below retains Vercel for the example main domain.
 
 ## 1. Proposed architecture
 
 | Public hostname | Responsibility | Service |
 |---|---|---|
 | `beachvolleyballhub.com` | Main React website | Vercel |
+| `beachvolleyballhub.romalopes.workers.dev` | Existing React frontend | Cloudflare Workers |
 | `www.beachvolleyballhub.com` | Redirect to main website | Vercel |
 | `api.beachvolleyballhub.com` | Rails JSON API | Render |
 | `mail.beachvolleyballhub.com` (optional) | Dedicated email sending subdomain | Resend **or** Brevo |
@@ -91,9 +94,9 @@ Wait for Vercel to confirm DNS verification and issue its HTTPS certificate. Kee
 
 ## 6. Phase 4 — Update application configuration
 
-### Vercel production environment
+### Vercel and Cloudflare frontend environments
 
-In **Project → Settings → Environment Variables**, set the actual frontend variable name used by your codebase:
+In Vercel **Project → Settings → Environment Variables** and the Cloudflare frontend build environment, set the actual frontend variable name used by your codebase:
 
 ```dotenv
 VITE_API_BASE_URL=https://api.beachvolleyballhub.com/api/v1
@@ -110,7 +113,8 @@ In the Rails API, adjust `rack-cors` to allow the production frontend and intent
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
     origins 'https://beachvolleyballhub.com',
-            'https://www.beachvolleyballhub.com'
+            'https://www.beachvolleyballhub.com',
+            'https://beachvolleyballhub.romalopes.workers.dev'
     resource '/api/*',
              headers: :any,
              methods: %i[get post put patch delete options]
@@ -224,10 +228,10 @@ Check DKIM selector records by their **actual provider-supplied names**; the exa
 1. Purchase the chosen domain in Cloudflare.
 2. Add Vercel main + `www` custom domains, configure DNS, verify HTTPS.
 3. Add **production** Render API custom domain, verify DNS/HTTPS.
-4. Update Vercel API URL, Rails CORS, frontend/host/mail URLs and OAuth settings; redeploy.
+4. Update Vercel and Cloudflare API URLs, Rails CORS, frontend/host/mail URLs and OAuth settings; redeploy.
 5. Choose Resend **or** Brevo; authenticate a sending domain and implement HTTP API email delivery.
 6. Test full flows: sign-in, invitation, profile claim, password reset, mail delivery, database connectivity and R2 objects.
-7. Keep original Vercel/Render provider URLs until the new domain is stable.
+7. Keep original Vercel/Cloudflare/Render provider URLs until the new domain is stable.
 
 ## 11. Troubleshooting
 
@@ -247,7 +251,7 @@ Check DKIM selector records by their **actual provider-supplied names**; the exa
 - [ ] Main Vercel domain verified with HTTPS
 - [ ] `www` redirects to main domain
 - [ ] Production Render service verified at `api` with HTTPS
-- [ ] Frontend calls new API hostname
+- [ ] Vercel and Cloudflare frontends call the intended API hostname
 - [ ] CORS, auth, callback and mailer URLs updated
 - [ ] One primary email provider selected
 - [ ] Email domain verified; SPF/DKIM/DMARC checked

@@ -1,4 +1,4 @@
-# Local development, Vercel and Render configuration
+# Local development, Vercel, Cloudflare and Render configuration
 
 For system architecture, models and lifecycles, see [System architecture, models and lifecycles](architecture/architecture.md).
 
@@ -115,7 +115,11 @@ curl http://localhost:5174/api/v1/health
 
 `-k` is only for the local self-signed certificate. Local file emails appear in API `tmp/mails/`. Enable the email flags below to exercise verification/invitation flows. Development uses the default in-process Active Job adapter; production needs the worker described below.
 
-## 3. Vercel frontend
+## 3. Vercel and Cloudflare frontend
+
+The frontend runs on both Vercel and Cloudflare Workers. Cloudflare deployment: [Cloudflare frontend](https://beachvolleyballhub.romalopes.workers.dev/).
+
+### Vercel configuration
 
 Import the frontend repository. If importing a combined repository instead, set Root Directory to `beachvolleyballproject`; for the standalone frontend repository, use its root.
 
@@ -152,6 +156,14 @@ The API returns relative `/rails/active_storage/...` logo URLs, and React render
 ```
 
 This is a required manual configuration change, not applied by this guide. The destination is a literal URL, independent of `VITE_API_BASE_URL`. For previews backed by a different API, also provide matching routing; otherwise their logos would be requested from production.
+
+### Cloudflare Workers deployment
+
+The existing Cloudflare frontend is available at [Cloudflare frontend](https://beachvolleyballhub.romalopes.workers.dev/), alongside the Vercel deployment. Set `VITE_API_BASE_URL` in its build environment to the intended API URL, including `/api/v1`, and rebuild after changes.
+
+Verify SPA fallback for nested routes and forwarding of `/rails/active_storage/...` to the API on Cloudflare as well. The Vercel rewrite example above is specific to Vercel; check the equivalent routing in the Cloudflare deployment.
+
+If restricting Rails CORS or authentication origin allowlists, include `https://beachvolleyballhub.romalopes.workers.dev` alongside the Vercel origin. `FRONTEND_URL` selects the frontend used in email links; set it to the chosen canonical frontend origin.
 
 ## 4. Render API and worker
 
@@ -208,7 +220,7 @@ Use the database provider's SSL parameters where required. For Render Postgres, 
 
 ## 5. Backend environment reference
 
-All variables here belong on the API/worker, never in the Vercel browser bundle. “Default” describes current source behavior, not necessarily the recommended production value.
+All variables here belong on the API/worker, never in the Vercel or Cloudflare browser bundle. “Default” describes current source behavior, not necessarily the recommended production value.
 
 ### Core and runtime
 
@@ -290,16 +302,16 @@ Using Neon for PostgreSQL does not require any `NEON_S3_*` variables. To use R2 
 
 ## 6. Verification and common configuration problems
 
-1. Open the API `/api/v1/health` directly over HTTPS, then open the Vercel frontend. Confirm browser API requests reach the intended environment.
+1. Open the API `/api/v1/health` directly over HTTPS, then open both the Vercel and Cloudflare frontends. Confirm browser API requests reach the intended environment.
 2. Register/sign in, pass the private test gate if enabled, and test password reset and verification with an address you control.
 3. Confirm the production worker processes queued mail; inspect API logs, `tmp/mails` locally, and provider delivery logs remotely.
-4. Upload and view an organisation logo. Confirm `/rails/active_storage/...` returns an image through Vercel, not `index.html`.
+4. Upload and view an organisation logo. Confirm `/rails/active_storage/...` returns an image through both Vercel and Cloudflare, not `index.html`.
 5. Reload a nested frontend route to verify the SPA fallback.
 
 Troubleshooting:
 
 - **Local proxy 502 / connection refused:** Rails must be running on HTTPS port 3001 with the certificate files. The frontend runs on HTTP port 5174.
-- **API request returns frontend HTML:** missing/incorrect Vercel `VITE_API_BASE_URL`, or missing `/api/v1`. Redeploy after correcting it.
+- **API request returns frontend HTML:** missing/incorrect frontend `VITE_API_BASE_URL`, or missing `/api/v1`. Redeploy after correcting it.
 - **Upload/signature errors:** check the actually selected storage service and its S3 credentials; development currently does not default to disk.
 - **Render cannot detect a port:** use the explicit start command above; plain `rails server` loads the local-only SSL bind.
 - **Reset emails never arrive:** check both transport selection and Solid Queue worker, plus frontend URL and sender authentication.

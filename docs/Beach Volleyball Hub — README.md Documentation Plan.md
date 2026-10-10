@@ -37,7 +37,7 @@ The deployed architecture currently includes:
 - React/Vite frontend.
 - Ruby on Rails API.
 - PostgreSQL database.
-- Vercel frontend deployment.
+- Vercel and Cloudflare Workers frontend deployments.
 - Render API deployment.
 
 Verify all of these against the current repositories and deployment configuration before documenting them.
@@ -71,7 +71,7 @@ The README should primarily explain:
 - Environment variables.
 - Testing.
 - Production build.
-- Vercel deployment.
+- Vercel and Cloudflare Workers deployments.
 
 ## Backend repository
 
@@ -183,7 +183,7 @@ Inspect:
 
 - GitHub Actions.
 - Render configuration.
-- Vercel configuration.
+- Vercel and Cloudflare Workers configuration.
 - Database configuration.
 - CORS.
 - OAuth configuration.
@@ -362,7 +362,7 @@ PostgreSQL Database
 If verified, include:
 
 ```text
-Frontend → Vercel
+Frontend → Vercel and Cloudflare Workers
 API      → Render
 Database → PostgreSQL provider
 ```
@@ -394,7 +394,7 @@ Create a table containing:
 | Backend | Ruby on Rails | API/business logic |
 | Language | Ruby | Backend |
 | Database | PostgreSQL | Persistent data |
-| Frontend hosting | Vercel | Production frontend |
+| Frontend hosting | Vercel and Cloudflare Workers | Production frontend; [Cloudflare frontend](https://beachvolleyballhub.romalopes.workers.dev/) |
 | API hosting | Render | Production API |
 
 Determine actual versions from:
@@ -1020,7 +1020,7 @@ Document the actual deployment architecture.
 If verified, explain:
 
 ```text
-Vercel
+Vercel and Cloudflare Workers
 React/Vite frontend
         |
         | HTTPS
